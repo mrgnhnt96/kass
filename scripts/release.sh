@@ -1,8 +1,10 @@
 #!/bin/bash
 # Cut a release: set the version, commit, tag and push.
 #
-#   ./scripts/release.sh 0.6.0          a public release, from main
-#   ./scripts/release.sh 0.7.0-beta.1   a beta, from any branch
+#   ./scripts/release.sh 0.6.0          a public release
+#   ./scripts/release.sh 0.7.0-beta.1   a beta
+#
+# Every release, beta or not, is built from main.
 #
 # Pushing the v0.6.0 tag runs .github/workflows/release.yml, which builds
 # the app and publishes the GitHub release with the DMG attached. The app
@@ -21,8 +23,8 @@ fi
 tag="v$version"
 
 branch=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$version" != *-beta.* && "$branch" != main ]]; then
-  echo "Release from main (on $branch). Betas can go out from any branch." >&2
+if [[ "$branch" != main ]]; then
+  echo "Release from main (on $branch). Merge your branch into main first." >&2
   exit 1
 fi
 if [ -n "$(git status --porcelain)" ]; then
