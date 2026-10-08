@@ -32,7 +32,7 @@ Hold the chord in any app and talk the way you think. Whisper transcribes while 
 - **Command Mode.** Select text anywhere and say how to rewrite it.
 - **Correction learning.** Fix a result once and Kass learns from it.
 - **Captures.** Every take is kept with its audio, so you can replay, re-transcribe or fix it.
-- **Private.** No account, no server, no analytics. Audio and models stay on your Mac.
+- **Private.** No account and no server. Audio, text and models stay on your Mac. Kass sends only anonymous daily usage counts, never your words, and you can turn them off ([what's sent](https://kass.mrgnhnt.com/docs/privacy/#usage-stats)).
 
 <p align="center">
   <img src="docs/assets/readme/writing-styles.png" alt="Writing styles, one per app" />
