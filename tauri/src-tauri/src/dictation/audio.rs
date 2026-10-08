@@ -1,6 +1,7 @@
 //! Pure audio helpers for native dictation: downmix, framing, device and
 //! sample-rate choice, WAV encoding and per-take metrics.
 
+use std::collections::VecDeque;
 use std::time::Duration;
 
 /// Frame length streamed to the server.
@@ -82,6 +83,264 @@ impl Framer {
     }
 }
 
+/// Streaming linear-interpolation resampler for mono s16. A take that starts
+/// on the built-in microphone and moves to a Bluetooth headset keeps the
+/// built-in rate: the stream's rate is fixed when it starts, and the headset
+/// (16–24 kHz) is upsampled to it.
+pub struct Resampler {
+    /// Input samples per output sample.
+    step: f64,
+    /// Next output position, in input samples after `prev`.
+    position: f64,
+    prev: Option<i16>,
+}
+
+impl Resampler {
+    pub fn new(from_rate: u32, to_rate: u32) -> Self {
+        Self {
+            step: from_rate as f64 / to_rate.max(1) as f64,
+            position: 0.0,
+            prev: None,
+        }
+    }
+
+    /// Resample `input`, appending to `out`.
+    pub fn push(&mut self, input: &[i16], out: &mut Vec<i16>) {
+        for &current in input {
+            let Some(prev) = self.prev else {
+                self.prev = Some(current);
+                continue;
+            };
+            while self.position < 1.0 {
+                let value = prev as f64 + (current as f64 - prev as f64) * self.position;
+                out.push(value.round() as i16);
+                self.position += self.step;
+            }
+            self.position -= 1.0;
+            self.prev = Some(current);
+        }
+    }
+}
+
+/// Spots digital silence: runs of exact-zero samples. A live microphone never
+/// delivers them, since noise keeps every sample off zero. A Bluetooth
+/// headset that is switching to its microphone profile (or has moved to
+/// another device) delivers a few samples, then exact zeros for half a
+/// second or more.
+pub struct DigitalSilence {
+    run: usize,
+    limit: usize,
+}
+
+impl DigitalSilence {
+    /// The shortest run that counts.
+    pub const RUN: Duration = Duration::from_millis(1);
+
+    pub fn new(sample_rate: u32) -> Self {
+        Self {
+            run: 0,
+            limit: ((sample_rate as u128 * Self::RUN.as_micros()) / 1_000_000).max(2) as usize,
+        }
+    }
+
+    /// Whether `samples` (continuing the previous chunk) hold a run of zeros
+    /// at least [`Self::RUN`] long.
+    pub fn push(&mut self, samples: &[i16]) -> bool {
+        let mut found = false;
+        for &sample in samples {
+            if sample == 0 {
+                self.run += 1;
+                found |= self.run >= self.limit;
+            } else {
+                self.run = 0;
+            }
+        }
+        found
+    }
+}
+
+/// How long a microphone has been quiet: every chunk since within
+/// [`Self::MARGIN_DB`] of the quietest chunk heard so far (its room noise).
+/// The first [`Self::STARTUP`] doesn't count: a built-in microphone opens
+/// near-silent, 30 dB under its room noise, and then nothing was quiet.
+pub struct Pause {
+    sample_rate: u32,
+    floor_db: f32,
+    quiet: u64,
+    seen: u64,
+}
+
+impl Pause {
+    /// Speech from across the desk is still 20 dB over a built-in
+    /// microphone's room noise.
+    pub const MARGIN_DB: f32 = 10.0;
+    pub const STARTUP: Duration = Duration::from_millis(100);
+
+    pub fn new(sample_rate: u32) -> Self {
+        Self {
+            sample_rate,
+            floor_db: f32::INFINITY,
+            quiet: 0,
+            seen: 0,
+        }
+    }
+
+    /// Account for the next chunk (about 10 ms).
+    pub fn push(&mut self, samples: &[i16]) {
+        if samples.is_empty() {
+            return;
+        }
+        self.seen += samples.len() as u64;
+        if (self.seen as u128) * 1_000_000 <= self.sample_rate as u128 * Self::STARTUP.as_micros() {
+            return;
+        }
+        let power = samples.iter().map(|&s| (s as f32).powi(2)).sum::<f32>() / samples.len() as f32;
+        let level = 10.0 * (power + 1.0).log10();
+        self.floor_db = self.floor_db.min(level);
+        if level <= self.floor_db + Self::MARGIN_DB {
+            self.quiet += samples.len() as u64;
+        } else {
+            self.quiet = 0;
+        }
+    }
+
+    pub fn quiet_for(&self) -> Duration {
+        Duration::from_secs_f64(self.quiet as f64 / self.sample_rate as f64)
+    }
+}
+
+/// Loudness each millisecond, the last `cap` of them.
+struct Envelope {
+    block: usize,
+    power: f64,
+    count: usize,
+    values: VecDeque<f32>,
+    cap: usize,
+}
+
+impl Envelope {
+    fn new(block: usize, cap: usize) -> Self {
+        Self {
+            block,
+            power: 0.0,
+            count: 0,
+            values: VecDeque::with_capacity(cap + 1),
+            cap,
+        }
+    }
+
+    fn push(&mut self, samples: &[i16]) {
+        for &sample in samples {
+            self.power += (sample as f64).powi(2);
+            self.count += 1;
+            if self.count == self.block {
+                self.values
+                    .push_back((10.0 * (self.power / self.block as f64 + 1.0).log10()) as f32);
+                if self.values.len() > self.cap {
+                    self.values.pop_front();
+                }
+                self.power = 0.0;
+                self.count = 0;
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.values.clear();
+        self.power = 0.0;
+        self.count = 0;
+    }
+}
+
+/// How far a Bluetooth headset's audio trails the built-in microphone's,
+/// from both hearing the same voice: the shift that best lines up their
+/// loudness over the last [`Self::WINDOW`] of the headset's audio. Loudness,
+/// not the waveforms: the two microphones color a voice differently.
+pub struct Aligner {
+    block: usize,
+    local: Envelope,
+    headset: Envelope,
+}
+
+impl Aligner {
+    /// Bluetooth delays a headset microphone by a tenth of a second or two.
+    pub const MAX_LAG: Duration = Duration::from_millis(500);
+    pub const WINDOW: Duration = Duration::from_millis(400);
+    /// How well the two must agree at the best shift.
+    pub const MIN_CORRELATION: f32 = 0.7;
+    /// Loudness that varies less than this over the window is no voice to
+    /// line up on.
+    pub const MIN_SPREAD_DB: f32 = 4.0;
+
+    /// For two streams at `sample_rate`.
+    pub fn new(sample_rate: u32) -> Self {
+        let block = (sample_rate / 1000).max(1) as usize;
+        let window = Self::WINDOW.as_millis() as usize;
+        Self {
+            block,
+            local: Envelope::new(block, window + Self::MAX_LAG.as_millis() as usize),
+            headset: Envelope::new(block, window),
+        }
+    }
+
+    pub fn push_local(&mut self, samples: &[i16]) {
+        self.local.push(samples);
+    }
+
+    pub fn push_headset(&mut self, samples: &[i16]) {
+        self.headset.push(samples);
+    }
+
+    /// Start over on the headset: its audio broke off.
+    pub fn reset_headset(&mut self) {
+        self.headset.clear();
+    }
+
+    /// Samples by which the headset trails, and how well the two agree there;
+    /// None until a voice lines them up.
+    pub fn lag(&self) -> Option<(usize, f32)> {
+        let window = Self::WINDOW.as_millis() as usize;
+        let headset = &self.headset.values;
+        let local = &self.local.values;
+        if headset.len() < window || local.len() < window {
+            return None;
+        }
+        let (h_mean, h_spread) = mean_and_spread(headset.iter().copied());
+        if h_spread < Self::MIN_SPREAD_DB {
+            return None;
+        }
+        let max_lag = (local.len() - window).min(Self::MAX_LAG.as_millis() as usize);
+        let mut best: Option<(usize, f32)> = None;
+        for lag in 0..=max_lag {
+            let end = local.len() - lag;
+            let segment = local.range(end - window..end);
+            let (l_mean, l_spread) = mean_and_spread(segment.clone().copied());
+            if l_spread < Self::MIN_SPREAD_DB {
+                continue;
+            }
+            let covariance = segment
+                .zip(headset.iter())
+                .map(|(&l, &h)| (l - l_mean) * (h - h_mean))
+                .sum::<f32>()
+                / window as f32;
+            let correlation = covariance / (l_spread * h_spread);
+            if best.is_none_or(|(_, c)| correlation > c) {
+                best = Some((lag, correlation));
+            }
+        }
+        best.filter(|&(_, c)| c >= Self::MIN_CORRELATION)
+            .map(|(lag, c)| (lag * self.block, c))
+    }
+}
+
+/// Mean and standard deviation.
+fn mean_and_spread(values: impl Iterator<Item = f32> + Clone) -> (f32, f32) {
+    let n = values.clone().count().max(1) as f32;
+    let mean = values.clone().sum::<f32>() / n;
+    let variance = values.map(|v| (v - mean).powi(2)).sum::<f32>() / n;
+    (mean, variance.sqrt())
+}
+
 pub fn native_device_id(name: &str) -> String {
     format!("{NATIVE_DEVICE_PREFIX}{name}")
 }
@@ -146,6 +405,15 @@ pub struct TakeMetrics {
     pub wall: Duration,
     /// Samples the ring buffer had to drop (should always be zero).
     pub dropped_samples: u64,
+    /// Key-down to the move from the built-in microphone to a Bluetooth
+    /// headset; `None` when the take never moved.
+    pub handoff: Option<Duration>,
+    /// Times the headset went silent and the take fell back to the built-in
+    /// microphone.
+    pub headset_dropouts: u32,
+    /// How far the headset's audio trailed the built-in microphone's, when
+    /// the take moved to it on a lineup.
+    pub headset_lag: Option<Duration>,
 }
 
 impl TakeMetrics {
@@ -174,9 +442,12 @@ impl TakeMetrics {
                 .unwrap_or_else(|| "n/a".into())
         }
         format!(
-            "keydown→stream {} keydown→first-sound {} leading-zeros {:.0}ms audio {:.2}s wall {:.2}s ratio {:.3} rate {}Hz dropped {}",
+            "keydown→stream {} keydown→first-sound {} keydown→handoff {} headset-lag {} headset-dropouts {} leading-zeros {:.0}ms audio {:.2}s wall {:.2}s ratio {:.3} rate {}Hz dropped {}",
             ms(self.stream_open),
             ms(self.first_sound),
+            ms(self.handoff),
+            ms(self.headset_lag),
+            self.headset_dropouts,
             if self.sample_rate == 0 {
                 0.0
             } else {
@@ -403,6 +674,140 @@ mod tests {
         let mut ints = Vec::new();
         downmix(&[i16::MAX, 0i16], 2, |s| ints.push(s));
         assert!((ints[0] - i16::MAX / 2).abs() <= 1);
+    }
+
+    #[test]
+    fn digital_silence_finds_zero_runs_across_chunks() {
+        // 1 ms at 24 kHz is 24 samples.
+        let mut silence = DigitalSilence::new(24_000);
+        assert!(!silence.push(&[5, -3, 0, 0, 7]));
+        assert!(!silence.push(&[0; 12]));
+        assert!(silence.push(&[0; 12]));
+        assert!(!silence.push(&[1, 0, 2, -1]));
+    }
+
+    #[test]
+    fn digital_silence_ignores_quiet_noise() {
+        let mut silence = DigitalSilence::new(48_000);
+        let hiss: Vec<i16> = (0..48_000).map(|i| [1, -1, 0, 2][i % 4]).collect();
+        assert!(!silence.push(&hiss));
+    }
+
+    /// A second of speech-like sound at 48 kHz: noise in syllables of
+    /// varying loudness, with gaps, plus room noise. `seed` picks the noise.
+    fn syllables(seconds: f32, seed: u64) -> Vec<f32> {
+        let mut state = seed;
+        let mut next = move || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            ((state >> 33) as f32 / (1u64 << 31) as f32) * 2.0 - 1.0
+        };
+        let len = (48_000.0 * seconds) as usize;
+        let mut out = vec![0.0; len];
+        let mut at = 0;
+        let mut syllable = 0usize;
+        while at < len {
+            syllable += 1;
+            let length = 2_400 + (syllable * 3_517) % 7_200; // 50–200 ms
+            let gap = (syllable * 1_931) % 4_800; // 0–100 ms
+            let loudness = 0.2 + ((syllable * 7_919) % 100) as f32 / 125.0;
+            for sample in out.iter_mut().skip(at).take(length) {
+                *sample = next() * loudness;
+            }
+            at += length + gap;
+        }
+        out
+    }
+
+    fn mic(voice: &[f32], gain: f32, delay: usize, noise_seed: u64) -> Vec<i16> {
+        let room = syllables(voice.len() as f32 / 48_000.0 + 1.0, noise_seed);
+        (0..voice.len())
+            .map(|i| {
+                let said = if i >= delay { voice[i - delay] } else { 0.0 };
+                (said * gain + room[i] * 30.0) as i16
+            })
+            .collect()
+    }
+
+    #[test]
+    fn aligner_finds_how_far_the_headset_trails() {
+        let voice: Vec<f32> = syllables(1.5, 7).iter().map(|v| v * 1_000.0).collect();
+        // The built-in microphone hears the voice quietly; the headset
+        // loudly, 180 ms late.
+        let local = mic(&voice, 1.0, 0, 11);
+        let headset = mic(&voice, 6.0, 8_640, 13);
+        let mut aligner = Aligner::new(48_000);
+        for (l, h) in local.chunks(480).zip(headset.chunks(480)) {
+            aligner.push_local(l);
+            aligner.push_headset(h);
+        }
+        let (lag, correlation) = aligner.lag().expect("lined up");
+        assert!((lag as i64 - 8_640).abs() <= 96, "lag {lag}");
+        assert!(correlation > 0.9, "{correlation}");
+    }
+
+    #[test]
+    fn aligner_needs_a_voice() {
+        let mut aligner = Aligner::new(48_000);
+        let hiss: Vec<i16> = (0..48_000).map(|i| [3, -2, 5, -4][i % 4]).collect();
+        for chunk in hiss.chunks(480) {
+            aligner.push_local(chunk);
+            aligner.push_headset(chunk);
+        }
+        assert_eq!(aligner.lag(), None);
+    }
+
+    #[test]
+    fn a_pause_is_time_back_at_the_room_noise() {
+        let tone = |amplitude: f32| -> Vec<i16> {
+            (0..480)
+                .map(|i| ((i as f32 * 0.3).sin() * amplitude) as i16)
+                .collect()
+        };
+        let room = tone(20.0);
+        let speech = tone(400.0); // 26 dB over the room
+        let mut pause = Pause::new(48_000);
+        // The microphone opening near-silent sets no floor.
+        for _ in 0..10 {
+            pause.push(&[0; 480]);
+        }
+        assert_eq!(pause.quiet_for(), Duration::ZERO);
+        for _ in 0..10 {
+            pause.push(&room);
+        }
+        assert_eq!(pause.quiet_for(), Duration::from_millis(100));
+        pause.push(&speech);
+        assert_eq!(pause.quiet_for(), Duration::ZERO);
+        for _ in 0..30 {
+            pause.push(&room);
+        }
+        assert_eq!(pause.quiet_for(), Duration::from_millis(300));
+    }
+
+    #[test]
+    fn resampler_keeps_the_rate_ratio_across_chunks() {
+        let mut resampler = Resampler::new(16_000, 48_000);
+        let mut out = Vec::new();
+        for _ in 0..10 {
+            resampler.push(&[1000; 1600], &mut out);
+        }
+        // 1 s in, 1 s out (less one input sample of lookahead).
+        assert!((out.len() as i64 - 48_000).abs() <= 3, "{}", out.len());
+        assert!(out.iter().all(|&s| s == 1000));
+
+        let mut down = Resampler::new(48_000, 16_000);
+        let mut out = Vec::new();
+        down.push(&vec![0; 48_000], &mut out);
+        assert!((out.len() as i64 - 16_000).abs() <= 1);
+    }
+
+    #[test]
+    fn resampler_interpolates_between_samples() {
+        let mut resampler = Resampler::new(24_000, 48_000);
+        let mut out = Vec::new();
+        resampler.push(&[0, 100, 200], &mut out);
+        assert_eq!(out, vec![0, 50, 100, 150]);
     }
 
     #[test]
