@@ -3,6 +3,7 @@ MLX backend implementation for Whisper STT using mlx-audio.
 """
 
 import logging
+import re
 from collections.abc import Sequence
 
 import numpy as np
@@ -48,6 +49,48 @@ def phrase_prompt(tokenizer, terms: str, previous_text: str | None) -> str | Non
     if len(tokens) > room:
         previous = tokenizer.decode(tokens[len(tokens) - room :]).strip()
     return f"{terms} {previous}"
+
+
+# Sound this far above the phrase's quietest stretches is something said. Not
+# a voice detector: Silero missed a word a built-in microphone heard from
+# across the desk (17 dB under the headset's voice that followed).
+OPENING_LOUDER_DB = 15
+# This much sound before the first word means Whisper skipped words.
+OPENING_SKIPPED_S = 0.2
+# Attention may start a word a little late.
+OPENING_SLACK_S = 0.15
+_LEVEL_WINDOW = 320  # 20 ms at 16 kHz
+
+
+def skipped_opening(audio: np.ndarray, first_word_start: float) -> bool:
+    """Whether 16 kHz ``audio`` has sound before the first word Whisper wrote.
+
+    With earlier text in its prompt, Whisper may leave out opening words that
+    repeat its end ("Another one" said again after "Another one"); the text
+    then starts late in the audio.
+    """
+    count = len(audio) // _LEVEL_WINDOW
+    before = min(count, int((first_word_start - OPENING_SLACK_S) * whisper_audio.SAMPLE_RATE) // _LEVEL_WINDOW)
+    if before <= 0:
+        return False
+    windows = np.asarray(audio[: count * _LEVEL_WINDOW], dtype=np.float32).reshape(count, _LEVEL_WINDOW)
+    levels = 20 * np.log10(np.sqrt((windows**2).mean(axis=1)) + 1e-10)
+    floor = np.percentile(levels, 10)
+    loud = int((levels[:before] >= floor + OPENING_LOUDER_DB).sum())
+    return loud * _LEVEL_WINDOW / whisper_audio.SAMPLE_RATE >= OPENING_SKIPPED_S
+
+
+def adds_opening(prompted: str, unprompted: str) -> bool:
+    """Whether ``unprompted`` is ``prompted`` with words in front: the same
+    phrase heard without the earlier text, opening included."""
+    before = re.findall(r"\w+", prompted.casefold())
+    after = re.findall(r"\w+", unprompted.casefold())
+    if len(after) <= len(before):
+        return False
+    # The word where the prompted text started may differ ("that" for "it").
+    tail = after[len(after) - len(before) :]
+    same = sum(a == b for a, b in zip(tail, before, strict=True))
+    return same >= max(1, len(before) - 1)
 
 
 def vocabulary_decoder(tokenizer):
@@ -303,21 +346,26 @@ class MLXSTTBackend:
             # Inference runs with the process's default HF_HUB_OFFLINE
             # state — see the comment in MLXTTSBackend.generate for the
             # regression this revert fixes (issue #462).
-            if alignments is None or not self.alignment_heads:
-                result = self.model.generate(audio, **decode_options)
-            else:
+            def decode(options):
+                if not self.alignment_heads or (alignments is None and not previous_text):
+                    return self.model.generate(audio, **options), None
                 with word_timing.harvest(self.alignment_heads) as harvested:
-                    result = self.model.generate(audio, **decode_options)
-                alignments.append(self._alignment(harvested, result, language, len(audio)))
+                    result = self.model.generate(audio, **options)
+                return result, self._alignment(harvested, result, language, len(audio))
 
-            if isinstance(result, str):
-                text = result
-            elif isinstance(result, dict):
-                text = result.get("text", "")
-            elif hasattr(result, "text"):
-                text = result.text
-            else:
-                text = str(result)
+            result, alignment = decode(decode_options)
+            text = _result_text(result)
+            words = alignment.words() if previous_text and alignment else []
+            if words and skipped_opening(np.asarray(audio), words[0].start):
+                options = {key: value for key, value in decode_options.items() if key != "initial_prompt"}
+                if terms:
+                    options["initial_prompt"] = terms
+                retried, retried_alignment = decode(options)
+                if adds_opening(text, _result_text(retried)):
+                    logger.info("Recognized a phrase again without the earlier text, which hid its opening words")
+                    alignment, text = retried_alignment, _result_text(retried)
+            if alignments is not None and self.alignment_heads:
+                alignments.append(alignment)
             return strip_stt_artifacts(text.strip())
 
         # Load-if-needed and transcription run as one job on the MLX worker so
@@ -327,3 +375,13 @@ class MLXSTTBackend:
             return _transcribe_sync()
 
         return await run_on_mlx_thread(_load_and_transcribe)
+
+
+def _result_text(result) -> str:
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        return result.get("text", "")
+    if hasattr(result, "text"):
+        return result.text
+    return str(result)

@@ -218,3 +218,92 @@ async def test_whisper_is_prompted_with_the_terms_that_fit(stt, monkeypatch):
     # 1 for the period, 2 per one-word term: two fit in 6.
     assert phrase["initial_prompt"] == "Zed, Kubernetes. we met"
     assert whole == {"language": "en", "initial_prompt": "Zed."}
+
+
+def take(word_at=None, seconds=1.6, rate=16000):
+    """Room noise at -66 dB, with a quiet 0.4 s word (-42 dB) from ``word_at``."""
+    rng = np.random.default_rng(0)
+    audio = rng.normal(0, 10 ** (-66 / 20), int(rate * seconds)).astype(np.float32)
+    if word_at is not None:
+        start = int(word_at * rate)
+        t = np.arange(int(0.4 * rate)) / rate
+        audio[start : start + len(t)] += (np.sin(2 * np.pi * 220 * t) * 10 ** (-42 / 20) * 1.41).astype(np.float32)
+    return audio
+
+
+def test_sound_before_the_first_word_is_a_skipped_opening():
+    from backend.backends.mlx_backend import skipped_opening
+
+    # "Another one" at the start, the text starting at 0.8 s.
+    assert skipped_opening(take(word_at=0.0), 0.8)
+    # The text starts with the sound.
+    assert not skipped_opening(take(word_at=0.0), 0.05)
+    # Only room noise before the first word.
+    assert not skipped_opening(take(), 0.8)
+    # A sound too short to be words.
+    assert not skipped_opening(take(word_at=0.6), 0.8)
+
+
+def test_an_unprompted_decode_counts_only_when_it_adds_opening_words():
+    from backend.backends.mlx_backend import adds_opening
+
+    assert adds_opening("that still is not working very well.", "Another one. It still is not working very well.")
+    assert not adds_opening("And here's another one", "And here's another one.")
+    assert not adds_opening("We met on Tuesday", "Okay so we went home early")
+
+
+class PromptedWhisper(FakeWhisper):
+    """Leaves out "Another one" when the earlier text ends with it."""
+
+    def generate(self, audio, **options):
+        self.calls.append((type(audio).__name__, np.array(audio), options))
+        prompted = options.get("initial_prompt", "").endswith("Another one")
+        return SimpleNamespace(
+            text=" that still works" if prompted else " Another one. It still works",
+            segments=[],
+            prompted=prompted,
+        )
+
+
+@pytest.fixture
+def aligned(stt, monkeypatch):
+    """A backend whose alignment starts the prompted text at 0.8 s."""
+    import contextlib
+
+    from backend.backends import mlx_backend, word_timing
+
+    stt.model = PromptedWhisper()
+    stt.alignment_heads = [(0, 0)]
+    monkeypatch.setattr(word_timing, "harvest", lambda heads: contextlib.nullcontext(None))
+
+    def alignment(harvested, result, language, samples):
+        start = 0.8 if result.prompted else 0.0
+        return SimpleNamespace(words=lambda: [word_timing.Word("x", start, start + 0.2)], prompted=result.prompted)
+
+    monkeypatch.setattr(stt, "_alignment", alignment)
+    monkeypatch.setattr(mlx_backend.whisper_audio, "prepare_samples", lambda samples, rate: take(word_at=0.0))
+    return stt
+
+
+@pytest.mark.asyncio
+async def test_words_hidden_by_the_earlier_text_are_recognized_again(aligned):
+    alignments = []
+
+    text = await aligned.transcribe_array(
+        pcm(16000, 1.6), 16000, "en", "turbo", previous_text="Here's another try. Another one", alignments=alignments
+    )
+
+    assert text == "Another one. It still works"
+    first, second = (options for _, _, options in aligned.model.calls)
+    assert first["initial_prompt"] == "Here's another try. Another one"
+    assert "initial_prompt" not in second
+    # The word times are the retried decode's.
+    assert [alignment.prompted for alignment in alignments] == [False]
+
+
+@pytest.mark.asyncio
+async def test_a_phrase_whose_text_starts_with_its_sound_is_recognized_once(aligned):
+    text = await aligned.transcribe_array(pcm(16000, 1.6), 16000, "en", "turbo", previous_text="We met and")
+
+    assert text == "Another one. It still works"
+    assert len(aligned.model.calls) == 1
