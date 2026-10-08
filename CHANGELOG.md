@@ -2,6 +2,28 @@
 
 Notable changes to Kass for users. Each release gets a section here, newest first. The website shows this file at [kass.mrgnhnt.com/changelog](https://kass.mrgnhnt.com/changelog/).
 
+## 0.8.0 — October 8, 2026
+
+### New
+
+- **Phrases.** Teach Kass a phrase like "insert my email" and saying it writes your text exactly, line breaks and all. Add one under **Dictionary › Phrases** by typing or saying it, or turn a correction into one with **Make a phrase**.
+- **Reports.** When something goes wrong, the **Reports** tab makes a zip of Kass's logs, recent crash reports and system details to send us. Your captures, audio, dictionary and styles are never included, and your user and computer names are removed. If Kass won't start, run `kass-report.sh` from the app to make the same report.
+
+### Improved
+
+- **Add a corrected word to the dictionary in one click.** **Add to dictionary** beside a change adds the word and saves the correction, with no dialog.
+- **Fast after time away.** Kass keeps its models ready while you're at your Mac, so the first dictation after a long break no longer waits for them to load back in.
+- **Dictation doesn't wait behind a style.** Getting a style ready ahead of time no longer delays recognizing what you just said.
+- **AirPods catch your first words.** Dictation with a Bluetooth headset starts on your Mac's built-in mic and moves to the headset once it's ready, so the start of what you say isn't lost.
+
+### Fixed
+
+- Long dictations no longer end in invented, sometimes foreign words.
+- When the cleanup leaves out part of what you said, or swaps "you" and "I", Kass pastes what you said instead of the cleaned-up text.
+- Saying the same words that end the text before the cursor ("Another one" after "Another one") no longer drops them.
+- Anonymous usage stats are sent again.
+- Error logs no longer include dictated text.
+
 ## 0.7.4 — October 6, 2026
 
 ### New
