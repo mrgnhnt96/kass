@@ -192,7 +192,7 @@ def build_server():
         args.extend(["--add-data", "assets/shared-adapters:backend/assets/shared-adapters"])
 
     # Project hooks override pyinstaller-hooks-contrib's.
-    args.extend(["--additional-hooks-dir", str(backend_dir / "pyinstaller_hooks")])
+    args.extend(["--additional-hooks-dir", "pyinstaller_hooks"])
 
     dist_dir = str(backend_dir / "dist")
     build_dir = str(backend_dir / "build")
