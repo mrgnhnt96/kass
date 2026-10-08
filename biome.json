@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!tauri/src-tauri/gen", "!.game_loop", "!.llm_chat"]
+    "includes": [
+      "**",
+      "!tauri/src-tauri/gen",
+      "!.game_loop",
+      "!.llm_chat",
+      "!backend/assets/shared-adapters"
+    ]
   },
   "formatter": {
     "enabled": true,
