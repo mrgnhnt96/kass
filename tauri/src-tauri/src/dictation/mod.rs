@@ -24,6 +24,7 @@ pub mod client;
 pub mod command;
 pub mod corrections;
 pub mod delivery;
+pub mod device_kind;
 pub mod http;
 pub mod last_take;
 pub mod live;

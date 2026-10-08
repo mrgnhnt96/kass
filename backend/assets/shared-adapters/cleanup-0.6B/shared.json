@@ -1,6 +1,6 @@
 {
   "id": "cleanup-0.6B-b83b90816de8",
-  "pipeline": "d1bf8b6f5b5b24bfcfd693ae9123d81cf9e0c66d2da631625fc417d84d160712",
+  "pipeline": "595b287d964f184fdb118663be15ac0ef7d1ee6c43eb3be3ba1ae40101f96d20",
   "tested_flags": [
     {
       "smart_cleanup": true,

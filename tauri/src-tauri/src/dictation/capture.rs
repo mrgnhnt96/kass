@@ -18,7 +18,10 @@ use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
-use super::audio::{self, Framer, LevelMeter, LowCut, TakeMetrics};
+use super::audio::{
+    self, Aligner, DigitalSilence, Framer, LevelMeter, LowCut, Pause, Resampler, TakeMetrics,
+};
+use super::device_kind::{self, DeviceKind};
 use super::stream::AudioMsg;
 use super::take::{Recorded, MIN_RECORDING};
 
@@ -115,6 +118,157 @@ struct Shared {
     failed: AtomicBool,
 }
 
+/// One open input: its ring and what its callback reports.
+struct Input {
+    consumer: rtrb::Consumer<i16>,
+    shared: Arc<Shared>,
+    /// From the device's rate to the take's; `None` when they match.
+    resampler: Option<Resampler>,
+    /// The last read at the device's rate.
+    raw: Vec<i16>,
+    /// The last read at the take's rate.
+    out: Vec<i16>,
+}
+
+impl Input {
+    fn new(consumer: rtrb::Consumer<i16>, shared: Arc<Shared>, rate: u32, take_rate: u32) -> Self {
+        Self {
+            consumer,
+            shared,
+            resampler: (rate != take_rate).then(|| Resampler::new(rate, take_rate)),
+            raw: Vec::with_capacity(rate as usize),
+            out: Vec::with_capacity(take_rate as usize),
+        }
+    }
+
+    /// Move everything in the ring to `raw` and, at the take's rate, `out`.
+    fn read(&mut self) {
+        self.raw.clear();
+        while let Ok(sample) = self.consumer.pop() {
+            self.raw.push(sample);
+        }
+        self.out.clear();
+        match &mut self.resampler {
+            Some(resampler) => resampler.push(&self.raw, &mut self.out),
+            None => self.out.extend_from_slice(&self.raw),
+        }
+    }
+}
+
+/// A Bluetooth headset opening on its own thread while the take records from
+/// the built-in microphone. Opening its microphone switches the headset from
+/// its listening profile to its headset profile, which can take a second or
+/// more, and the capture thread has to keep draining meanwhile. The thread
+/// owns the stream (cpal streams can't move between threads).
+struct HeadsetThread {
+    shared: Arc<Shared>,
+    opened: std_mpsc::Receiver<Result<(rtrb::Consumer<i16>, u32), String>>,
+    stop: std_mpsc::Sender<()>,
+    stopped: std_mpsc::Receiver<()>,
+}
+
+/// How long the end of a take waits for the headset thread to stop its
+/// stream before the final drain.
+const HEADSET_STOP_WAIT: Duration = Duration::from_millis(500);
+/// Live audio the headset must deliver before the take moves to it. Right
+/// after opening, AirPods send a few samples and then digital silence for
+/// 0.5–1.2 s while they switch profiles.
+const HEADSET_SETTLE: Duration = Duration::from_millis(150);
+/// No samples from the headset for this long means it has stopped (moved to
+/// another device, say).
+const HEADSET_STALL: Duration = Duration::from_millis(150);
+/// The headset's audio arrives a tenth of a second or more behind the
+/// built-in microphone's, so moving to it mid-word repeated part of the word
+/// and Whisper garbled the phrase. The take moves once [`Aligner`] has lined
+/// the two up on the voice, leaving out the headset audio the built-in
+/// microphone already gave; or, failing that, once the built-in microphone
+/// has heard this much quiet, so only quiet repeats.
+const HANDOFF_PAUSE: Duration = Duration::from_millis(300);
+
+fn open_headset(device: cpal::Device, keydown: Instant) -> Option<HeadsetThread> {
+    let shared = Arc::new(Shared::default());
+    let (opened_tx, opened) = std_mpsc::channel();
+    let (stop, stop_rx) = std_mpsc::channel::<()>();
+    let (stopped_tx, stopped) = std_mpsc::channel();
+    let thread_shared = shared.clone();
+    let spawned = thread::Builder::new()
+        .name("kass-dictation-headset".into())
+        .spawn(move || {
+            let (stream, consumer, rate) = match open_device(&device, keydown, thread_shared) {
+                Ok(opened) => opened,
+                Err(message) => {
+                    let _ = opened_tx.send(Err(message));
+                    return;
+                }
+            };
+            if let Err(e) = stream.play() {
+                let _ = stream.pause();
+                let _ = opened_tx.send(Err(e.to_string()));
+                return;
+            }
+            let _ = opened_tx.send(Ok((consumer, rate)));
+            // Until the take ends (or already has: the stop is queued).
+            let _ = stop_rx.recv();
+            let _ = stream.pause();
+            drop(stream);
+            let _ = stopped_tx.send(());
+        });
+    if let Err(e) = spawned {
+        eprintln!("[dictation] failed to spawn headset thread: {e}");
+        return None;
+    }
+    Some(HeadsetThread {
+        shared,
+        opened,
+        stop,
+        stopped,
+    })
+}
+
+/// Whether the headset is delivering a live microphone: no digital silence
+/// and no stall for [`HEADSET_SETTLE`].
+struct HeadsetHealth {
+    silence: DigitalSilence,
+    live_since: Option<Instant>,
+    last_data: Instant,
+}
+
+impl HeadsetHealth {
+    fn new(sample_rate: u32, now: Instant) -> Self {
+        Self {
+            silence: DigitalSilence::new(sample_rate),
+            live_since: None,
+            last_data: now,
+        }
+    }
+
+    /// Account for the samples just read (at the headset's own rate).
+    fn update(&mut self, raw: &[i16], now: Instant) {
+        if raw.is_empty() {
+            if now.duration_since(self.last_data) >= HEADSET_STALL {
+                self.live_since = None;
+            }
+            return;
+        }
+        self.last_data = now;
+        if self.silence.push(raw) {
+            self.live_since = None;
+        } else if self.live_since.is_none() {
+            self.live_since = Some(now);
+        }
+    }
+
+    /// Delivering a microphone's audio, settled or not.
+    fn receiving(&self) -> bool {
+        self.live_since.is_some()
+    }
+
+    fn live(&self, now: Instant) -> bool {
+        self.live_since
+            .is_some_and(|since| now.duration_since(since) >= HEADSET_SETTLE)
+    }
+}
+
 fn run(
     device_id: Option<String>,
     keydown: Instant,
@@ -128,24 +282,69 @@ fn run(
         on_stopped,
         on_error,
     } = hooks;
-    let shared = Arc::new(Shared::default());
-    let opened = open(device_id.as_deref(), keydown, shared.clone());
-    let (stream, mut consumer, sample_rate) = match opened {
-        Ok(opened) => opened,
+    let fail = |message: String| {
+        eprintln!("[dictation] microphone unavailable: {message}");
+        let _ = audio_tx.send(AudioMsg::Cancel);
+        on_error(format!("Microphone unavailable: {message}"));
+        None
+    };
+    let host = cpal::default_host();
+    let device = match select_device(&host, device_id.as_deref()) {
+        Ok(device) => device,
+        Err(message) => return fail(message),
+    };
+    // For a Bluetooth headset, the built-in microphone runs for the whole
+    // take, and each chunk comes from the headset only while it is live.
+    let (local_device, headset_device) = match built_in_bridge(&host, &device) {
+        Some(bridge) => (bridge, Some(device)),
+        None => (device, None),
+    };
+    let local_shared = Arc::new(Shared::default());
+    let opened = open_device(&local_device, keydown, local_shared.clone()).and_then(
+        |(stream, consumer, rate)| match stream.play() {
+            Ok(()) => Ok((stream, consumer, rate)),
+            Err(e) => {
+                let _ = stream.pause();
+                Err(e.to_string())
+            }
+        },
+    );
+    // Only now: while the headset switches profiles, CoreAudio held up the
+    // built-in microphone's open by up to 0.9 s.
+    let mut headset_thread = headset_device.and_then(|device| open_headset(device, keydown));
+    let mut local_stream: Option<cpal::Stream> = None;
+    let mut local: Option<Input> = None;
+    let mut headset: Option<Input> = None;
+    let mut health: Option<HeadsetHealth> = None;
+    let sample_rate = match opened {
+        Ok((stream, consumer, rate)) => {
+            local_stream = Some(stream);
+            local = Some(Input::new(consumer, local_shared, rate, rate));
+            rate
+        }
+        // The built-in bridge failed: wait for the headset, as without one.
         Err(message) => {
-            eprintln!("[dictation] microphone unavailable: {message}");
-            let _ = audio_tx.send(AudioMsg::Cancel);
-            on_error(format!("Microphone unavailable: {message}"));
-            return None;
+            match headset_thread.as_ref().map(|t| t.opened.recv()) {
+                Some(Ok(Ok((consumer, rate)))) => {
+                    eprintln!("[dictation] built-in microphone unavailable ({message}); using the headset");
+                    let shared = headset_thread.as_ref().expect("headset").shared.clone();
+                    headset = Some(Input::new(consumer, shared, rate, rate));
+                    rate
+                }
+                Some(Ok(Err(headset_message))) => return fail(headset_message),
+                _ => return fail(message),
+            }
         }
     };
+    let shareds: Vec<Arc<Shared>> = [
+        local.as_ref().map(|l| l.shared.clone()),
+        headset_thread.as_ref().map(|t| t.shared.clone()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let first_shared = shareds[0].clone();
     let _ = audio_tx.send(AudioMsg::Format(sample_rate));
-    if let Err(e) = stream.play() {
-        let _ = stream.pause();
-        let _ = audio_tx.send(AudioMsg::Cancel);
-        on_error(format!("Microphone unavailable: {e}"));
-        return None;
-    }
     let mut metrics = TakeMetrics {
         stream_open: Some(keydown.elapsed()),
         sample_rate,
@@ -160,23 +359,27 @@ fn run(
     let mut scratch: Vec<i16> = Vec::with_capacity(sample_rate as usize);
     let mut on_heard = Some(on_heard);
     let mut leading_zeros: Option<u64> = None;
+    let mut on_headset = local.is_none();
+    let mut local_pause = Pause::new(sample_rate);
+    let mut headset_ready_at: Option<Duration> = None;
+    let mut aligner = Aligner::new(sample_rate);
+    // Headset samples still to leave out: the built-in microphone gave them.
+    let mut headset_skip = 0usize;
 
-    let mut drain = |consumer: &mut rtrb::Consumer<i16>,
-                     framer: &mut Framer,
-                     recording: &mut Vec<i16>,
-                     leading_zeros: &mut Option<u64>| {
-        scratch.clear();
-        while let Ok(sample) = consumer.pop() {
-            scratch.push(sample);
-        }
-        if scratch.is_empty() {
+    let mut process = |chunk: &[i16],
+                       framer: &mut Framer,
+                       recording: &mut Vec<i16>,
+                       leading_zeros: &mut Option<u64>| {
+        if chunk.is_empty() {
             return;
         }
         if leading_zeros.is_none() {
-            if let Some(index) = scratch.iter().position(|&s| s != 0) {
+            if let Some(index) = chunk.iter().position(|&s| s != 0) {
                 *leading_zeros = Some(recording.len() as u64 + index as u64);
             }
         }
+        scratch.clear();
+        scratch.extend_from_slice(chunk);
         // Everything downstream (server, fallback upload, HUD level) gets the
         // audio without hum below the voice.
         low_cut.process(&mut scratch);
@@ -195,20 +398,135 @@ fn run(
             Ok(()) | Err(std_mpsc::RecvTimeoutError::Disconnected) => break,
             Err(std_mpsc::RecvTimeoutError::Timeout) => {}
         }
-        drain(
-            &mut consumer,
-            &mut framer,
-            &mut recording,
-            &mut leading_zeros,
-        );
+        let now = Instant::now();
+        if headset.is_none() {
+            if let Some(t) = &headset_thread {
+                match t.opened.try_recv() {
+                    Ok(Ok((consumer, rate))) => {
+                        headset = Some(Input::new(consumer, t.shared.clone(), rate, sample_rate));
+                        health = Some(HeadsetHealth::new(rate, now));
+                    }
+                    Err(std_mpsc::TryRecvError::Empty) => {}
+                    Ok(Err(message)) => {
+                        eprintln!("[dictation] headset unavailable ({message}); staying on the built-in microphone");
+                        headset_thread = None;
+                    }
+                    Err(std_mpsc::TryRecvError::Disconnected) => headset_thread = None,
+                }
+            }
+        }
+        if let Some(l) = &mut local {
+            l.read();
+            local_pause.push(&l.out);
+            aligner.push_local(&l.out);
+        }
+        if let Some(h) = &mut headset {
+            h.read();
+            if let Some(health) = &mut health {
+                health.update(&h.raw, now);
+                if health.receiving() {
+                    aligner.push_headset(&h.out);
+                } else {
+                    aligner.reset_headset();
+                }
+            }
+        }
+        let headset_ready =
+            headset.is_some() && (local.is_none() || health.as_ref().is_some_and(|h| h.live(now)));
+        if headset_ready && !on_headset && headset_ready_at.is_none() {
+            headset_ready_at = Some(keydown.elapsed());
+            eprintln!(
+                "[dictation] headset microphone live at {:.0}ms; moving to it once lined up or at a pause",
+                keydown.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        let lined_up = (headset_ready && !on_headset && local.is_some())
+            .then(|| aligner.lag())
+            .flatten();
+        // Back to the built-in microphone at once: the headset has gone.
+        let headset_live = headset_ready
+            && (on_headset
+                || local.is_none()
+                || lined_up.is_some()
+                || local_pause.quiet_for() >= HANDOFF_PAUSE);
+        // Moving on a lineup: the built-in microphone gives this chunk, which
+        // the headset's next `lag` samples repeat.
+        let mut handoff_chunk: Option<&Input> = None;
+        if headset_live != on_headset {
+            on_headset = headset_live;
+            if on_headset {
+                metrics.handoff.get_or_insert(keydown.elapsed());
+                let how = match lined_up {
+                    Some((lag, correlation)) => {
+                        headset_skip = lag;
+                        handoff_chunk = local.as_ref();
+                        let trail = Duration::from_secs_f64(lag as f64 / sample_rate as f64);
+                        metrics.headset_lag.get_or_insert(trail);
+                        format!(
+                            "lined up: it trails by {:.0}ms, match {correlation:.2}",
+                            trail.as_secs_f64() * 1000.0
+                        )
+                    }
+                    None => "at a pause".to_string(),
+                };
+                eprintln!(
+                    "[dictation] moved to the headset microphone at {:.0}ms ({how})",
+                    keydown.elapsed().as_secs_f64() * 1000.0
+                );
+            } else {
+                metrics.headset_dropouts += 1;
+                headset_ready_at = None;
+                headset_skip = 0;
+                eprintln!(
+                    "[dictation] headset went silent at {:.0}ms; back to the built-in microphone",
+                    keydown.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+        }
+        let source = if on_headset { &headset } else { &local };
+        if let Some(input) = handoff_chunk {
+            process(&input.out, &mut framer, &mut recording, &mut leading_zeros);
+        } else if let Some(input) = source {
+            let mut chunk = &input.out[..];
+            if on_headset {
+                let skipped = headset_skip.min(chunk.len());
+                headset_skip -= skipped;
+                chunk = &chunk[skipped..];
+            }
+            process(chunk, &mut framer, &mut recording, &mut leading_zeros);
+        }
         if on_heard.is_some()
-            && (shared.heard.load(Ordering::Relaxed) || playing_since.elapsed() >= HEARD_FALLBACK)
+            && (source
+                .as_ref()
+                .is_some_and(|i| i.shared.heard.load(Ordering::Relaxed))
+                || playing_since.elapsed() >= HEARD_FALLBACK)
         {
             if let Some(hook) = on_heard.take() {
                 hook();
             }
         }
-        if shared.failed.load(Ordering::Relaxed) {
+        if headset
+            .as_ref()
+            .is_some_and(|h| h.shared.failed.load(Ordering::Relaxed))
+        {
+            eprintln!("[dictation] headset stream failed");
+            headset = None;
+            health = None;
+            if let Some(t) = headset_thread.take() {
+                let _ = t.stop.send(());
+            }
+        }
+        if local
+            .as_ref()
+            .is_some_and(|l| l.shared.failed.load(Ordering::Relaxed))
+        {
+            eprintln!("[dictation] built-in input stream failed");
+            local = None;
+            if let Some(stream) = local_stream.take() {
+                let _ = stream.pause();
+            }
+        }
+        if local.is_none() && headset.is_none() && headset_thread.is_none() {
             eprintln!("[dictation] input stream failed; ending the take");
             break;
         }
@@ -220,24 +538,36 @@ fn run(
     // alone left the microphone running after every take. Pausing stops the
     // audio unit, and every callback has returned by then, so the final drain
     // sees all audio.
-    let _ = stream.pause();
-    drop(stream);
-    drain(
-        &mut consumer,
-        &mut framer,
-        &mut recording,
-        &mut leading_zeros,
-    );
+    if let Some(stream) = local_stream.take() {
+        let _ = stream.pause();
+    }
+    if let Some(t) = headset_thread.take() {
+        let _ = t.stop.send(());
+        // Only an open headset stream holds audio still to drain; one still
+        // opening stops itself when the open returns.
+        if headset.is_some() {
+            let _ = t.stopped.recv_timeout(HEADSET_STOP_WAIT);
+        }
+    }
+    let source = if on_headset { &mut headset } else { &mut local };
+    if let Some(input) = source {
+        input.read();
+        process(&input.out, &mut framer, &mut recording, &mut leading_zeros);
+    }
     if let Some(tail) = framer.flush() {
         let _ = audio_tx.send(AudioMsg::Frame(tail));
     }
 
     metrics.samples = recording.len() as u64;
     metrics.leading_zero_samples = leading_zeros.unwrap_or(metrics.samples);
-    metrics.dropped_samples = shared.dropped.load(Ordering::Relaxed);
-    let first_sound = shared.first_sound_nanos.load(Ordering::Relaxed);
-    if shared.heard.load(Ordering::Relaxed) {
-        metrics.first_sound = Some(Duration::from_nanos(first_sound));
+    metrics.dropped_samples = shareds
+        .iter()
+        .map(|s| s.dropped.load(Ordering::Relaxed))
+        .sum();
+    if first_shared.heard.load(Ordering::Relaxed) {
+        metrics.first_sound = Some(Duration::from_nanos(
+            first_shared.first_sound_nanos.load(Ordering::Relaxed),
+        ));
     }
     eprintln!("[dictation] take captured: {}", metrics.summary());
 
@@ -257,9 +587,28 @@ fn run(
 
 type Opened = (cpal::Stream, rtrb::Consumer<i16>, u32);
 
-fn open(device_id: Option<&str>, keydown: Instant, shared: Arc<Shared>) -> Result<Opened, String> {
-    let host = cpal::default_host();
-    let device = select_device(&host, device_id)?;
+/// The built-in microphone to record from while `device`, a Bluetooth
+/// headset, opens. `None` for any other device, or when there is no
+/// built-in microphone.
+fn built_in_bridge(host: &cpal::Host, device: &cpal::Device) -> Option<cpal::Device> {
+    let name = device.name().ok()?;
+    let kinds = device_kind::device_kinds();
+    if device_kind::kind_of(&kinds, &name) != DeviceKind::Bluetooth {
+        return None;
+    }
+    host.input_devices().ok()?.find(|candidate| {
+        candidate.name().is_ok_and(|candidate_name| {
+            candidate_name != name
+                && device_kind::kind_of(&kinds, &candidate_name) == DeviceKind::BuiltIn
+        })
+    })
+}
+
+fn open_device(
+    device: &cpal::Device,
+    keydown: Instant,
+    shared: Arc<Shared>,
+) -> Result<Opened, String> {
     let default_config = device
         .default_input_config()
         .map_err(|e| format!("no input configuration ({e})"))?;
@@ -286,10 +635,10 @@ fn open(device_id: Option<&str>, keydown: Instant, shared: Arc<Shared>) -> Resul
     };
     let (producer, consumer) = rtrb::RingBuffer::<i16>::new(sample_rate as usize * RING_SECONDS);
     let stream = match default_config.sample_format() {
-        SampleFormat::F32 => build::<f32>(&device, &config, producer, keydown, shared),
-        SampleFormat::I16 => build::<i16>(&device, &config, producer, keydown, shared),
-        SampleFormat::I32 => build::<i32>(&device, &config, producer, keydown, shared),
-        SampleFormat::U16 => build::<u16>(&device, &config, producer, keydown, shared),
+        SampleFormat::F32 => build::<f32>(device, &config, producer, keydown, shared),
+        SampleFormat::I16 => build::<i16>(device, &config, producer, keydown, shared),
+        SampleFormat::I32 => build::<i32>(device, &config, producer, keydown, shared),
+        SampleFormat::U16 => build::<u16>(device, &config, producer, keydown, shared),
         other => return Err(format!("unsupported sample format {other:?}")),
     }?;
     Ok((stream, consumer, sample_rate))
@@ -356,4 +705,60 @@ where
             None,
         )
         .map_err(|e| format!("could not open the microphone ({e})"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 10 ms of 24 kHz microphone noise.
+    fn noise() -> Vec<i16> {
+        (0..240).map(|i| [3, -2, 5, -4][i % 4]).collect()
+    }
+
+    #[test]
+    fn headset_is_live_only_after_settling() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let mut health = HeadsetHealth::new(24_000, start);
+        // AirPods right after opening: a blip, then digital silence.
+        health.update(&noise(), at(10));
+        assert!(!health.live(at(10)));
+        health.update(&[0; 240], at(20));
+        for ms in (30..600).step_by(10) {
+            health.update(&[0; 240], at(ms));
+            assert!(!health.live(at(ms)));
+        }
+        // The microphone profile is up.
+        for ms in (600..740).step_by(10) {
+            health.update(&noise(), at(ms));
+            assert!(!health.live(at(ms)), "{ms}");
+        }
+        health.update(&noise(), at(750));
+        assert!(health.live(at(750)));
+    }
+
+    #[test]
+    fn headset_drops_out_on_silence_or_a_stall() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let mut health = HeadsetHealth::new(24_000, start);
+        for ms in (0..200).step_by(10) {
+            health.update(&noise(), at(ms));
+        }
+        assert!(health.live(at(200)));
+        // Moved to the phone: zeros.
+        health.update(&[0; 240], at(210));
+        assert!(!health.live(at(210)));
+
+        let mut health = HeadsetHealth::new(24_000, start);
+        for ms in (0..200).step_by(10) {
+            health.update(&noise(), at(ms));
+        }
+        // Bursty delivery is fine; nothing at all for 150 ms is not.
+        health.update(&[], at(300));
+        assert!(health.live(at(300)));
+        health.update(&[], at(350));
+        assert!(!health.live(at(350)));
+    }
 }
