@@ -17,7 +17,7 @@
     },
     "app": {
       "name": "@kass/app",
-      "version": "0.8.0-beta.5",
+      "version": "0.8.0-beta.6",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.1",
         "@radix-ui/react-dialog": "^1.1.1",
@@ -59,7 +59,7 @@
     },
     "tauri": {
       "name": "@kass/tauri",
-      "version": "0.8.0-beta.5",
+      "version": "0.8.0-beta.6",
       "dependencies": {
         "@tauri-apps/api": "^2.0.0",
         "@tauri-apps/plugin-dialog": "^2.0.0",
