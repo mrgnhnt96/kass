@@ -2,6 +2,22 @@
 
 Notable changes to Kass for users. Each release gets a section here, newest first. The website shows this file at [kass.mrgnhnt.com/changelog](https://kass.mrgnhnt.com/changelog/).
 
+## 0.9.0 — October 9, 2026
+
+### New
+
+- **Fix what Kass just typed by voice.** Start a dictation with "fix that", "fix" or "edit" to change the text before your cursor: "fix that, Morgan not Megan", "edit, change Tuesday to Thursday", "fix that, delete actually", or spell a name out. No selecting needed. Turn it off with **Voice edits** in Settings › Dictation. Works where Kass can edit the field directly (not yet in Safari pages or Firefox).
+- **A correction in Captures fixes the text where Kass typed it.** Save a correction and Kass also fixes the words in the app you dictated into, as long as they're still how Kass left them. In apps like Slack, the fix waits until you switch back.
+- **Check for updates from Settings.** Click **Check for updates** beside the version to get the newest release now instead of waiting for the background check.
+
+### Improved
+
+- **Say a phrase again without doubling it.** Put the cursor mid-sentence and dictate the new words, running on into the words already after the cursor: `Let's meet | at noon tomorrow.` plus "on Friday at noon tomorrow" now gives `Let's meet on Friday at noon tomorrow.`
+- **Dictionary names can leave similar names alone.** Turn off **Also fix words that sound like it** on an entry so a `Meghan` entry stops turning a real `Megan` into `Meghan`.
+- **Undo takes back everything a correction taught.** Undo or Remove on a correction in Captures also drops the names, habits and rules Kass learned from it. Corrections, voice fixes included, teach Kass right away instead of hours later.
+
+These were in beta and are now on for everyone.
+
 ## 0.8.0 — October 8, 2026
 
 ### New
