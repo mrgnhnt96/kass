@@ -70,6 +70,9 @@ pub struct UpdaterState {
     pending: Mutex<Option<Pending>>,
     /// Checks right away instead of waiting out the interval.
     wake: Notify,
+    /// Held for a whole check, so a check the user asks for and the
+    /// background one never download the same release twice.
+    checking: tokio::sync::Mutex<()>,
 }
 
 impl Default for UpdaterState {
@@ -78,6 +81,7 @@ impl Default for UpdaterState {
             status: Mutex::new(UpdateStatus::Current),
             pending: Mutex::new(None),
             wake: Notify::new(),
+            checking: tokio::sync::Mutex::new(()),
         }
     }
 }
@@ -128,19 +132,7 @@ pub fn start<R: Runtime>(app: AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(FIRST_CHECK_DELAY).await;
         loop {
-            if let Err(error) = check_and_download(&app).await {
-                eprintln!("Updater: {error}");
-                // What was downloaded before stays ready; otherwise try again later.
-                let ready = app
-                    .state::<UpdaterState>()
-                    .pending
-                    .lock()
-                    .unwrap()
-                    .is_some();
-                if !ready {
-                    set_status(&app, UpdateStatus::Current);
-                }
-            }
+            let _ = check(&app).await;
             let state = app.state::<UpdaterState>();
             tokio::select! {
                 _ = tokio::time::sleep(CHECK_INTERVAL) => {}
@@ -148,6 +140,23 @@ pub fn start<R: Runtime>(app: AppHandle<R>) {
             }
         }
     });
+}
+
+/// Check once, downloading any newer release, and return where that leaves
+/// things. A check already running finishes first.
+async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateStatus, String> {
+    let state = app.state::<UpdaterState>();
+    let _checking = state.checking.lock().await;
+    if let Err(error) = check_and_download(app).await {
+        eprintln!("Updater: {error}");
+        // What was downloaded before stays ready; otherwise try again later.
+        if state.pending.lock().unwrap().is_none() {
+            set_status(app, UpdateStatus::Current);
+        }
+        return Err(error);
+    }
+    let status = state.status.lock().unwrap().clone();
+    Ok(status)
 }
 
 async fn check_and_download<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
@@ -260,6 +269,16 @@ pub fn set_update_channel(app: AppHandle, channel: Channel) -> Result<Channel, S
     app.state::<UpdaterState>().wake.notify_one();
     let _ = app.emit(CHANNEL_EVENT, channel);
     Ok(channel)
+}
+
+/// Check now, for the user's "Check for updates", and wait for any newer
+/// release to download. `Current` means this is the latest version.
+#[command]
+pub async fn check_for_updates(app: AppHandle) -> Result<UpdateStatus, String> {
+    if cfg!(debug_assertions) {
+        return Err("Development builds don't update themselves.".into());
+    }
+    check(&app).await
 }
 
 #[command]

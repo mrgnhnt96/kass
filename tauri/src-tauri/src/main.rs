@@ -1660,6 +1660,7 @@ pub fn run() {
             report::reveal_report,
             deep_link::take_deep_link,
             updater::update_status,
+            updater::check_for_updates,
             updater::update_channel,
             updater::set_update_channel,
             updater::restart_to_update

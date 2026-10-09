@@ -15,13 +15,17 @@ export type UpdateStatus =
   | { state: 'ready'; version: string };
 
 /**
- * The running version, where the background update is, and a restart into
- * it once it's ready. `restarting` is set from the click until Kass quits
- * (stopping the server takes a moment).
+ * The running version, where the background update is, a check the user
+ * asks for, and a restart into the update once it's ready. `restarting` is
+ * set from the click until Kass quits (stopping the server takes a moment).
  */
 export function useUpdateCheck(): {
   version: string;
   status: UpdateStatus;
+  /** A check the user asked for is running (it waits for any download). */
+  checking: boolean;
+  /** Check now; resolves with the result, or rejects when the check fails. */
+  check: () => Promise<UpdateStatus>;
   restarting: boolean;
   restart: () => void;
 } {
@@ -29,6 +33,7 @@ export function useUpdateCheck(): {
   const [status, setStatus] = useState<UpdateStatus>({ state: 'current' });
   // The app's own version, which an update changes; the frontend's is a fallback.
   const [version, setVersion] = useState(builtVersion);
+  const [checking, setChecking] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
@@ -57,6 +62,17 @@ export function useUpdateCheck(): {
     };
   }, [platform.metadata.isTauri]);
 
+  const check = useCallback(async () => {
+    setChecking(true);
+    try {
+      const result = await invoke<UpdateStatus>('check_for_updates');
+      setStatus(result);
+      return result;
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
   const restart = useCallback(() => {
     setRestarting(true);
     invoke<void>('restart_to_update').catch((err) => {
@@ -64,5 +80,5 @@ export function useUpdateCheck(): {
       setRestarting(false);
     });
   }, []);
-  return { version, status, restarting, restart };
+  return { version, status, checking, check, restarting, restart };
 }

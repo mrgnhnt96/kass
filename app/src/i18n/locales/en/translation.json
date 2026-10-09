@@ -643,6 +643,10 @@
         "current": "Kass {{version}}",
         "downloading": "Kass {{current}}. Downloading {{latest}}…",
         "ready": "Kass {{current}}. {{latest}} is downloaded and installs when Kass restarts.",
+        "upToDate": "Kass {{version}}. You're up to date.",
+        "check": "Check for updates",
+        "checking": "Checking…",
+        "checkFailed": "Couldn't check for updates",
         "restart": "Restart to update",
         "restarting": "Restarting…"
       },
