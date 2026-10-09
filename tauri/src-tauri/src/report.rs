@@ -19,7 +19,9 @@ fn script_path(resource_dir: Option<PathBuf>) -> Result<PathBuf, String> {
             return Ok(script);
         }
     }
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts").join(SCRIPT);
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts")
+        .join(SCRIPT);
     if cfg!(debug_assertions) && repo.is_file() {
         return Ok(repo);
     }
@@ -84,7 +86,9 @@ mod tests {
         let stdout = "note\n/Users/me/Downloads/Kass-report-2026-10-08-090000.zip\n\n";
         assert_eq!(
             zip_path(stdout),
-            Some(PathBuf::from("/Users/me/Downloads/Kass-report-2026-10-08-090000.zip"))
+            Some(PathBuf::from(
+                "/Users/me/Downloads/Kass-report-2026-10-08-090000.zip"
+            ))
         );
     }
 
@@ -107,7 +111,11 @@ mod tests {
             .env("KASS_DATA_DIR", &data)
             .output()
             .unwrap();
-        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         let zip = zip_path(&String::from_utf8_lossy(&output.stdout)).unwrap();
         assert!(zip.is_file());
         std::fs::remove_dir_all(&dir).unwrap();
