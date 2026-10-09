@@ -13,7 +13,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from backend import beta
 from backend.database.models import Base
 from backend.services import capture_stream, correction_learning
 from backend.services.dictionary import Dictionary
@@ -22,13 +21,6 @@ from backend.services.voice_edits import NOTHING_TO_FIX, Declined, Planned, pars
 from backend.tests.test_capture_stream import append, make_session, socket_app
 
 TAKE = "Hi Megan, can we move the meeting to Tuesday? I actually think 3 p.m. works."
-
-
-@pytest.fixture(autouse=True)
-def beta_user(tmp_path):
-    """Voice edits are a beta feature: these takes are a beta user's (the
-    sessions' data dir is ``tmp_path``)."""
-    (tmp_path / beta.CHANNEL_FILE).write_text("beta")
 
 
 def after(said: str, take: str = TAKE) -> str:
@@ -349,34 +341,6 @@ async def test_with_voice_edits_off_an_edit_is_dictated(tmp_path, monkeypatch):
     session.close()
 
 
-@pytest.mark.asyncio
-async def test_without_the_beta_dictation_is_as_before(tmp_path, monkeypatch):
-    (tmp_path / beta.CHANNEL_FILE).unlink()
-    session, events, refine = await speak_edit(tmp_path, monkeypatch, "Fix that, Morgan not Megan.")
-    assert refine.await_args.args[0] == "Fix that, Morgan not Megan."
-    assert session.edit_result() is None
-    assert not [e for e in events if e["type"] == "edit"]
-    session.dictionary = Dictionary(terms=("Kubernetes",))
-    assert session.vocabulary == ("Kubernetes",)
-    session.close()
-
-    peeking, events = make_session(tmp_path, monkeypatch)
-    peeking.recognize = AsyncMock(return_value="Fix that,")
-    peeking.set_last_take(TAKE)
-    append(peeking, 3)
-    await peeking.peek_style()
-    assert not events
-    peeking.close()
-
-
-def test_without_the_beta_the_final_event_is_as_before(tmp_path, monkeypatch):
-    (tmp_path / beta.CHANNEL_FILE).unlink()
-    event = streamed_final(tmp_path, monkeypatch)
-    assert "edit" not in event
-    assert event["capture"]["source"] == "dictation"
-    assert event["capture"]["transcript_raw"] == "Fix that, Morgan not Megan."
-
-
 def test_kass_is_prompted_to_whisper_while_voice_edits_are_on(tmp_path, monkeypatch):
     session, _ = make_session(tmp_path, monkeypatch)
     session.dictionary = Dictionary(terms=("Kubernetes", "Kass"))
@@ -511,7 +475,6 @@ def learning_db(tmp_path, monkeypatch):
     from backend.services import dictionary
 
     monkeypatch.setattr(config, "_data_dir", tmp_path)
-    (tmp_path / beta.CHANNEL_FILE).write_text("beta")
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
     Base.metadata.create_all(engine)
     monkeypatch.setattr(database_session, "SessionLocal", sessionmaker(bind=engine))

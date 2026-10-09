@@ -90,8 +90,6 @@ Start a dictation by naming a [writing style](/docs/writing-styles/) and Kass us
 
 ## Fix text by voice
 
-*Beta: turn on **Beta updates** in **Settings › General**.*
-
 Hold your dictation keys and start with **"fix that"**, **"fix"** or **"edit"** to change the text before your cursor instead of adding to it. It works on any text there, whether Kass typed it or you did. No need to select anything:
 
 - "fix that, Morgan not Megan"

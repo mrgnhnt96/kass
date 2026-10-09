@@ -422,12 +422,7 @@ pub fn sentence_before_focused(pid: i32, bundle_id: Option<&str>) -> Option<Stri
 /// that can't be read. Blocking.
 pub fn fit_to_focused(pid: i32, bundle_id: Option<&str>, text: &str) -> String {
     match macos::FocusedElement::of_app(pid) {
-        Some(element) => fit_at_caret(
-            &element,
-            bundle_id,
-            text,
-            crate::updater::beta_features_on(),
-        ),
+        Some(element) => fit_at_caret(&element, bundle_id, text, true),
         None => text.to_string(),
     }
 }
@@ -886,13 +881,7 @@ pub fn extend_live_focused(pid: i32, owned: &Owned, text: &str) -> Result<Owned,
 /// [`finish_live`] on the focused element of the app with `pid`. Blocking.
 pub fn finish_live_focused(pid: i32, owned: &Owned, final_text: &str) -> Result<Owned, LiveError> {
     match macos::FocusedElement::of_app(pid) {
-        Some(element) => finish_live(
-            &element,
-            owned,
-            final_text,
-            crate::updater::beta_features_on(),
-            std::thread::sleep,
-        ),
+        Some(element) => finish_live(&element, owned, final_text, true, std::thread::sleep),
         None => Err(LiveError::Edited),
     }
 }

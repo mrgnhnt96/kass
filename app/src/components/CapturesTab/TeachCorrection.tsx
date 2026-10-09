@@ -10,7 +10,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { PERSONAL_EXAMPLES_KEY } from '@/components/WritingStyle/PersonalExamples';
 import { apiClient } from '@/lib/api/client';
 import type { CaptureFeedbackResponse, CaptureResponse } from '@/lib/api/types';
-import { useBetaFeature } from '@/lib/betaFeatures';
 import { useAddDictionaryEntry } from '@/lib/hooks/useDictionary';
 import { useWritingStyle, WRITING_STYLE_KEY } from '@/lib/hooks/useWritingStyle';
 import { cn } from '@/lib/utils/cn';
@@ -50,8 +49,6 @@ export function useTeachCorrection(
   const [draft, setDraft] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [learned, setLearned] = useState<CaptureFeedbackResponse | null>(null);
-  const withdraws = useBetaFeature('voice_edits');
-  const correctsInPlace = useBetaFeature('corrections_in_place');
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['capture-feedback', capture.id] });
@@ -75,22 +72,18 @@ export function useTeachCorrection(
       // Fixes the text where Kass just wrote it too, if it's still as Kass
       // left it there (docs/plans/CORRECTIONS_IN_PLACE.md). Silent unless
       // it changed.
-      if (correctsInPlace) {
-        invoke<string | null>('apply_correction', {
-          captureId: capture.id,
-          before: body.before,
-          after: body.expected_text,
+      invoke<string | null>('apply_correction', {
+        captureId: capture.id,
+        before: body.before,
+        after: body.expected_text,
+      })
+        .then((app) => {
+          if (app === null) return;
+          toast({
+            title: app ? t('captures.teach.updatedIn', { app }) : t('captures.teach.updatedInApp'),
+          });
         })
-          .then((app) => {
-            if (app === null) return;
-            toast({
-              title: app
-                ? t('captures.teach.updatedIn', { app })
-                : t('captures.teach.updatedInApp'),
-            });
-          })
-          .catch(() => {});
-      }
+        .catch(() => {});
       // Shown at once, before the list is fetched again.
       queryClient.setQueryData<CaptureFeedbackResponse[]>(
         ['capture-feedback', capture.id],
@@ -110,15 +103,11 @@ export function useTeachCorrection(
   });
 
   // Undo withdraws the report, and with it everything it taught: the
-  // writing-style example, habits, names and learned rules. Outside the
-  // voice_edits beta, it only takes a refined correction back out of the
-  // writing-style examples; the report stays in the history. Any report of
+  // writing-style example, habits, names and learned rules. Any report of
   // the capture can be withdrawn this way, a voice edit's included.
   const undo = useMutation({
     mutationFn: (report: CaptureFeedbackResponse) =>
-      withdraws
-        ? apiClient.withdrawCaptureReport(capture.id, report.id)
-        : apiClient.removePersonalExample(`correction:${report.id}`),
+      apiClient.withdrawCaptureReport(capture.id, report.id),
     onSuccess: (_, report) => {
       setLearned((current) => (current?.id === report.id ? null : current));
       invalidate();
@@ -173,9 +162,6 @@ export function useTeachCorrection(
     undoing: undo.isPending,
     /** The report being undone or removed, while it is. */
     removingId: undo.isPending ? (undo.variables?.id ?? null) : null,
-    canUndo: withdraws || target === 'refined',
-    /** Whether any report, not only the one just saved, can be withdrawn. */
-    canRemove: withdraws,
     /** Starts editing from the current text, so the user fixes it in place. */
     begin: () => setDraft((d) => d ?? base),
     setDraft,

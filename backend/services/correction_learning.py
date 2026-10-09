@@ -1,8 +1,8 @@
 """Local-only correction learning; inference reads an immutable cache.
 
 The model-improvement job runs it (model_improvement/manager.py) before each
-adapter run and, with the voice_edits beta, at the next idle moment after a
-report is saved or withdrawn.
+adapter run and at the next idle moment after a report is saved or
+withdrawn.
 """
 
 import hashlib
@@ -12,7 +12,7 @@ import os
 import threading
 from datetime import UTC, datetime
 
-from .. import beta, config
+from .. import config
 from ..database import session as database_session
 from ..database.models import CaptureFeedback
 from . import spoken_punctuation
@@ -175,14 +175,10 @@ def run_job():
             examples = _examples(db)
             causes = {report for reports in _state["blocked_by"].values() for report in reports}
             existing = {report for (report,) in db.query(CaptureFeedback.id).filter(CaptureFeedback.id.in_(causes))}
-        every_report = beta.enabled("voice_edits")
-        # Turning the beta on or off relearns with the other evidence rules.
-        fingerprint = hashlib.sha256(repr((examples, every_report)).encode()).hexdigest()
+        fingerprint = hashlib.sha256(repr(examples).encode()).hexdigest()
         report_ids = [example.id for example in examples]
         # A contradiction's block lasts while a report behind it exists.
         lifted = {rule for rule, reports in _state["blocked_by"].items() if not existing & set(reports)}
-        if not every_report:
-            lifted = set()
         punctuation = spoken_punctuation.learn(examples)
         if (
             fingerprint == _state["fingerprint"]
@@ -197,8 +193,8 @@ def run_job():
         state["blocked_by"] = {rule: reports for rule, reports in state["blocked_by"].items() if rule not in lifted}
         active = state["rules"]
         # A new report contradicting a learned rule disables it before proposing
-        # replacements. With the voice_edits beta the block lasts until that
-        # report is withdrawn or deleted; without it, for good.
+        # replacements. The block lasts until that report is withdrawn or
+        # deleted.
         retained = []
         for rule in active:
             compiled = compile_rules([rule])
@@ -213,7 +209,7 @@ def run_job():
                 state["blocked_by"][rule["id"]] = contradicting
             else:
                 retained.append(rule)
-        rules, metrics = evaluate(examples, retained, state["blocked"], every_report)
+        rules, metrics = evaluate(examples, retained, state["blocked"], every_report=True)
         if rules != active:
             state["history"] = (state["history"] + [{"revision": state["revision"], "rules": active}])[-10:]
             state["revision"] += 1

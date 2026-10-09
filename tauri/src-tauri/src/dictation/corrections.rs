@@ -1,8 +1,7 @@
 //! A correction saved in Captures, made in the field Kass's last take went
 //! to, where it is still as Kass left it (docs/plans/CORRECTIONS_IN_PLACE.md).
 //! Silent unless it worked: a toast in Kass when it was written at once, a
-//! notification when it waited for its app. A beta feature
-//! (`corrections_in_place`).
+//! notification when it waited for its app.
 //!
 //! Where Accessibility wrote the take, the fix is written the same way at
 //! once, with the app behind Kass. Where keys or ⌘V put it in (Electron apps
@@ -37,9 +36,6 @@ pub async fn apply_correction(
     before: String,
     after: String,
 ) -> Option<String> {
-    if !crate::updater::beta_features_on() {
-        return None;
-    }
     let corrected = tauri::async_runtime::spawn_blocking(move || {
         last_take::apply_correction(&capture_id, &before, &after, |pid, owned, b, a| {
             crate::text_insert::correct_focused(pid, owned, b, a, None)

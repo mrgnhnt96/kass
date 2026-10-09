@@ -71,10 +71,8 @@ def test_only_explicit_reports_teach_the_style(storage):
 
 
 def test_withdrawn_correction_stops_being_an_example(storage):
-    from backend import beta
     from backend.services.capture_feedback import withdraw_feedback
 
-    (config.get_data_dir() / beta.CHANNEL_FILE).write_text("beta")
     _correct(storage, "meet megan at noon", "Meet Morgan at noon.", "voice", source="voice_fix")
     assert personal_examples.all_examples()
     with storage() as db:

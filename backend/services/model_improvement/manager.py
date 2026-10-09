@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
-from ... import beta, config
+from ... import config
 from ...database import session as database_session
 from .. import correction_learning, shared_adapters
 from .data import collect, digest, readiness
@@ -804,14 +804,10 @@ async def periodic_job():
             if (
                 retrain
                 or time.monotonic() - _last_attempt >= INTERVAL_SECONDS
-                # With the voice_edits beta, a saved or withdrawn report is learned
-                # from soon, not in six hours. The adapter was tested with the old
-                # rules, so new ones retest it.
-                or (
-                    correction_learning.pending()
-                    and beta.enabled("voice_edits")
-                    and await asyncio.to_thread(_learn_rules)
-                )
+                # A saved or withdrawn report is learned from soon, not in six
+                # hours. The adapter was tested with the old rules, so new ones
+                # retest it.
+                or (correction_learning.pending() and await asyncio.to_thread(_learn_rules))
             ):
                 start()
     finally:

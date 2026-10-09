@@ -31,9 +31,8 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 /**
  * This capture's corrections, newest first, each a round of edits made from
  * the one before it, shown by what it changed. The newest, which the card
- * shows, is tagged, with Undo when it can be taken back; in the voice_edits
- * beta every other one, a voice edit's too, has Remove, which takes back
- * only that round's changes.
+ * shows, is tagged, with Undo; every other one, a voice edit's too, has
+ * Remove, which takes back only that round's changes.
  */
 function Corrections({
   reports,
@@ -72,7 +71,6 @@ function Corrections({
               report.target === teach.target
                 ? diffWords(teach.before(report), report.expected_text).hunks
                 : [];
-            const removable = showing ? teach.canUndo : teach.canRemove;
             return (
               <li
                 key={report.id}
@@ -88,18 +86,16 @@ function Corrections({
                     </span>
                   )}
                   <span className="flex-1" />
-                  {removable && (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="h-5 px-1 text-xs text-muted-foreground"
-                      disabled={teach.undoing}
-                      aria-busy={teach.removingId === report.id}
-                      onClick={showing ? teach.undo : () => teach.remove(report)}
-                    >
-                      {t(showing ? 'captures.teach.undo' : 'captures.teach.remove')}
-                    </Button>
-                  )}
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-5 px-1 text-xs text-muted-foreground"
+                    disabled={teach.undoing}
+                    aria-busy={teach.removingId === report.id}
+                    onClick={showing ? teach.undo : () => teach.remove(report)}
+                  >
+                    {t(showing ? 'captures.teach.undo' : 'captures.teach.remove')}
+                  </Button>
                 </div>
                 {hunks.length > 0 ? (
                   <HunkList hunks={hunks} className="m-0 list-none space-y-0.5 p-0" />

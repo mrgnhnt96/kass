@@ -14,14 +14,7 @@ app/src/lib/betaFeatures.ts.
 
 from . import config
 
-BETA_FEATURES: frozenset[str] = frozenset(
-    {
-        # Fixing Kass's own text by voice, and the correction reports those
-        # fixes file: report sources, withdrawal, and learning from new
-        # reports at once (docs/plans/CORRECTION_LEARNING.md).
-        "voice_edits",
-    }
-)
+BETA_FEATURES: frozenset[str] = frozenset(set())
 
 CHANNEL_FILE = "update-channel"
 

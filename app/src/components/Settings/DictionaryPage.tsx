@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
 import type { DictionaryEntry, DictionaryEntryUpdate } from '@/lib/api/types';
-import { useBetaFeature } from '@/lib/betaFeatures';
 import {
   useAddDictionaryEntry,
   useDeleteDictionaryEntry,
@@ -526,7 +525,6 @@ function WrittenText({
     Partial<Pick<DictionaryEntry, 'match_sound' | 'source' | 'phrase'>>;
 }) {
   const { t } = useTranslation();
-  const exactSpelling = useBetaFeature('voice_edits');
   if (entry.phrase) {
     // Shown as it is written: its lines, and its spaces.
     return (
@@ -540,7 +538,7 @@ function WrittenText({
       </span>
     );
   }
-  const note = exactSpelling ? entryNote(entry) : null;
+  const note = entryNote(entry);
   return (
     <span className="flex min-w-0 items-baseline gap-2">
       <span
@@ -659,7 +657,6 @@ function EditEntryRow({
   const [places, setPlaces] = useState(initialPlaces);
   const initialMatchSound = entry.match_sound !== false;
   const [matchSound, setMatchSound] = useState(initialMatchSound);
-  const exactSpelling = useBetaFeature('voice_edits');
   const canSave =
     !!written.trim() &&
     places.length > 0 &&
@@ -740,7 +737,7 @@ function EditEntryRow({
             {t(`${P}.list.save`)}
           </Button>
         </div>
-        {exactSpelling && !entry.phrase && (
+        {!entry.phrase && (
           <div className="mt-2 flex items-center gap-2" title={t(`${P}.list.matchSoundHint`)}>
             <Toggle
               id={`dictionary-match-sound-${entry.id}`}

@@ -112,6 +112,7 @@ pub fn beta_features<R: Runtime>(app: &AppHandle<R>) -> bool {
 static BETA_FEATURES: AtomicBool = AtomicBool::new(false);
 
 /// Whether beta features are on, for code with no `AppHandle`.
+#[allow(dead_code)] // No beta features right now.
 pub fn beta_features_on() -> bool {
     BETA_FEATURES.load(Ordering::Relaxed)
 }

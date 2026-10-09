@@ -23,11 +23,6 @@ COMMON = {"mark", "slack", "open", "source", "voice", "box"}
 START = datetime(2026, 9, 1)
 
 
-@pytest.fixture
-def voice_edits_beta(monkeypatch):
-    monkeypatch.setattr(dictionary.beta, "enabled", lambda feature: feature == "voice_edits")
-
-
 @pytest.fixture(autouse=True)
 def common_words(monkeypatch):
     # The real check reads Whisper's vocabulary and the system word list.
@@ -473,7 +468,7 @@ def test_an_app_gets_its_styles_entries_and_resolved_shows_overrides(client, sto
     assert dictionary.for_app(SLACK).apply("voice box") == "VoiceBox"
 
 
-def test_the_api_turns_sound_matching_off_and_on(client, voice_edits_beta):
+def test_the_api_turns_sound_matching_off_and_on(client):
     added = add(client, "Meghan").json()
     assert added["match_sound"] is True
     assert added["source"] == "user"
@@ -508,7 +503,7 @@ def test_a_spelled_word_is_written_as_a_name(letters, heard, written):
     assert dictionary.spelled_word(letters, heard) == written
 
 
-def test_a_spelled_fix_adds_a_word_that_never_respells_others(storage, voice_edits_beta):
+def test_a_spelled_fix_adds_a_word_that_never_respells_others(storage):
     dictionary.for_app(ZED)
     with storage() as db:
         added = dictionary.add_spelled_word("MEGHAN", ZED, "Megan", db)
@@ -644,13 +639,6 @@ def test_the_migration_adds_groups_to_an_existing_dictionary():
     with make() as db:
         [group] = dictionary.list_groups(db)
     assert (group.match_sound, group.source, group.phrase) == (True, "user", False)
-
-
-def test_sound_matching_stays_on_outside_the_beta(client, monkeypatch):
-    monkeypatch.setattr(dictionary.beta, "enabled", lambda feature: False)
-    added = add(client, "Meghan").json()
-    client.patch(f"/dictionary/{added['id']}", json={"match_sound": False})
-    assert dictionary.for_app(ZED).apply("Megan") == "Meghan"
 
 
 def test_the_app_name_is_in_a_new_dictionary_once(storage, tmp_path):

@@ -54,7 +54,7 @@ import wave
 
 import numpy as np
 
-from .. import beta, config, models
+from .. import config, models
 from ..backends.qwen_llm_backend import generation_hint, generation_listener, generation_stop
 from ..database import Capture
 from ..utils import memory
@@ -224,9 +224,9 @@ class StreamingCapture:
         self.prefilling = None
         self.command = None
         self.settings = settings
-        # Whether a dictation may be a voice edit: the Voice edits setting, a
-        # beta feature. Fixed for the take, like the rest of its settings.
-        self.edits_on = not self.is_command and settings.voice_edits and beta.enabled("voice_edits")
+        # Whether a dictation may be a voice edit: the Voice edits setting.
+        # Fixed for the take, like the rest of its settings.
+        self.edits_on = not self.is_command and settings.voice_edits
         self.language = start.get("language", settings.language)
         if self.language is not None and (
             not isinstance(self.language, str) or not re.fullmatch(r"[A-Za-z-]{2,32}", self.language)

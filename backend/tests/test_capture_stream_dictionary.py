@@ -55,7 +55,7 @@ async def test_the_apps_dictionary_reaches_whisper_and_the_finished_text(tmp_pat
     session, stt = await dictate(tmp_path, monkeypatch, ZED)
 
     # Terms first: a replacement fixes its word whatever Whisper hears.
-    assert stt.transcribe_array.await_args.kwargs["vocabulary"] == ("Kubernetes", "Voicebox")
+    assert stt.transcribe_array.await_args.kwargs["vocabulary"] == ("Kass", "Kubernetes", "Voicebox")
     assert session.refined == "I deployed Voicebox on Kubernetes."
     assert {"Voicebox", "Kubernetes"} <= session.names
 
@@ -64,7 +64,7 @@ async def test_the_apps_dictionary_reaches_whisper_and_the_finished_text(tmp_pat
 async def test_without_an_app_only_the_global_entries_apply(tmp_path, monkeypatch, database):
     session, stt = await dictate(tmp_path, monkeypatch, None)
 
-    assert stt.transcribe_array.await_args.kwargs["vocabulary"] == ("Kubernetes",)
+    assert stt.transcribe_array.await_args.kwargs["vocabulary"] == ("Kass", "Kubernetes")
     assert session.refined == "I deployed voice box on Kubernetes."
 
 

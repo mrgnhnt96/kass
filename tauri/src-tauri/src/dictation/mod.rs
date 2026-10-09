@@ -181,9 +181,8 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin, mode: TakeMo
     // replaces the selection once, when it is complete.
     let live_text = config.live_text && mode == TakeMode::Dictation;
     // Only a dictation may be an edit; a command already has its selection.
-    // A beta feature: off, nothing is tracked, sent or applied.
-    let voice_edits =
-        config.voice_edits && mode == TakeMode::Dictation && crate::updater::beta_features_on();
+    // Off, nothing is tracked, sent or applied.
+    let voice_edits = config.voice_edits && mode == TakeMode::Dictation;
     let editable = voice_edits.then(|| Arc::new(Mutex::new(None)));
     let take_id = state.next_take_id();
     let selection: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -793,9 +792,6 @@ impl AppEnv {
     /// after they are sent, so it is read on its own thread, and kept only
     /// while no newer take has gone in.
     fn remember_typed(&self, pid: i32, bundle_id: Option<String>, text: String) {
-        if !crate::updater::beta_features_on() {
-            return;
-        }
         let generation = last_take::generation();
         let capture_id = self.capture_id.clone();
         std::thread::spawn(move || {

@@ -23,8 +23,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from difflib import SequenceMatcher
 
-from .. import beta
-
 logger = logging.getLogger(__name__)
 
 SCOPES = ("app", "style", "global")
@@ -356,8 +354,8 @@ def resolve(entries: Iterable[Entry], bundle_id: str | None, style_id: str | Non
 
 
 def build(resolved: list[tuple[Entry, bool]], exact_spelling: bool = True) -> Dictionary:
-    """The dictionary for ``resolved``. Without ``exact_spelling`` (the
-    ``voice_edits`` beta), every term is matched by sound, as before."""
+    """The dictionary for ``resolved``. Without ``exact_spelling``, every
+    term is matched by sound."""
     active = [entry for entry, overridden in resolved if not overridden]
     if not active:
         return EMPTY
@@ -477,13 +475,12 @@ def for_app(bundle_id: str | None, style_id: str | None = None) -> Dictionary:
     from .styles import snapshot as styles_snapshot
 
     style_id = style_id or styles_snapshot().for_app(bundle_id).id
-    exact_spelling = beta.enabled("voice_edits")
-    cache_key = (bundle_id or "", style_id, exact_spelling)
+    cache_key = (bundle_id or "", style_id)
     with _lock:
         cached = _by_app.get(cache_key)
     if cached is not None:
         return cached
-    built = build(resolve(entries(), bundle_id, style_id), exact_spelling)
+    built = build(resolve(entries(), bundle_id, style_id))
     with _lock:
         _by_app[cache_key] = built
     return built

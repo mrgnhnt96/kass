@@ -31,14 +31,6 @@ def db():
     engine.dispose()
 
 
-@pytest.fixture
-def beta_on(tmp_path, monkeypatch):
-    from backend import beta, config
-
-    monkeypatch.setattr(config, "_data_dir", tmp_path)
-    (tmp_path / beta.CHANNEL_FILE).write_text("beta")
-
-
 def request(db, **kwargs):
     return CaptureFeedbackCreate(snapshot=get_capture("take", db), target="raw", expected_text="Right words", **kwargs)
 
@@ -115,7 +107,7 @@ def _round(db, text):
     return save_feedback("take", report, db)
 
 
-def test_corrections_stack_and_removing_one_takes_back_only_its_changes(db, beta_on):
+def test_corrections_stack_and_removing_one_takes_back_only_its_changes(db):
     first = _round(db, "right words")
     second = _round(db, "right words, Postgres")
     assert [r.id for r in list_feedback(db, "take")] == [second.id, first.id]
@@ -124,7 +116,7 @@ def test_corrections_stack_and_removing_one_takes_back_only_its_changes(db, beta
     assert (kept.id, kept.expected_text) == (second.id, "wrong words, Postgres")
 
 
-def test_a_newer_round_left_changing_nothing_goes_too(db, beta_on):
+def test_a_newer_round_left_changing_nothing_goes_too(db):
     first = _round(db, "right words")
     second = _round(db, "right words.")
     _round(db, "right words")
@@ -134,7 +126,7 @@ def test_a_newer_round_left_changing_nothing_goes_too(db, beta_on):
     assert [(r.id, r.expected_text) for r in list_feedback(db, "take")] == [(second.id, "wrong words.")]
 
 
-def test_a_newer_round_wins_where_it_changed_the_same_words(db, beta_on):
+def test_a_newer_round_wins_where_it_changed_the_same_words(db):
     first = _round(db, "right words")
     _round(db, "bright words")
     assert withdraw_feedback("take", first.id, db)
@@ -189,7 +181,7 @@ def test_http_roundtrip_export_and_validation(db):
     engine.dispose()
 
 
-def test_spoken_reports_join_spelled_letters(db, beta_on):
+def test_spoken_reports_join_spelled_letters(db):
     assert save_feedback("take", request(db), db).expected_text == "Right words"
     draft = request(db, source="voice_fix")
     draft.expected_text = "Thanks, M-E-G-H-A-N."
@@ -200,7 +192,7 @@ def test_spoken_reports_join_spelled_letters(db, beta_on):
     assert save_feedback("take", draft, db).expected_text == "Code A-B-C"
 
 
-def test_http_withdraw_removes_only_that_report(beta_on):
+def test_http_withdraw_removes_only_that_report():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from sqlalchemy.pool import StaticPool
@@ -224,14 +216,3 @@ def test_http_withdraw_removes_only_that_report(beta_on):
             assert client.delete(f"/captures/take/feedback/{withdrawn.id}").status_code == 404
         assert [report.id for report in list_feedback(session)] == [kept.id]
     engine.dispose()
-
-
-def test_voice_edits_are_a_beta_feature(db, tmp_path, monkeypatch):
-    from backend import config
-
-    monkeypatch.setattr(config, "_data_dir", tmp_path)
-    with pytest.raises(ValueError, match="beta"):
-        save_feedback("take", request(db, source="voice_fix"), db)
-    manual = save_feedback("take", request(db), db)
-    assert not withdraw_feedback("take", manual.id, db)
-    assert [report.id for report in list_feedback(db)] == [manual.id]

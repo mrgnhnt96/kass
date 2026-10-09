@@ -44,7 +44,7 @@ def test_activation_requires_two_teaching_takes_and_a_third_that_improves(every_
 
 def test_newest_reports_are_evidence_at_once():
     # Chronological hold-out kept the newest third of reports from ever teaching.
-    # That stays the rule without the voice_edits beta.
+    # That stays the rule without every_report.
     older = [rules.Example(f"u{i}", f"u{i}", f"Old text {i}.", f"Totally new {i}.", None) for i in range(30)]
     assert rules.evaluate([*older, *samples()], [])[0] == []
     selected, metrics = rules.evaluate([*older, *samples()], [], every_report=True)
@@ -71,7 +71,7 @@ def test_active_rule_without_support_is_dropped():
     assert kept == []
     assert metrics["withdrawn"] == 1
     assert rules.evaluate(samples(), selected, every_report=True)[0] == selected
-    # Without the beta, learned rules stay until contradicted or rolled back.
+    # Without every_report, learned rules stay until contradicted or rolled back.
     assert rules.evaluate(samples()[:2], selected)[0] == selected
 
 
@@ -293,13 +293,6 @@ def test_legacy_state_waits_for_a_new_evaluation(storage, monkeypatch):
     assert learning.run_job()["evaluated_report_ids"] == report_ids
 
 
-@pytest.fixture
-def beta_on(storage):
-    from backend import beta
-
-    (config.get_data_dir() / beta.CHANNEL_FILE).write_text("beta")
-
-
 def report(storage, capture_id, original, expected, source="manual"):
     with storage() as db:
         db.add(Capture(id=capture_id, audio_path="unused.wav", transcript_raw=original, transcript_refined=original))
@@ -313,7 +306,7 @@ def report(storage, capture_id, original, expected, source="manual"):
         )
 
 
-def test_withdrawn_support_drops_the_rule_without_blocking_it(storage, beta_on):
+def test_withdrawn_support_drops_the_rule_without_blocking_it(storage):
     from backend.database.models import CaptureFeedback
     from backend.services.capture_feedback import withdraw_feedback
 
@@ -331,7 +324,7 @@ def test_withdrawn_support_drops_the_rule_without_blocking_it(storage, beta_on):
     assert learning.run_job()["active_rules"] == 1
 
 
-def test_withdrawing_a_contradiction_lifts_its_block(storage, beta_on):
+def test_withdrawing_a_contradiction_lifts_its_block(storage):
     from backend.services.capture_feedback import withdraw_feedback
 
     learning.run_job()
@@ -361,7 +354,7 @@ def test_withdrawing_a_contradiction_lifts_its_block(storage, beta_on):
     assert learning._state["blocked"] == []
 
 
-def test_rollback_block_outlives_withdrawals(storage, beta_on):
+def test_rollback_block_outlives_withdrawals(storage):
     from backend.database.models import CaptureFeedback
     from backend.services.capture_feedback import withdraw_feedback
 
@@ -374,7 +367,7 @@ def test_rollback_block_outlives_withdrawals(storage, beta_on):
     assert learning.run_job()["active_rules"] == 0
 
 
-def test_only_a_withdrawal_asks_for_the_adapter_to_retrain(storage, beta_on, monkeypatch):
+def test_only_a_withdrawal_asks_for_the_adapter_to_retrain(storage, monkeypatch):
     from backend.services.capture_feedback import withdraw_feedback
 
     monkeypatch.setattr(learning, "_retrain", False)
@@ -388,23 +381,9 @@ def test_only_a_withdrawal_asks_for_the_adapter_to_retrain(storage, beta_on, mon
     assert not learning.take_retrain()
 
 
-def test_without_the_beta_reports_are_manual_and_final(storage):
-    from backend.database.models import CaptureFeedback
-    from backend.services.capture_feedback import withdraw_feedback
-
-    assert learning.run_job()["active_rules"] == 1
-    with pytest.raises(ValueError, match="beta"):
-        report(storage, "voice", "Please use voice box today at noon.", "x", source="voice_fix")
-    with storage() as db:
-        row = db.query(CaptureFeedback).filter(CaptureFeedback.capture_id == "0").one()
-        assert not withdraw_feedback("0", row.id, db)
-        assert db.query(CaptureFeedback).count() == 3
-
-
-def test_turning_the_beta_on_relearns_with_every_report(storage):
+def test_the_newest_reports_teach_at_once(storage):
     from datetime import datetime
 
-    from backend import beta
     from backend.database.models import CaptureFeedback
 
     for i in range(6):
@@ -414,7 +393,5 @@ def test_turning_the_beta_on_relearns_with_every_report(storage):
             {"created_at": datetime(2020, 1, 1)}, synchronize_session=False
         )
         db.commit()
-    # The three matching reports are the newest third, so they are held out.
-    assert learning.run_job()["active_rules"] == 0
-    (config.get_data_dir() / beta.CHANNEL_FILE).write_text("beta")
+    # The three matching reports are the newest third, and still teach.
     assert learning.run_job()["active_rules"] == 1

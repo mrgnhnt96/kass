@@ -14,7 +14,7 @@ Whisper can only take so many hints at once. Terms that don't fit are still fixe
 
 ## Only the exact spelling
 
-Fixing near misses is usually what you want, but not for names that have close cousins: a `Meghan` term would also turn a real `Megan` or `Meagan` into `Meghan`. With **Beta updates** on (Settings › General), you can stop that: click the pencil on the entry and turn off **Also fix words that sound like it**. The word is still given to Whisper as a hint and still gets its capitals fixed, but words that only sound like it are left alone. The entry shows **exact spelling**.
+Fixing near misses is usually what you want, but not for names that have close cousins: a `Meghan` term would also turn a real `Megan` or `Meagan` into `Meghan`. You can stop that: click the pencil on the entry and turn off **Also fix words that sound like it**. The word is still given to Whisper as a hint and still gets its capitals fixed, but words that only sound like it are left alone. The entry shows **exact spelling**.
 
 When you fix a word by spelling it out loud, Kass adds it to the dictionary this way by itself, marked **spelled aloud**. Delete it like any other entry if you don't want it, or edit it to make it your own.
 

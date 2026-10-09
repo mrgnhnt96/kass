@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { useToast } from '@/components/ui/use-toast';
-import { useBetaFeature } from '@/lib/betaFeatures';
 import { useAudioInputDevices } from '@/lib/hooks/useAudioInputDevices';
 import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { inputDevicePickerValue, useNativeInputDevices } from '@/lib/hooks/useNativeInputDevices';
@@ -35,7 +34,6 @@ export function DictationSettingsPage() {
   const readiness = useDictationReadiness();
   const hotkeyEnabled = settings?.hotkey_enabled ?? false;
   const allowAutoPaste = settings?.allow_auto_paste ?? true;
-  const voiceEditsBeta = useBetaFeature('voice_edits');
   const voiceEdits = settings?.voice_edits ?? true;
   const pushToTalkKeys = settings?.chord_push_to_talk_keys ?? defaultChordKeys('push');
   const toggleToTalkKeys = settings?.chord_toggle_to_talk_keys ?? defaultChordKeys('toggle');
@@ -135,21 +133,19 @@ export function DictationSettingsPage() {
           </RowLayout>
           <AccessibilityNotice />
         </div>
-        {voiceEditsBeta && (
-          <SettingRow
-            title={t('settings.captures.dictation.voiceEdits.title')}
-            description={t('settings.captures.dictation.voiceEdits.description')}
-            htmlFor="voiceEdits"
-            action={
-              <Toggle
-                id="voiceEdits"
-                checked={voiceEdits}
-                onCheckedChange={(v) => update({ voice_edits: v })}
-                disabled={!hotkeyEnabled}
-              />
-            }
-          />
-        )}
+        <SettingRow
+          title={t('settings.captures.dictation.voiceEdits.title')}
+          description={t('settings.captures.dictation.voiceEdits.description')}
+          htmlFor="voiceEdits"
+          action={
+            <Toggle
+              id="voiceEdits"
+              checked={voiceEdits}
+              onCheckedChange={(v) => update({ voice_edits: v })}
+              disabled={!hotkeyEnabled}
+            />
+          }
+        />
       </SettingSection>
     </>
   );

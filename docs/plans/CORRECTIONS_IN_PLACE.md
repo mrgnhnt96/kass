@@ -1,6 +1,6 @@
 # Corrections in place
 
-A correction saved in Captures (or a dictionary word that respells one) also fixes the text where Kass just wrote it, when that text is still exactly as Kass left it. Anything else changes nothing and says nothing. A beta feature, `corrections_in_place` (`app/src/lib/betaFeatures.ts`; `updater::beta_features_on` in Rust). Takes are tracked only while the Voice edits setting is on, since that tracking is shared with voice edits.
+A correction saved in Captures (or a dictionary word that respells one) also fixes the text where Kass just wrote it, when that text is still exactly as Kass left it. Anything else changes nothing and says nothing. Takes are tracked only while the Voice edits setting is on, since that tracking is shared with voice edits.
 
 ## Two paths
 
@@ -25,7 +25,7 @@ Captures: save a correction ──► POST /captures/{id}/feedback ──► on 
 
 ## Rules
 
-- **Only the last take.** `dictation/last_take.rs` remembers the take that read back: where Accessibility wrote it, or (beta) where keys or ⌘V did, read back on its own thread for up to a second after delivery (`AppEnv::remember_typed`), never delaying the paste. A read that finishes after a newer take went in is dropped (`remember_if` with the take generation).
+- **Only the last take.** `dictation/last_take.rs` remembers the take that read back: where Accessibility wrote it, or where keys or ⌘V did, read back on its own thread for up to a second after delivery (`AppEnv::remember_typed`), never delaying the paste. A read that finishes after a newer take went in is dropped (`remember_if` with the take generation).
 - **Only as Kass left it.** The field must still show the take with the caret right after it (`intact`). Typing, moving the caret or changing fields since makes it decline. For a typed fix, the selection must read back where it was set before anything is typed, or nothing is typed.
 - **Only the changed end.** The capture's text and the field's can differ at the start (a leading space, a capital fitted to the field), so `correct_owned` matches from where `before` and `after` first differ to the end. A fix of the very first letters may decline for that reason.
 - **Stacked fixes.** A fix that worked updates the last take to read as corrected, so the next correction of the same capture applies too. Held fixes of the same text join into one edit, from what the field shows to the newest fix.

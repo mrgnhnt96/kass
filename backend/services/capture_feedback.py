@@ -5,7 +5,6 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from .. import beta
 from ..database.models import CaptureFeedback
 from ..models import CaptureFeedbackCreate, CaptureFeedbackResponse
 from . import correction_learning, known_names, personal_examples, writing_style
@@ -34,8 +33,6 @@ def save_feedback(capture_id: str, request: CaptureFeedbackCreate, db: Session, 
     capture that filed it, which takes it back when deleted. A request that
     ``replaces`` an earlier report of the capture amends it: the earlier one
     goes, with what it taught, in the same commit."""
-    if request.source != "manual" and not beta.enabled("voice_edits"):
-        raise ValueError("Voice fixes are a beta feature.")
     capture = get_capture(capture_id, db)
     if capture is None:
         return None
@@ -91,11 +88,8 @@ def withdraw_feedback(capture_id: str, report_id: str, db: Session) -> bool:
     changing nothing goes too. Examples, habits and names are read from the
     reports, so they drop it at once. Rules and the cleanup adapter are
     relearned without it at the next idle moment
-    (correction_learning.request_run). Part of the voice_edits beta: without
-    it, returns False as if there were no such report.
+    (correction_learning.request_run).
     """
-    if not beta.enabled("voice_edits"):
-        return False
     row = db.get(CaptureFeedback, report_id)
     if row is None or row.capture_id != capture_id:
         return False
@@ -149,8 +143,7 @@ def _reports_changed(target: str, source: str, db: Session, withdrawn: bool = Fa
     correction_learning.request_run(retrain=withdrawn)
     if source not in CaptureFeedback.EXPLICIT_SOURCES:
         return
-    if beta.enabled("voice_edits"):
-        known_names.invalidate()
+    known_names.invalidate()
     if target != "refined":
         return
     personal_examples.invalidate()

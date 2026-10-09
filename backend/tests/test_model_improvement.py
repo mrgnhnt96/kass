@@ -414,31 +414,25 @@ def test_real_child_is_killed_on_recording_and_never_promoted(storage, monkeypat
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("beta_on", "pending", "retrain", "adapter", "rules_change", "learned", "started"),
+    ("pending", "retrain", "adapter", "rules_change", "learned", "started"),
     [
-        (True, False, False, True, False, False, False),
+        (False, False, True, False, False, False),
         # A report is learned from at the next idle minute.
-        (True, True, False, False, True, True, False),
+        (True, False, False, True, True, False),
         # New rules invalidate the adapter tested with the old ones: retest it.
-        (True, True, False, True, True, True, True),
-        (True, True, False, True, False, True, False),
+        (True, False, True, True, True, True),
+        (True, False, True, False, True, False),
         # A withdrawn report may be in the active adapter's training data.
-        (True, True, True, True, False, False, True),
-        (True, False, True, False, False, False, False),
-        # Without the voice_edits beta, reports wait for the six-hourly run.
-        (False, True, False, True, True, False, False),
+        (True, True, True, False, False, True),
+        (False, True, False, False, False, False),
     ],
 )
 async def test_idle_tick_learns_reports_soon_and_retests_the_adapter(
-    storage, tmp_path, monkeypatch, beta_on, pending, retrain, adapter, rules_change, learned, started
+    storage, tmp_path, monkeypatch, pending, retrain, adapter, rules_change, learned, started
 ):
     import asyncio
     import time
 
-    from backend import beta
-
-    if beta_on:
-        (tmp_path / beta.CHANNEL_FILE).write_text("beta")
     calls = []
     ticks = []
     real_sleep = asyncio.sleep
