@@ -11,7 +11,7 @@ import { create } from 'zustand';
  *
  * The server keeps its own list in backend/beta.py.
  */
-export const BETA_FEATURES = [] as const;
+export const BETA_FEATURES = ['network'] as const;
 
 export type BetaFeature = (typeof BETA_FEATURES)[number];
 
@@ -29,6 +29,18 @@ export const useUpdateChannelStore = create<UpdateChannelStore>()((set) => ({
 }));
 
 let loaded = false;
+let channelRead: Promise<UpdateChannel> | null = null;
+
+/** The channel, read from the app once per window. */
+export function readUpdateChannel(): Promise<UpdateChannel> {
+  channelRead ??= invoke<UpdateChannel>('update_channel')
+    .catch((): UpdateChannel => 'stable')
+    .then((channel) => {
+      useUpdateChannelStore.getState().setChannel(channel);
+      return channel;
+    });
+  return channelRead;
+}
 
 /**
  * Read the channel once per window, then follow `update:channel`, which the
@@ -41,9 +53,7 @@ function loadChannel() {
   listen<UpdateChannel>('update:channel', ({ payload }) => setChannel(payload)).catch((err) =>
     console.warn('[beta] listen failed:', err),
   );
-  invoke<UpdateChannel>('update_channel')
-    .then(setChannel)
-    .catch(() => setChannel('stable'));
+  void readUpdateChannel();
 }
 
 /** The update channel, loading it on first use. */

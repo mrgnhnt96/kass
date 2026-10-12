@@ -22,7 +22,10 @@ mock.module('../src/lib/hooks/useSettings', () => ({ useCaptureSettings: () => (
 // bun shares module mocks across test files: keep the store's full surface.
 const serverState = { customModelsDir: null };
 mock.module('../src/stores/serverStore', () => ({
-  SERVER_URL: 'http://127.0.0.1:17493',
+  serverUrl: () => 'http://127.0.0.1:17493',
+  useServerUrl: () => 'http://127.0.0.1:17493',
+  remoteServerUrl: () => null,
+  sharesOnNetwork: () => false,
   useServerStore: Object.assign(
     (select: (state: typeof serverState) => unknown) => select(serverState),
     { getState: () => serverState },

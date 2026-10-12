@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/components/ui/use-toast';
 import type { ModelProgress } from '@/lib/api/types';
-import { SERVER_URL } from '@/stores/serverStore';
+import { serverUrl } from '@/stores/serverStore';
 
 interface UseModelDownloadToastOptions {
   modelName: string;
@@ -67,7 +67,7 @@ export function useModelDownloadToast({
     toastUpdateRef.current = toastResult.update;
 
     // Subscribe to progress updates via Server-Sent Events
-    const eventSourceUrl = `${SERVER_URL}/models/progress/${modelName}`;
+    const eventSourceUrl = `${serverUrl()}/models/progress/${modelName}`;
     console.log('[useModelDownloadToast] Creating EventSource to:', eventSourceUrl);
     const eventSource = new EventSource(eventSourceUrl);
 

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PlatformLifecycle, ServerLogEntry } from '@/platform/types';
+import { sharesOnNetwork } from '@/stores/serverStore';
 
 class TauriLifecycle implements PlatformLifecycle {
   onServerReady?: () => void;
@@ -9,6 +10,7 @@ class TauriLifecycle implements PlatformLifecycle {
     try {
       const result = await invoke<string>('start_server', {
         modelsDir: modelsDir ?? undefined,
+        shareOnNetwork: sharesOnNetwork(),
       });
       console.log('Server started:', result);
       this.onServerReady?.();
@@ -37,6 +39,7 @@ class TauriLifecycle implements PlatformLifecycle {
     try {
       const result = await invoke<string>('restart_server', {
         modelsDir: modelsDir ?? undefined,
+        shareOnNetwork: sharesOnNetwork(),
       });
       console.log('Server restarted:', result);
       this.onServerReady?.();
