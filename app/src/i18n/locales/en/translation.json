@@ -656,6 +656,27 @@
         "leaving": "You're on beta {{version}}. Kass moves to the next public release once it's newer.",
         "failed": "Couldn't change beta updates"
       },
+      "network": {
+        "title": "Other Macs",
+        "description": "Dictate on one Mac with another Mac's Kass, over your local network.",
+        "share": {
+          "title": "Share with other Macs",
+          "description": "Let your other Macs on this network use this Kass. Anyone on the network can reach it.",
+          "on": "Other Macs on this network can use this Kass at {{address}}",
+          "failed": "Couldn't change sharing"
+        },
+        "remote": {
+          "title": "Use another Mac",
+          "description": "Enter the other Mac's name or address, like studio.local. It needs Share with other Macs on.",
+          "using": "Using Kass on {{url}}. Your dictionary, styles and captures live on that Mac.",
+          "connect": "Connect",
+          "connecting": "Connecting…",
+          "stop": "Use this Mac",
+          "invalid": "That isn't a Mac name or address",
+          "unreachable": "Couldn't reach Kass at {{url}}",
+          "unreachableHint": "Check that Kass is open on that Mac with Share with other Macs on, and that both Macs are on the same network."
+        }
+      },
       "server": {
         "title": "Local server",
         "description": "Runs Whisper and Qwen3 on this Mac. Your voice and words never leave it."

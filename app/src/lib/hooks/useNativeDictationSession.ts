@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StyleChange } from '@/components/CapturePill/StyleChip';
 import type { CapturePillState } from '@/lib/hooks/useCaptureRecordingSession';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
-import { SERVER_URL } from '@/stores/serverStore';
+import { useServerUrl } from '@/stores/serverStore';
 
 /**
  * Pill state for one native take, emitted by Rust (`dictation/mod.rs`).
@@ -58,6 +58,8 @@ export function useNativeDictationSession(): NativeDictationSession {
   // Unknown until settings load, so Rust keeps its default. Rust also needs
   // the beta channel on (docs/plans/VOICE_EDITS.md).
   const voiceEdits = settings?.voice_edits;
+  // Another Mac's server (beta `network`) is only known once the channel is.
+  const serverUrl = useServerUrl();
 
   const [pillState, setPillState] = useState<CapturePillState>('hidden');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -84,14 +86,14 @@ export function useNativeDictationSession(): NativeDictationSession {
 
   useEffect(() => {
     invoke('dictation_configure', {
-      serverUrl: SERVER_URL,
+      serverUrl,
       origin: window.location.origin,
       inputDeviceId,
       deviceKnown,
       liveText,
       voiceEdits,
     }).catch((err) => console.warn('[dictate] dictation_configure failed:', err));
-  }, [inputDeviceId, deviceKnown, liveText, voiceEdits]);
+  }, [serverUrl, inputDeviceId, deviceKnown, liveText, voiceEdits]);
 
   useEffect(() => {
     const apply = (event: NativeDictationEvent) => {

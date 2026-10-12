@@ -8,10 +8,11 @@ import { useServerHealth } from '@/lib/hooks/useServer';
 import { cn } from '@/lib/utils/cn';
 import { serverStats } from '@/lib/utils/serverStats';
 import { usePlatform } from '@/platform/PlatformContext';
-import { SERVER_URL } from '@/stores/serverStore';
+import { serverUrl } from '@/stores/serverStore';
 import { BetaUpdatesRow } from './BetaUpdatesRow';
 import { HistoryRetentionRow } from './HistoryRetentionRow';
 import { LaunchAtLoginRow } from './LaunchAtLoginRow';
+import { NetworkSection } from './NetworkSection';
 import { RecordingRetentionRow } from './RecordingRetentionRow';
 import { SettingRow, SettingSection } from './SettingRow';
 import { ShareUsageRow } from './ShareUsageRow';
@@ -83,6 +84,8 @@ export function GeneralPage() {
         />
       </SettingSection>
 
+      {platform.metadata.isTauri && <NetworkSection />}
+
       <SettingSection title={t('settings.captures.storage.title')}>
         <HistoryRetentionRow />
         <RecordingRetentionRow />
@@ -130,7 +133,7 @@ function CapturesFolderRow() {
   const [capturesPath, setCapturesPath] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${SERVER_URL}/health/filesystem`)
+    fetch(`${serverUrl()}/health/filesystem`)
       .then((res) => res.json())
       .then((data) => {
         const dir = data.directories?.find((d: { path: string }) => d.path.includes('captures'));

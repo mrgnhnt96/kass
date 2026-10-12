@@ -18,6 +18,13 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Kass uses your network only when you share this Mac's Kass with your other Macs, or use another Mac's.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Kass needs microphone access to transcribe your dictation.</string>
 </dict>

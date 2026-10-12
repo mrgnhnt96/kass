@@ -5,6 +5,8 @@ import { Toggle } from '@/components/ui/toggle';
 import { useToast } from '@/components/ui/use-toast';
 import { type UpdateChannel, useUpdateChannel, useUpdateChannelStore } from '@/lib/betaFeatures';
 import { useUpdateCheck } from '@/lib/hooks/useUpdateCheck';
+import { usePlatform } from '@/platform/PlatformContext';
+import { remoteServerUrl, sharesOnNetwork } from '@/stores/serverStore';
 import { SettingRow } from './SettingRow';
 
 /**
@@ -15,6 +17,7 @@ import { SettingRow } from './SettingRow';
 export function BetaUpdatesRow() {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const platform = usePlatform();
   const { version } = useUpdateCheck();
   const channel = useUpdateChannel();
   const setChannel = useUpdateChannelStore((state) => state.setChannel);
@@ -22,10 +25,15 @@ export function BetaUpdatesRow() {
 
   const onCheckedChange = async (beta: boolean) => {
     setSaving(true);
+    // Beta `network` stops with the beta: back onto this Mac's own server.
+    const wasRemote = remoteServerUrl() !== null;
+    const wasSharing = sharesOnNetwork();
     try {
       setChannel(
         await invoke<UpdateChannel>('set_update_channel', { channel: beta ? 'beta' : 'stable' }),
       );
+      if (!beta && wasRemote) await platform.lifecycle.restartApp();
+      else if (!beta && wasSharing) await platform.lifecycle.restartServer();
     } catch (error) {
       toast({
         title: t('settings.general.betaUpdates.failed'),

@@ -1,5 +1,5 @@
 import type { LanguageCode } from '@/lib/constants/languages';
-import { SERVER_URL } from '@/stores/serverStore';
+import { serverUrl } from '@/stores/serverStore';
 import type {
   ActiveTasksResponse,
   CaptureAppFilter,
@@ -76,7 +76,7 @@ export class ApiError extends Error {
 
 class ApiClient {
   private getBaseUrl(): string {
-    return SERVER_URL;
+    return serverUrl();
   }
 
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {

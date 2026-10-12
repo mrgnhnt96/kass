@@ -441,6 +441,29 @@ struct ServerState {
     child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
     server_pid: Mutex<Option<u32>>,
     models_dir: Mutex<Option<String>>,
+    /// Beta `network`: listen for other Macs, not just this one.
+    share_on_network: Mutex<bool>,
+}
+
+/// Whether the server should listen for other Macs on the network: asked
+/// for, and on the beta channel (app/src/lib/betaFeatures.ts `network`).
+fn shares_on_network(app: &tauri::AppHandle, state: &ServerState) -> bool {
+    *state.share_on_network.lock().unwrap() && updater::beta_features(app)
+}
+
+/// This Mac's address for other Macs on the network, like
+/// `http://Studio.local:17493`.
+#[command]
+fn network_address() -> Result<String, String> {
+    let output = std::process::Command::new("scutil")
+        .args(["--get", "LocalHostName"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || name.is_empty() {
+        return Err("This Mac has no local network name".into());
+    }
+    Ok(format!("http://{name}.local:{SERVER_PORT}"))
 }
 
 #[command]
@@ -448,6 +471,7 @@ async fn start_server(
     app: tauri::AppHandle,
     state: State<'_, ServerState>,
     models_dir: Option<String>,
+    share_on_network: Option<bool>,
 ) -> Result<String, String> {
     // Store models_dir for use on restart (empty string means reset to default)
     if let Some(ref dir) = models_dir {
@@ -457,6 +481,10 @@ async fn start_server(
             *state.models_dir.lock().unwrap() = Some(dir.clone());
         }
     }
+    if let Some(share) = share_on_network {
+        *state.share_on_network.lock().unwrap() = share;
+    }
+    let share = shares_on_network(&app, &state);
     // Check if server is already running (managed by this app instance)
     if state.child.lock().unwrap().is_some() {
         return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
@@ -482,6 +510,16 @@ async fn start_server(
                     if command.contains("kass") {
                         if let Ok(pid) = pid_str.parse::<u32>() {
                             let running = server_version::running(SERVER_PORT);
+                            // lsof names a server open to the network `*:17493`.
+                            if line.contains(&format!("*:{SERVER_PORT}")) != share {
+                                println!(
+                                    "Found kass-server on port {} (PID: {}) listening for the wrong Macs; replacing it",
+                                    SERVER_PORT, pid
+                                );
+                                server_process::stop(pid)?;
+                                wait_for_server_exit().await?;
+                                break;
+                            }
                             if !server_version::is_current(running.as_deref(), &app_version) {
                                 println!(
                                     "Found kass-server {} on port {} (PID: {}), but this is {}; replacing it",
@@ -624,6 +662,8 @@ async fn start_server(
     sidecar = sidecar.args([
         "--data-dir",
         &data_dir_str,
+        "--host",
+        if share { "0.0.0.0" } else { "127.0.0.1" },
         "--port",
         &port_str,
         "--parent-pid",
@@ -922,8 +962,12 @@ async fn restart_server(
     app: tauri::AppHandle,
     state: State<'_, ServerState>,
     models_dir: Option<String>,
+    share_on_network: Option<bool>,
 ) -> Result<String, String> {
     println!("restart_server: stopping current server...");
+    if let Some(share) = share_on_network {
+        *state.share_on_network.lock().unwrap() = share;
+    }
 
     // Update stored models_dir: empty string means reset to default, non-empty means set
     if let Some(ref dir) = models_dir {
@@ -943,7 +987,7 @@ async fn restart_server(
 
     // Start server again (uses the stored models_dir)
     println!("restart_server: starting server...");
-    start_server(app, state.clone(), None).await
+    start_server(app, state.clone(), None, None).await
 }
 
 /// Identifier of the Kass app itself — used to short-circuit auto-paste
@@ -1553,6 +1597,7 @@ pub fn run() {
             child: Mutex::new(None),
             server_pid: Mutex::new(None),
             models_dir: Mutex::new(None),
+            share_on_network: Mutex::new(false),
         })
         .manage(dictation::DictationState::default())
         .manage(deep_link::DeepLinkState::default())
@@ -1621,6 +1666,7 @@ pub fn run() {
             start_server,
             stop_server,
             restart_server,
+            network_address,
             restart_app,
             app_location,
             move_to_applications,

@@ -7,7 +7,7 @@ import { apiClient } from '@/lib/api/client';
 import type { CaptureListResponse, CaptureResponse, CaptureSource } from '@/lib/api/types';
 import { prepareStreamingAudio, startStreamingAudio } from '@/lib/audio/streamingAudio';
 import { useAudioRecording } from '@/lib/hooks/useAudioRecording';
-import { SERVER_URL } from '@/stores/serverStore';
+import { serverUrl } from '@/stores/serverStore';
 
 /**
  * Broadcast to sibling Tauri webviews that the captures list has changed.
@@ -329,7 +329,7 @@ export function useCaptureRecordingSession(
             // A stream that missed the first words would lose them, so it only
             // listens for sound and the complete recording is transcribed.
             if (!coversStart) return;
-            take.stream = new CaptureStream(SERVER_URL, sampleRate);
+            take.stream = new CaptureStream(serverUrl(), sampleRate);
             streamsRef.current.add(take.stream);
           },
           (frame) => {
