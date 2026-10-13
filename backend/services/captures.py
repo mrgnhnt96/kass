@@ -124,6 +124,8 @@ def _to_response(row: DBCapture) -> CaptureResponse:
         command_transform=row.command_transform,
         style_id=row.style_id,
         audio_deleted=bool(row.audio_deleted),
+        mac_id=row.mac_id,
+        mac_name=row.mac_name,
         created_at=row.created_at,
     )
 

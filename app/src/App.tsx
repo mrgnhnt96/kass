@@ -16,6 +16,7 @@ import { useChordSync } from '@/lib/hooks/useChordSync';
 import { useDeepLinks } from '@/lib/hooks/useDeepLinks';
 import { useInAppDictationInsert } from '@/lib/hooks/useInAppDictationInsert';
 import { useSoundCueSync } from '@/lib/hooks/useSoundCueSync';
+import { readThisMac } from '@/lib/macs';
 import { queryClient } from '@/lib/queryClient';
 import { cn } from '@/lib/utils/cn';
 import { usePlatform } from '@/platform/PlatformContext';
@@ -69,6 +70,10 @@ const LOADING_MESSAGES = [
 
 function App() {
   useThemeSync();
+  // Requests that save captures say which Mac sent them (beta `network`).
+  useEffect(() => {
+    void readThisMac();
+  }, []);
 
   // The dictate window runs in a separate Tauri webview that must skip
   // server bootstrap (the main window owns that lifecycle) and render only

@@ -1,6 +1,7 @@
 """Capture change notices for apps on other Macs (beta ``network``)."""
 
 import asyncio
+import json
 import threading
 
 import pytest
@@ -10,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.database.models import Base, Capture, WritingStyle
 from backend.services import capture_events
+from backend.utils.macs import Mac
 
 
 @pytest.fixture
@@ -119,3 +121,28 @@ def test_listener_leaves_when_the_stream_closes():
         return len(capture_events._listeners)
 
     assert asyncio.run(run()) == 0
+
+
+def test_peers_lists_each_mac_listening_and_drops_it_when_it_leaves():
+    async def next_peers(stream):
+        while True:
+            event = await asyncio.wait_for(anext(stream), timeout=1)
+            if event.startswith("event: peers"):
+                return json.loads(event.split("data: ", 1)[1])
+
+    async def run():
+        studio = capture_events.subscribe(Mac("studio", "Studio"))
+        assert (await anext(studio)).startswith("event: changed")
+        assert await next_peers(studio) == [{"id": "studio", "name": "Studio"}]
+
+        laptop = capture_events.subscribe(Mac("laptop", "Morgan’s MacBook"))
+        await anext(laptop)
+        both = [{"id": "laptop", "name": "Morgan’s MacBook"}, {"id": "studio", "name": "Studio"}]
+        assert await next_peers(laptop) == both
+        assert await next_peers(studio) == both
+
+        await laptop.aclose()
+        assert await next_peers(studio) == [{"id": "studio", "name": "Studio"}]
+        await studio.aclose()
+
+    asyncio.run(run())

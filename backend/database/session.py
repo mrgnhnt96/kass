@@ -39,6 +39,10 @@ def init_db() -> None:
     from ..services import capture_events
 
     capture_events.install()
+    # Each capture records the Mac that dictated it.
+    from ..utils import macs
+
+    macs.install()
 
     run_migrations(engine)
     Base.metadata.create_all(bind=engine)

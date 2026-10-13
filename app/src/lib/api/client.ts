@@ -1,4 +1,5 @@
 import type { LanguageCode } from '@/lib/constants/languages';
+import { macHeaders } from '@/lib/macs';
 import { serverUrl } from '@/stores/serverStore';
 import type {
   ActiveTasksResponse,
@@ -85,6 +86,7 @@ class ApiClient {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...macHeaders(),
         ...options?.headers,
       },
     });
@@ -209,7 +211,7 @@ class ApiClient {
     if (options?.sttModel) formData.append('stt_model', options.sttModel);
 
     const url = `${this.getBaseUrl()}/captures`;
-    const response = await fetch(url, { method: 'POST', body: formData });
+    const response = await fetch(url, { method: 'POST', body: formData, headers: macHeaders() });
     if (!response.ok) {
       const error = await response.json().catch(() => ({
         detail: response.statusText,

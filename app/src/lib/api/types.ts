@@ -305,6 +305,9 @@ export interface CaptureResponse {
   style_id?: string | null;
   /** The recording was deleted once the transcript was saved (a ⌘K command never had one). */
   audio_deleted: boolean;
+  /** The Mac that dictated it, for a Kass shared over the network (beta `network`). */
+  mac_id?: string | null;
+  mac_name?: string | null;
   created_at: string;
 }
 

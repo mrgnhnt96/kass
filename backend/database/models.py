@@ -124,6 +124,9 @@ class Capture(Base):
     # The style this capture's corrections teach, when the user left them
     # behind as its app moved to another style. None follows the app.
     teaches_style_id = Column(String, nullable=True)
+    # The Mac that dictated it, when Kass is shared over the network (utils/macs.py).
+    mac_id = Column(String, nullable=True)
+    mac_name = Column(String, nullable=True)
     # The recording was deleted once its transcript was saved (services/audio_retention.py).
     # A command run from ⌘K has no recording and is not marked.
     audio_deleted = Column(Boolean, nullable=False, default=False)
