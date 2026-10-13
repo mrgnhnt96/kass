@@ -3,7 +3,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import config, models
@@ -179,6 +179,23 @@ async def capture_stats_endpoint(
         raise HTTPException(status_code=400, detail=f"period must be one of {', '.join(usage_stats.PERIODS)}")
     scope = usage_stats.AppScope(bundle_id=app_bundle_id or None, unknown=unknown_app)
     return usage_stats.usage_stats(db, period, scope)
+
+
+@router.get("/captures/events")
+async def capture_events_endpoint():
+    """Server-Sent Events: ``changed`` whenever captures are added, edited or
+    deleted, from this Mac or another using it (beta ``network``)."""
+    from ..services import capture_events
+
+    return StreamingResponse(
+        capture_events.subscribe(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/captures/{capture_id}", response_model=models.CaptureResponse)
