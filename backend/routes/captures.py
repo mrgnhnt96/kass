@@ -184,11 +184,13 @@ async def capture_stats_endpoint(
 @router.get("/captures/events")
 async def capture_events_endpoint():
     """Server-Sent Events: ``changed`` whenever captures are added, edited or
-    deleted, from this Mac or another using it (beta ``network``)."""
+    deleted, from this Mac or another using it (beta ``network``), and
+    ``peers`` with the Macs listening."""
     from ..services import capture_events
+    from ..utils.macs import current_mac
 
     return StreamingResponse(
-        capture_events.subscribe(),
+        capture_events.subscribe(current_mac.get()),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

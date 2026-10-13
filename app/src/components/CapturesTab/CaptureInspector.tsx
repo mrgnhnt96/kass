@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { CaptureFeedbackResponse, CaptureResponse } from '@/lib/api/types';
+import { captureOrigin, useMacsStore, useOtherMacConnected } from '@/lib/macs';
 import { CorrectionLearning } from './CorrectionLearning';
 import { formatDuration, formatTime, languageName, wordsPerMinute } from './captureFormat';
 import { HunkList, type TeachState } from './TeachCorrection';
@@ -142,6 +143,9 @@ export function CaptureInspector({
   const rawWords = countWords(capture.transcript_raw);
   const refinedWords = capture.transcript_refined ? countWords(capture.transcript_refined) : null;
   const pace = wordsPerMinute(rawWords, capture.duration_ms);
+  // Which Mac dictated it, only while another Mac shares this Kass.
+  const thisMac = useMacsStore((state) => state.thisMac);
+  const origin = useOtherMacConnected() ? captureOrigin(capture, thisMac) : null;
 
   return (
     <aside className="w-[250px] shrink-0 flex flex-col border-l border-border bg-card">
@@ -160,6 +164,16 @@ export function CaptureInspector({
           />
           {capture.language && (
             <Row label={t('captures.inspector.language')} value={languageName(capture.language)} />
+          )}
+          {origin && (
+            <Row
+              label={t('captures.inspector.mac')}
+              value={
+                origin.kind === 'this'
+                  ? t('captures.inspector.thisMac')
+                  : (origin.name ?? t('captures.inspector.otherMac'))
+              }
+            />
           )}
         </Section>
         {(capture.stt_model || capture.llm_model) && (

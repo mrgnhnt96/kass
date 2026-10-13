@@ -79,6 +79,11 @@ pub fn spawn(
         if let Some(origin) = origin.and_then(|o| HeaderValue::from_str(&o).ok()) {
             request.headers_mut().insert("Origin", origin);
         }
+        for (name, value) in crate::this_mac::headers() {
+            if let Ok(value) = HeaderValue::from_str(&value) {
+                request.headers_mut().insert(name, value);
+            }
+        }
         let connect = tokio_tungstenite::connect_async_with_config(request, None, true);
         let socket = match tokio::time::timeout(CONNECT_TIMEOUT, connect).await {
             Ok(Ok((socket, _))) => socket,

@@ -90,6 +90,10 @@ def create_app() -> FastAPI:
     from .services.model_improvement.middleware import ForegroundPriorityMiddleware
 
     application.add_middleware(ForegroundPriorityMiddleware)
+    # Which Mac each request came from, for the captures it saves.
+    from .utils.macs import MacMiddleware
+
+    application.add_middleware(MacMiddleware)
     register_routers(application)
 
     return application

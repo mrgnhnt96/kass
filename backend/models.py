@@ -74,6 +74,9 @@ class CaptureResponse(BaseModel):
     style_id: str | None = None
     # The recording was deleted once its transcript was saved.
     audio_deleted: bool = False
+    # The Mac that dictated it, for a Kass shared over the network.
+    mac_id: str | None = None
+    mac_name: str | None = None
     created_at: datetime
 
     class Config:

@@ -85,6 +85,8 @@ def _migrate_captures(engine, inspector, tables: set[str]) -> None:
         ("teaches_style_id", "VARCHAR"),
         ("audio_deleted", "BOOLEAN NOT NULL DEFAULT 0"),
         ("prosody", "TEXT"),
+        ("mac_id", "VARCHAR"),
+        ("mac_name", "VARCHAR"),
     ):
         if column not in columns:
             _add_column(engine, "captures", f"{column} {kind}", column)

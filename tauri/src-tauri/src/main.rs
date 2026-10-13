@@ -29,6 +29,7 @@ mod server_version;
 mod sound_cues;
 mod synthetic_keys;
 mod text_insert;
+mod this_mac;
 mod updater;
 
 use std::sync::Mutex;
@@ -1613,6 +1614,7 @@ pub fn run() {
                 }
             }
             login_item::register_by_default(app.handle());
+            this_mac::init(app.handle());
             dictation::restore(app.handle());
             sound_cues::init(app.handle());
             updater::start(app.handle().clone());
@@ -1667,6 +1669,7 @@ pub fn run() {
             stop_server,
             restart_server,
             network_address,
+            this_mac::this_mac,
             restart_app,
             app_location,
             move_to_applications,

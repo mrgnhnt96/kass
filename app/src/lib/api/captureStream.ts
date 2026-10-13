@@ -1,3 +1,4 @@
+import { withMacParams } from '@/lib/macs';
 import type { CaptureCreateResponse } from './types';
 
 export interface StreamingCaptureFinal {
@@ -42,7 +43,7 @@ export class CaptureStream {
   ) {
     const url = new URL(`${baseUrl.replace(/\/$/, '')}/captures/stream`);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.socket = new WebSocket(url);
+    this.socket = new WebSocket(withMacParams(url));
     this.handshakeTimer = setTimeout(() => this.fail(), 5000);
     this.socket.onopen = () =>
       this.socket.send(

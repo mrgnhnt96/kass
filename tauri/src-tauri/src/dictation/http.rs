@@ -8,9 +8,17 @@ use serde_json::Value;
 use super::protocol::TargetApp;
 use super::stream::{classify_recovery, Recovery};
 
+/// Says which Mac sent each request, so a shared Kass knows where captures came from.
 pub fn client() -> reqwest::Client {
+    let mut headers = reqwest::header::HeaderMap::new();
+    for (name, value) in crate::this_mac::headers() {
+        if let Ok(value) = reqwest::header::HeaderValue::from_str(&value) {
+            headers.insert(name, value);
+        }
+    }
     reqwest::Client::builder()
         .tcp_nodelay(true)
+        .default_headers(headers)
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 }
