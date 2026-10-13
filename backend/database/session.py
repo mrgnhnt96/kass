@@ -35,6 +35,11 @@ def init_db() -> None:
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+    # Apps on other Macs hear about capture changes from the server (beta `network`).
+    from ..services import capture_events
+
+    capture_events.install()
+
     run_migrations(engine)
     Base.metadata.create_all(bind=engine)
 

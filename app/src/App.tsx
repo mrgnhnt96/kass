@@ -11,6 +11,7 @@ import { apiClient } from '@/lib/api/client';
 import type { HealthResponse } from '@/lib/api/types';
 import { readUpdateChannel } from '@/lib/betaFeatures';
 import { TOP_SAFE_AREA_PADDING } from '@/lib/constants/ui';
+import { useCaptureEvents } from '@/lib/hooks/useCaptureEvents';
 import { useChordSync } from '@/lib/hooks/useChordSync';
 import { useDeepLinks } from '@/lib/hooks/useDeepLinks';
 import { useInAppDictationInsert } from '@/lib/hooks/useInAppDictationInsert';
@@ -104,6 +105,8 @@ function MainApp() {
   useSoundCueSync();
   // kass:// links open their screen once the router is showing.
   useDeepLinks(serverReady);
+  // Captures dictated on another Mac sharing the server (beta `network`).
+  useCaptureEvents(serverReady);
 
   // Hooks above (the chord's settings among them) ask the server before it
   // is up. Whatever failed for that is asked again once it is, so the global
