@@ -174,18 +174,16 @@ async def test_refinement_sends_the_users_examples_after_the_defaults(storage):
 async def test_refining_a_capture_keeps_and_flags_possible_content_changes(storage, monkeypatch):
     from backend.services import captures
 
-    monkeypatch.setattr(
-        captures, "refine_transcript", AsyncMock(return_value=("Send the notes and the slides.", "0.6B"))
-    )
+    monkeypatch.setattr(captures, "refine_transcript", AsyncMock(return_value=("Send the notes to main.", "0.6B")))
     with storage() as db:
-        db.add(Capture(id="c1", audio_path="a.wav", transcript_raw="send the notes"))
+        db.add(Capture(id="c1", audio_path="a.wav", transcript_raw="send the notes to domain"))
         db.commit()
         output = await captures.refine_capture("c1", RefinementFlags(), None, db)
-    assert output.transcript_refined == "Send the notes and the slides."
+    assert output.transcript_refined == "Send the notes to main."
     assert output.refinement_review.model_dump() == {
         "outcome": "review",
-        "added": ["slides"],
-        "missing": [],
+        "added": ["main"],
+        "missing": ["domain"],
         "reasons": [],
     }
 

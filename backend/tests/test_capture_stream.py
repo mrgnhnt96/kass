@@ -584,6 +584,7 @@ def test_idle_timeout_releases_audio_and_foreground_slot(tmp_path, monkeypatch):
             "Waves crash on the shore, salt wind whispers ancient songs, blue depths hold their dreams.",
             "answered",
         ),
+        ("Keep this clause", "Keep this clause and add another.", "invented"),
     ],
 )
 def test_phrase_guard_rejects_changed_meaning(raw, candidate, reason):
@@ -596,7 +597,7 @@ def test_phrase_guard_rejects_changed_meaning(raw, candidate, reason):
     ("raw", "candidate"),
     [
         ("Keep both words", "Keep words."),
-        ("Keep this clause", "Keep this clause and add another."),
+        ("Merge the domain", "Merge to main."),
     ],
 )
 def test_phrase_guard_keeps_and_flags_possible_content_changes(raw, candidate):
