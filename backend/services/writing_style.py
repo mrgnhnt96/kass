@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from difflib import SequenceMatcher
 
 from .. import config
+from . import capture_events
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +321,7 @@ def _save(state: dict):
         temporary.write_text(json.dumps(state, indent=2, ensure_ascii=False))
         os.replace(temporary, path)
         _state = state
+    capture_events.publish("learned")
 
 
 def _counts(profile: dict, extra: list | None = None) -> dict:

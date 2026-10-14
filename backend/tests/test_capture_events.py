@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from backend.database.models import Base, Capture, WritingStyle
+from backend.database.models import Base, Capture, CaptureFeedback, WritingStyle
 from backend.services import capture_events
 from backend.utils.macs import Mac
 
@@ -28,27 +28,28 @@ def capture(**fields):
     return Capture(audio_path="captures/x.wav", source="dictation", transcript_raw="hi", **fields)
 
 
-async def notices(stream, wait_s=0.2) -> int:
-    """How many ``changed`` events arrive within ``wait_s``."""
+async def notices(stream, kind, wait_s=0.2) -> int:
+    """How many ``kind`` events arrive within ``wait_s``."""
     count = 0
     while True:
         try:
             event = await asyncio.wait_for(anext(stream), timeout=wait_s)
         except TimeoutError:
             return count
-        if event.startswith("event: changed"):
+        if event.startswith(f"event: {kind}"):
             count += 1
 
 
-def listen(change):
-    """Subscribe, read the hello, run ``change``, then count the notices it caused."""
+def listen(change, kind="changed"):
+    """Subscribe, read the hello, run ``change``, then count the ``kind`` notices it caused."""
 
     async def run():
         stream = capture_events.subscribe()
         assert (await anext(stream)).startswith("event: changed")
+        assert (await anext(stream)).startswith("event: learned")
         await asyncio.to_thread(change)
         try:
-            return await notices(stream)
+            return await notices(stream, kind)
         finally:
             await stream.aclose()
 
@@ -88,19 +89,40 @@ def test_bulk_delete_notifies(db):
     assert listen(purge) == 1
 
 
-def test_other_tables_and_rollbacks_stay_quiet(db):
+def test_other_tables_say_learned_not_changed(db):
     def style():
         db.add(WritingStyle(name="Mine"))
         db.commit()
 
     assert listen(style) == 0
+    assert listen(style, "learned") == 1
 
+
+def test_a_correction_from_another_mac_says_learned(db):
+    row = capture()
+    db.add(row)
+    db.commit()
+
+    def correct():
+        db.add(CaptureFeedback(capture_id=row.id, target="refined", expected_text="Or are we?", snapshot="{}"))
+        db.commit()
+
+    assert listen(correct, "learned") == 1
+
+
+def test_learning_saved_outside_the_database_says_learned():
+    assert listen(lambda: capture_events.publish("learned"), "learned") == 1
+
+
+def test_rollbacks_stay_quiet(db):
     def rolled_back():
         db.add(capture())
+        db.add(WritingStyle(name="Mine"))
         db.flush()
         db.rollback()
 
     assert listen(rolled_back) == 0
+    assert listen(rolled_back, "learned") == 0
 
 
 def test_commit_from_another_thread_reaches_the_stream(db):
