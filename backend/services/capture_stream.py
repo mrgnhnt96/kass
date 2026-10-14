@@ -91,6 +91,7 @@ from .refinement import (
 )
 from .sentence_tail import MAX_OPEN_WORDS, settle
 from .speech_detect import SpeechDetector
+from .spoken_corrections import retracted_by
 from .spoken_punctuation import period_after_closers
 from .styles import flags_for, snapshot as styles_snapshot, spoken_style
 from .transcribe import get_whisper_model
@@ -151,15 +152,18 @@ def stable_prefix(text: str, holdback: int) -> str:
     return re.sub(r"[^\w\s]+$", "", kept.rstrip()).rstrip()
 
 
-def guard_phrase_refinement(raw: str, refined: str, flags: RefinementFlags) -> tuple[str, Verdict]:
+def guard_phrase_refinement(
+    raw: str, refined: str, flags: RefinementFlags, retractable: str = ""
+) -> tuple[str, Verdict]:
     """Keep a phrase's cleanup unless the content check rejects it.
 
     Restructuring is allowed. A cleanup that may have added or left out
     content is kept and flagged for review; one that answered or obeyed the
     dictation, or changed a negation, number or technical term, falls back to
-    the prepared transcript.
+    the prepared transcript. Words in ``retractable``, which a correction
+    took back, may be left out.
     """
-    return check_refinement(raw, refined, flags)
+    return check_refinement(raw, refined, flags, retractable=retractable)
 
 
 class StreamingCapture:
@@ -289,6 +293,11 @@ class StreamingCapture:
         self.settled_reviews = []
         # What the latest settle replaced, so a spoken correction can reopen it.
         self.last_settle = None
+        # What a phrase may have taken back once its target was settled; the
+        # whole take is cleaned again at release.
+        self.retractable = ""
+        # What the latest correction may have taken back, wherever its target is.
+        self.taken_back = ""
         self.tail_raw = ""
         self.tail_cleaned = ""
         self.tail_dirty = False
@@ -864,6 +873,7 @@ class StreamingCapture:
             # Read before any cleanup (docs/plans/VOICE_EDITS.md).
             await self.take_edit(text)
         earlier = self.heard
+        said_before = self.raw
         self.heard = self.join(self.heard, text, text)
         if self.editing:
             # An edit's words are its instruction, read whole at finish.
@@ -915,8 +925,15 @@ class StreamingCapture:
                 self.settled, self.settled_gap, self.last_settle = correction, None, None
                 self.tail_raw, self.tail_cleaned, self.tail_dirty = "", "", False
             elif text:
-                if self.flags.self_correction and self.last_settle and _CORRECTION_CUE.search(text):
-                    self.reopen()
+                retracted = retracted_by(text, said_before) if self.flags.self_correction and self.settled else None
+                if retracted is not None:
+                    self.taken_back = retracted
+                    # Reopening covers a correction of the last settled
+                    # chunk while speaking; release covers older ones.
+                    if self.last_settle:
+                        self.reopen()
+                    if self.settled:
+                        self.retractable = retracted
                 await self.clean_tail()
             self.refined = self.corrected(self.refined)
             await self.emit("refined", text=self.refined)
@@ -967,7 +984,7 @@ class StreamingCapture:
             self._spent("refine", started)
         if stop is not None and stop.is_set():
             return
-        refined, verdict = guard_phrase_refinement(prompt, refined, self.flags)
+        refined, verdict = guard_phrase_refinement(prompt, refined, self.flags, self.taken_back)
         self.tail_dirty = False
         self.reviews = [*self.settled_reviews, *([verdict] if verdict.outcome != "ok" else [])]
         # A rejected cleanup falls back to the transcript, which is closed the
@@ -1003,9 +1020,36 @@ class StreamingCapture:
             logger.exception("Streaming refinement failed")
             self.refinement_error = str(error)
             return
-        if (closed := self.express(self.close_dictation(text), final=True)) != self.refined:
+        closed = self.express(self.close_dictation(text), final=True)
+        if self.retractable:
+            closed = await self.clean_whole_take(closed)
+        if closed != self.refined:
             self.refined = closed
             await self.emit("refined", text=self.refined)
+
+    async def clean_whole_take(self, streamed: str) -> str:
+        """The whole take cleaned again, for a correction of settled text.
+
+        Keeps ``streamed``, the text cleaned while speaking, if that cleanup
+        fails or the content check rejects it.
+        """
+        started = time.monotonic()
+        try:
+            refined, model = await refine_transcript(self.raw, self.flags, model_size=self.settings.llm_model)
+        except Exception:
+            logger.exception("Cleaning the whole take for a correction failed; keeping the streamed text")
+            return streamed
+        finally:
+            self._spent("refine", started)
+        refined, verdict = check_refinement(self.raw, refined, self.flags, retractable=self.retractable)
+        if verdict.outcome == "reject":
+            return streamed
+        self.llm_model = model
+        # The whole take was cleaned again, so earlier verdicts no longer
+        # describe the result.
+        self.reviews = [verdict]
+        text = self.corrected(self.start_like_raw(refined))
+        return self.express(self.close_dictation(text, closed=True), final=True)
 
     async def run(self):
         # Read while the first phrase is still being spoken; recognition never

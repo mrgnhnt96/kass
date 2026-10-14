@@ -141,22 +141,22 @@ def _number(token: str) -> str:
 _CORRECTION_CUE = re.compile(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", re.I)
 
 
-def _retracted(said: str):
-    """Whether a word was said before the speaker's last correction cue."""
+def _retracted(said: str, retractable: str = ""):
+    """Whether a word was said before the speaker's last correction cue, or in ``retractable``."""
     cues = list(_CORRECTION_CUE.finditer(said))
-    if not cues:
-        return lambda _: False
-    spoken = unicodedata.normalize("NFKC", said[: cues[-1].start()]).casefold().replace(",", "")
+    spoken = said[: cues[-1].start()] if cues else ""
+    spoken = unicodedata.normalize("NFKC", f"{spoken} {retractable}").casefold().replace(",", "")
     return lambda word: bool(re.search(rf"(?<![\w]){re.escape(word.replace(',', ''))}(?![\w])", spoken))
 
 
-def check(said: str, cleaned: str, allow_retractions: bool = False) -> Verdict:
+def check(said: str, cleaned: str, allow_retractions: bool = False, retractable: str = "") -> Verdict:
     """Compare ``cleaned`` against the transcript ``said``.
 
     With ``allow_retractions``, a number, name or term said before a spoken
-    correction ("Tuesday, actually Wednesday") may be left out.
+    correction ("Tuesday, actually Wednesday"), or in ``retractable``, may be
+    left out.
     """
-    retracted = _retracted(said) if allow_retractions else lambda _: False
+    retracted = _retracted(said, retractable) if allow_retractions else lambda _: False
     before = _tokens(said)
     after = _tokens(cleaned)
     heard = set(before)
@@ -293,13 +293,14 @@ def _count_marks(text: str, marks: str) -> int:
     return sum(text.count(mark) for mark in marks)
 
 
-def check_refinement(said: str, refined: str, flags, examples=None) -> tuple[str, Verdict]:
+def check_refinement(said: str, refined: str, flags, examples=None, retractable: str = "") -> tuple[str, Verdict]:
     """Check a cleanup and choose what to keep: the cleanup unless rejected.
 
     ``said`` is compared after the deterministic spoken-correction pass, so a
     retraction the speaker made ("3, no actually 4") is not a changed number.
     Text copied from an example the model was shown is rejected, whatever
-    else the check finds.
+    else the check finds. ``retractable`` is what a correction the stream
+    detected may have taken back (``spoken_corrections.retracted_by``).
     """
     from .refinement import prepare_refinement
 
@@ -309,8 +310,9 @@ def check_refinement(said: str, refined: str, flags, examples=None) -> tuple[str
     copied = _copied_example(cleaned, refined, _shown_examples() if examples is None else examples)
     if copied:
         return cleaned, Verdict("reject", reason="copied example", added=copied)
-    verdict = check(cleaned, refined, allow_retractions=flags.self_correction)
-    if verdict.outcome == "review" and not verdict.added and flags.self_correction and _CORRECTION_CUE.search(said):
+    verdict = check(cleaned, refined, allow_retractions=flags.self_correction, retractable=retractable)
+    corrected = _CORRECTION_CUE.search(said) or retractable
+    if verdict.outcome == "review" and not verdict.added and flags.self_correction and corrected:
         # The speaker took words back, so leaving them out is the point.
         verdict = Verdict("ok")
     return (cleaned if verdict.outcome == "reject" else refined), verdict
