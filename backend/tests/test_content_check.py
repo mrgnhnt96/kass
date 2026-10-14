@@ -19,9 +19,27 @@ def test_restructuring_passes(said, cleaned):
     assert check(said, cleaned).outcome == "ok"
 
 
-def test_new_words_are_listed_for_review():
-    verdict = check("send the notes", "Send the notes and the slides.")
-    assert (verdict.outcome, verdict.added, verdict.missing) == ("review", ["slides"], [])
+def test_a_word_in_place_of_a_heard_one_is_listed_for_review():
+    verdict = check("commit and merge domain", "Commit and merge to main.")
+    assert (verdict.outcome, verdict.added, verdict.missing) == ("review", ["main"], ["domain"])
+
+
+@pytest.mark.parametrize(
+    ("said", "cleaned", "invented"),
+    [
+        ("send the notes", "Send the notes and the slides.", ["slides"]),
+        ("Merge.", "Merge to main", ["main"]),
+        ("commit, PR, merge", "Commit, PR, merge to main", ["main"]),
+        ("wording", "Would you like me to refine the wording?", ["refine"]),
+    ],
+)
+def test_a_word_added_between_heard_words_is_rejected(said, cleaned, invented):
+    verdict = check(said, cleaned)
+    assert (verdict.outcome, verdict.reason, verdict.added) == ("reject", "invented", invented)
+
+
+def test_a_fixed_mishearing_of_a_small_word_is_kept():
+    assert check("merge it to me", "Merge it to main.").outcome == "review"
 
 
 def test_dropping_much_of_what_was_said_is_rejected():
@@ -112,11 +130,11 @@ def test_self_correction_may_drop_the_retracted_words():
 
 
 def test_summary_takes_the_worst_outcome_and_joins_words():
-    reviews = [check("send the notes", "Send the notes and slides."), check("do not ship", "Ship.")]
+    reviews = [check("merge domain", "Merge to main."), check("do not ship", "Ship.")]
     assert summarize_reviews(reviews) == {
         "outcome": "reject",
-        "added": ["slides"],
-        "missing": ["not"],
+        "added": ["main"],
+        "missing": ["domain", "not"],
         "reasons": ["negation"],
     }
     assert summarize_reviews([check("hello", "Hello.")]) is None

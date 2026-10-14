@@ -724,7 +724,8 @@ class DictionaryEntryModel(BaseModel):
     # Off: only fixed where spelled exactly, never swapped in for a word that sounds like it.
     match_sound: bool = True
     # "spoken_fix": added by itself when the user spelled the word aloud to fix it.
-    source: Literal["user", "spoken_fix"] = "user"
+    # "correction": added by itself when the user corrected the word in a transcript.
+    source: Literal["user", "spoken_fix", "correction"] = "user"
     # A phrase: ``written`` is text inserted exactly where ``spoken`` is said.
     phrase: bool = False
 

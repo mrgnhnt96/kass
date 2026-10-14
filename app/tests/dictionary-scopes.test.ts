@@ -292,6 +292,7 @@ describe('entry note', () => {
     expect(entryNote(word)).toBeNull();
     expect(entryNote({ ...word, match_sound: false })).toBe('exact');
     expect(entryNote({ ...word, match_sound: false, source: 'spoken_fix' })).toBe('spokenFix');
+    expect(entryNote({ ...word, source: 'correction' })).toBe('correction');
     // Inherited rows carry no flags.
     expect(entryNote({})).toBeNull();
   });

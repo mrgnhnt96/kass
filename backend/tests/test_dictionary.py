@@ -668,3 +668,48 @@ def test_a_word_already_said_as_the_app_name_keeps_startup_working(storage, tmp_
         dictionary.add_group(db, "KASS-2", "kass", [{"scope": "global"}])
         dictionary.ensure_defaults(db, tmp_path / "dictionary-defaulted")
         assert [group.written for group in dictionary.list_groups(db)] == ["KASS-2"]
+
+
+@pytest.mark.parametrize(
+    ("original", "corrected", "words"),
+    [
+        # Heard close enough: the term alone fixes it, matched by sound.
+        ("Test that Pikto works.", "Test that Picto works.", [("Picto", None)]),
+        ("ask Sagar about it", "ask Saggar about it", [("Saggar", None)]),
+        # Heard as a non-word too far off: that form is replaced.
+        ("open Clard code now", "open Claude code now", [("Claude", "Clard")]),
+        # Heard as a word the user also says: never replaced, only prompted.
+        ("start a cloud session", "start a Claude session", [("Claude", None)]),
+        # Common words, drawn-out spellings and numbers are not vocabulary.
+        ("Complete it and push.", "Commit it and push.", []),
+        ("it was way better", "it was wayyy better", []),
+        ("ticket T3 or 4 is done", "ticket T304 is done", []),
+        # Only words swapped for others, not ones added.
+        ("send the notes", "send the notes to Picto", []),
+    ],
+)
+def test_a_correction_finds_the_words_it_fixed(original, corrected, words, monkeypatch):
+    spoken = "a about and ask better code commit complete cloud done is it now open push send session start test"
+    common = COMMON | set(spoken.split()) | {"that", "the", "notes", "to", "ticket", "was", "way", "works", "or"}
+    monkeypatch.setattr(phrase_seams, "_common_word", lambda word: word.casefold() in common)
+    assert dictionary.corrected_words(original, corrected) == words
+
+
+def test_corrected_words_are_added_everywhere_and_fix_the_mistake(storage):
+    with storage() as db:
+        [added] = dictionary.add_corrected_words(db, "open Clard code", "open Claude code", "report-1")
+
+    assert (added.written, added.spoken, added.match_sound, added.source) == ("Claude", "Clard", True, "correction")
+    assert [(p.scope, p.scope_id) for p in added.places] == [("global", None)]
+    assert dictionary.for_app(SLACK).apply("Clard and claude") == "Claude and Claude"
+    with storage() as db:
+        dictionary.delete_added_by(db, "report-1")
+        assert dictionary.list_entries(db) == []
+
+
+def test_a_corrected_word_never_changes_the_users_entry(storage, client):
+    add(client, "Picto")
+    with storage() as db:
+        assert dictionary.add_corrected_words(db, "Pikto works", "Picto works", "report-1") == []
+    [listed] = client.get("/dictionary").json()["entries"]
+    assert (listed["written"], listed["source"]) == ("Picto", "user")

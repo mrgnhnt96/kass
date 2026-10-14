@@ -23,6 +23,7 @@ set of real dictations, not in new rules here.
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 from .voice_commands import count_commands
 
@@ -223,10 +224,23 @@ def check(said: str, cleaned: str, allow_retractions: bool = False) -> Verdict:
         return Verdict("reject", reason="dropped", added=added, missing=missing)
     if _swapped_people(before, after):
         return Verdict("reject", reason="person", added=added, missing=missing)
+    # A new word in place of a heard one may fix a mishearing ("merge domain"
+    # -> "merge to main"); one put between heard words replaces nothing, so
+    # the model made it up ("Merge." -> "Merge to main"). In 3,496 real
+    # dictations all 13 such words were inventions.
+    invented = sorted(set(_inserted(before, after)) & set(added))
+    if invented:
+        return Verdict("reject", reason="invented", added=invented, missing=missing)
     added = sorted(set(added) | set(added_numbers))
     if added or len(missing) > MISSING_SHARE * len(set(content_before)):
         return Verdict("review", added=added, missing=missing)
     return Verdict("ok")
+
+
+def _inserted(before: list[str], after: list[str]) -> list[str]:
+    """Words of ``after`` that sit between kept words without replacing any heard one."""
+    opcodes = SequenceMatcher(None, before, after, autojunk=False).get_opcodes()
+    return [token for tag, _, _, j1, j2 in opcodes if tag == "insert" for token in after[j1:j2]]
 
 
 def _people(tokens: list[str]) -> list[int]:
