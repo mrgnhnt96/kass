@@ -30,6 +30,7 @@ import threading
 from datetime import UTC, datetime
 
 from .. import config
+from . import capture_events
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ def _write(state: dict) -> None:
         temporary.write_text(json.dumps(state, indent=2, ensure_ascii=False))
         os.replace(temporary, path)
         _state = state
+    capture_events.publish("learned")
 
 
 def _save(notes_state: dict, style: str | None = None) -> None:

@@ -8,15 +8,16 @@ import { useServerStore, useServerUrl } from '@/stores/serverStore';
 const REFETCH_DELAY_MS = 250;
 
 /**
- * Refetch captures and Insights when the server says they changed (beta
- * `network`). Captures dictated on another Mac sharing this server never
- * send this Mac's Tauri `capture:*` events, so without this they wait for
- * the cache to go stale.
+ * Refetch captures and Insights, or everything, when the server says they
+ * changed (beta `network`). Captures dictated, and corrections made, on
+ * another Mac sharing this server never send this Mac's Tauri events, so
+ * without this they wait for the cache to go stale.
  *
  * Only while sharing or using another Mac: alone, the Tauri events say it all.
  * EventSource reconnects by itself, and the server greets each connection
- * with `changed`, so whatever was missed while it was down is fetched. The
- * stream's `peers` event keeps the list of connected Macs (lib/macs.ts).
+ * with `changed` and `learned`, so whatever was missed while it was down is
+ * fetched. The stream's `peers` event keeps the list of connected Macs
+ * (lib/macs.ts).
  *
  * Call once from the main app shell.
  */
@@ -37,12 +38,19 @@ export function useCaptureEvents(ready: boolean) {
     void readThisMac().then(() => {
       if (closed) return;
       source = new EventSource(withMacParams(new URL(`${serverUrl}/captures/events`)));
-      source.addEventListener('changed', () => {
+      // `changed`: captures. `learned`: anything else, like corrections, the
+      // dictionary, styles and what Kass learned, so everything refetches.
+      let everything = false;
+      const refetch = (all: boolean) => {
+        everything ||= all;
         clearTimeout(timer);
         timer = setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['captures'] });
+          queryClient.invalidateQueries(everything ? undefined : { queryKey: ['captures'] });
+          everything = false;
         }, REFETCH_DELAY_MS);
-      });
+      };
+      source.addEventListener('changed', () => refetch(false));
+      source.addEventListener('learned', () => refetch(true));
       source.addEventListener('peers', (event) => {
         try {
           setConnected(JSON.parse(event.data) as Mac[]);

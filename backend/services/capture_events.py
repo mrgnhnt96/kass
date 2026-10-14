@@ -1,16 +1,20 @@
 """
-Tells every connected app when the captures table changes.
+Tells every connected app when what it shows changes.
 
 A Mac sharing its Kass (beta ``network``) has apps on other Macs reading its
-captures, and they don't hear the Tauri events the dictating Mac sends. So
-the server announces each committed change itself, over ``GET
-/captures/events``, and the apps refetch their captures and Insights. The
-stream also says which Macs have an app listening, so the apps know when
-another Mac is connected.
+captures, corrections and learning, and they don't hear the Tauri events the
+dictating Mac sends. So the server announces each committed change itself,
+over ``GET /captures/events``: ``changed`` when captures change, so the apps
+refetch their captures and Insights, and ``learned`` when anything else does
+(corrections, the dictionary, styles, what Kass learned), so they refetch
+everything. The stream also says which Macs have an app listening, so the
+apps know when another Mac is connected.
 
-Changes are noticed at the session, not in each route: dictation, commands,
-refinement, retention and the rest all commit through SQLAlchemy, often from
-worker threads, so one hook covers them all.
+Database changes are noticed at the session, not in each route: dictation,
+commands, refinement, retention and the rest all commit through SQLAlchemy,
+often from worker threads, so one hook covers them all. Learning kept in
+files outside the database calls :func:`publish` with ``learned`` when it
+saves.
 """
 
 import asyncio
@@ -28,8 +32,8 @@ from ..utils.macs import Mac
 
 logger = logging.getLogger(__name__)
 
-# Commits pending since the last flush, per session: True once one touched captures.
-_SESSION_FLAG = "kass_captures_changed"
+# Events a session's pending commit will send, once it commits.
+_SESSION_KINDS = "kass_change_kinds"
 
 _lock = threading.Lock()
 _listeners: set["_Listener"] = set()
@@ -50,34 +54,35 @@ class _Listener:
         self.wake.set()
 
 
-def _touches_captures(session: Session) -> bool:
-    return any(isinstance(obj, Capture) for obj in (*session.new, *session.dirty, *session.deleted))
+def _kind(cls: type) -> str:
+    return "changed" if cls is Capture else "learned"
+
+
+def _note(session: Session, kinds) -> None:
+    session.info.setdefault(_SESSION_KINDS, set()).update(kinds)
 
 
 def _before_flush(session: Session, _context, _instances) -> None:
-    if _touches_captures(session):
-        session.info[_SESSION_FLAG] = True
+    _note(session, {_kind(type(obj)) for obj in (*session.new, *session.dirty, *session.deleted)})
 
 
 def _do_orm_execute(state) -> None:
     # Bulk updates and deletes (history retention) skip the flush.
-    if (state.is_update or state.is_delete) and any(
-        mapper.class_ is Capture for mapper in state.all_mappers
-    ):
-        state.session.info[_SESSION_FLAG] = True
+    if state.is_update or state.is_delete:
+        _note(state.session, {_kind(mapper.class_) for mapper in state.all_mappers})
 
 
 def _after_commit(session: Session) -> None:
-    if session.info.pop(_SESSION_FLAG, False):
-        publish()
+    for kind in sorted(session.info.pop(_SESSION_KINDS, ())):
+        publish(kind)
 
 
 def _after_rollback(session: Session) -> None:
-    session.info.pop(_SESSION_FLAG, None)
+    session.info.pop(_SESSION_KINDS, None)
 
 
 def install() -> None:
-    """Watch every session for capture changes. Safe to call more than once."""
+    """Watch every session for changes. Safe to call more than once."""
     for name, fn in (
         ("before_flush", _before_flush),
         ("do_orm_execute", _do_orm_execute),
@@ -89,7 +94,8 @@ def install() -> None:
 
 
 def publish(kind: str = "changed") -> None:
-    """Tell every listener the captures (``changed``) or connected Macs (``peers``) changed. Any thread."""
+    """Tell every listener the captures (``changed``), anything else it shows
+    (``learned``) or the connected Macs (``peers``) changed. Any thread."""
     with _lock:
         listeners = list(_listeners)
     for listener in listeners:
@@ -111,8 +117,9 @@ def _event(kind: str) -> str:
 
 
 async def subscribe(mac: Mac | None = None, keepalive_s: float = 15.0):
-    """Yield Server-Sent Events: ``changed`` when captures change, ``peers`` with
-    the Macs listening when that changes, and comments to keep the line open."""
+    """Yield Server-Sent Events: ``changed`` when captures change, ``learned``
+    when anything else the apps show does, ``peers`` with the Macs listening
+    when that changes, and comments to keep the line open."""
     listener = _Listener(asyncio.get_running_loop(), mac)
     with _lock:
         _listeners.add(listener)
@@ -120,6 +127,7 @@ async def subscribe(mac: Mac | None = None, keepalive_s: float = 15.0):
     try:
         # Says the stream is up, so an app that reconnects refetches what it missed.
         yield _event("changed")
+        yield _event("learned")
         while True:
             try:
                 await asyncio.wait_for(listener.wake.wait(), timeout=keepalive_s)
