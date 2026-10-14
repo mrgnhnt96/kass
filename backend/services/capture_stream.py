@@ -77,6 +77,7 @@ from .phrase_seams import (
     continue_phrase,
     continues_sentence,
     join_phrases,
+    keep_raw_capitals,
     load_word_data,
     match_raw_start,
     open_phrase,
@@ -732,6 +733,8 @@ class StreamingCapture:
     def close_dictation(self, text, closed=None, learned=None):
         closed = self.cleanup_closed if closed is None else closed
         closed = close_phrase(text) if closed else text
+        # Before the style, which may start sentences in lowercase on purpose.
+        closed = keep_raw_capitals(closed, self.raw, self.names)
         # Phrases were styled one at a time; habits like a dropped final period
         # only apply once the whole dictation is joined.
         if self.flags.punctuation_style == "learned":

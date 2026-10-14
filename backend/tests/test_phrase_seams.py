@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.services.phrase_seams import close_phrase, join_phrases, open_phrase
+from backend.services.phrase_seams import close_phrase, join_phrases, keep_raw_capitals, open_phrase
 
 
 @pytest.mark.parametrize(
@@ -202,3 +202,49 @@ def test_mid_sentence_capitals_treats_each_line_as_a_start():
     from backend.services.phrase_seams import mid_sentence_capitals
 
     assert mid_sentence_capitals("Hi,\nThanks for asking Morgan") == {"Morgan"}
+
+
+# Capture c5f17de8: a run-on past the settle bound, cleaned as a tail that
+# continued the sentence, came back in lowercase after a period it added.
+_RUN_ON_RAW = (
+    "There are A lot of dictations on Kass now from my work machine and this machine, there has been a couple of "
+    "times on my work machine where I was using my AirPods and the output came out really, really poor and then "
+    "there are some times where I pause and add a correction and the correction is there, but it didn't actually "
+    "remove the previous text that I wanted to remove will you go take a look at the dictations and the outputs "
+    "and figure out what else we can do to improve Kass?"
+)
+
+
+def test_keep_raw_capitals_restores_what_cleanup_lowercased():
+    cleaned = (
+        "There has been a couple of times on my work machine where I was using my AirPods and the output came out "
+        "really, really poor. and then there are some times where i pause and add a correction and the correction "
+        "is there, but it didn't actually remove the previous text that i wanted to remove will you go take a look "
+        "at the dictations and the outputs and figure out what else we can do to improve kass?"
+    )
+    assert keep_raw_capitals(cleaned, _RUN_ON_RAW) == (
+        "There has been a couple of times on my work machine where I was using my AirPods and the output came out "
+        "really, really poor. And then there are some times where I pause and add a correction and the correction "
+        "is there, but it didn't actually remove the previous text that I wanted to remove will you go take a look "
+        "at the dictations and the outputs and figure out what else we can do to improve Kass?"
+    )
+
+
+@pytest.mark.parametrize(
+    ("cleaned", "raw", "expected"),
+    [
+        # Contractions of "I" too.
+        ("so i'm in and i'll see", "So I'm in and I'll see", "so I'm in and I'll see"),
+        # Abbreviations, ellipses and links are not sentence ends or names.
+        ("i.e. the U.S. and etc. and so... and then", "I said", "i.e. the U.S. and etc. and so... and then"),
+        ("go to kass.mrgnhnt.com now", "go to Kass now", "go to kass.mrgnhnt.com now"),
+        # A quote or a capital inside the word keeps its shape.
+        ('Done. "ok" she said. iPhone works.', "I", 'Done. "Ok" she said. iPhone works.'),
+        # A capital Whisper gave a common word after a pause isn't a name.
+        ("it broke and the fix works", "it broke And the fix works", "it broke and the fix works"),
+        # A transcript that writes "i" in lowercase (code) keeps it.
+        ("for i in range", "for i in range", "for i in range"),
+    ],
+)
+def test_keep_raw_capitals(cleaned, raw, expected):
+    assert keep_raw_capitals(cleaned, raw) == expected

@@ -259,6 +259,58 @@ def continue_after_seam(before: str, phrase: str, earlier: str, names: frozenset
     return before[:-1], phrase
 
 
+# A period after these ends an abbreviation, not a sentence.
+_ABBREVIATIONS = frozenset(("mr", "mrs", "ms", "dr", "st", "vs", "etc", "jr", "sr", "prof", "inc", "ltd", "approx"))
+# "I" and its contractions, as a whole word: not "i.e." or "i18n".
+_LOWER_I = re.compile(r"(?<![\w'\u2019.@/-])i(?=(?:['\u2019](?:m|d|ll|ve|re))?(?![\w'\u2019-])(?!\.\w))")
+_SENTENCE_END = re.compile(r"[^\W\d_][\"')\]\u201d\u2019]*[.?!][\"')\]\u201d\u2019]*$")
+
+
+def _is_name(word: str, names: frozenset[str]) -> bool:
+    if word in names or _keeps_capital(word):
+        return True
+    key = word.casefold().replace("\u2019", "'")
+    return key not in _SENTENCE_OPENERS and key.split("'")[0] not in _SENTENCE_OPENERS and not _common_word(word)
+
+
+def _ends_sentence(token: str) -> bool:
+    """Whether ``token`` ends a sentence: not "...", "U.S." or "etc."."""
+    if not _SENTENCE_END.search(token) or re.search(r"\.\.|\u2026", token):
+        return False
+    word = token.rstrip("\"')]\u201d\u2019.?!")
+    return "." not in word and word.casefold() not in _ABBREVIATIONS
+
+
+def keep_raw_capitals(text: str, raw: str, names: frozenset[str] = frozenset()) -> str:
+    """Undo lowercasing that cleanup or a seam did against ``raw``, the transcript.
+
+    Told a text that continues a sentence, cleanup may write the rest of it in
+    lowercase, "i" included, and after a sentence it ends itself. Whatever the
+    cause: "I" stays capitalized wherever the transcript has it, a name the
+    transcript capitalizes mid-sentence keeps its capital everywhere, and a
+    sentence after ``.``, ``?`` or ``!`` starts with a capital. A style that
+    starts sentences in lowercase applies after this.
+    """
+    if re.search(r"(?<![\w'\u2019])I(?![\w-])", raw) and not _LOWER_I.search(raw):
+        text = _LOWER_I.sub("I", text)
+    for name in mid_sentence_capitals(raw):
+        if name != "I" and not name.startswith(("I'", "I\u2019")) and _is_name(name, names):
+            lower = re.escape(name.lower())
+            text = re.sub(rf"(?<![\w'\u2019.@/-]){lower}(?![\w-])(?!\.\w)", name, text)
+    parts = re.split(r"(\s+)", text)
+    for index in range(2, len(parts), 2):
+        token = parts[index]
+        word = _first_word(token)
+        if (
+            word
+            and word.islower()
+            and token.lstrip("\"'(\u201c\u2018").startswith(word)
+            and _ends_sentence(parts[index - 2])
+        ):
+            parts[index] = token.replace(word, word[0].upper() + word[1:], 1)
+    return "".join(parts)
+
+
 def close_phrase(text: str) -> str:
     """End a finished dictation that was left open at its last pause.
 

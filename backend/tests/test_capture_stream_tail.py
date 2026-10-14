@@ -329,3 +329,25 @@ async def test_a_line_break_settled_at_is_not_doubled(tmp_path, monkeypatch):
     session.close()
     assert session.refined == "Here is a list:\nBananas and peppers."
     assert prompts[-1] == "new line, bananas and peppers."
+
+
+@pytest.mark.asyncio
+async def test_a_tail_cleaned_in_lowercase_keeps_the_transcripts_capitals(tmp_path, monkeypatch):
+    # Capture c5f17de8: told the tail continued a sentence, cleanup wrote it
+    # all in lowercase after the period it had put before it.
+    refine, _ = scripted(
+        {
+            "the output came out really poor": "The output came out really poor.",
+            "the output came out really poor and then I pause and Kass keeps it": (
+                "The output came out really poor. and then i pause and kass keeps it."
+            ),
+            "and then I pause and Kass keeps it": "and then i pause and kass keeps it.",
+        }
+    )
+    session, _ = refining_session(tmp_path, monkeypatch, refine)
+    await session.accept("the output came out really poor", paused=True)
+    session.finish()
+    await session.accept("and then I pause and Kass keeps it")
+    await session.run()
+    session.close()
+    assert session.refined == "The output came out really poor. And then I pause and Kass keeps it."
