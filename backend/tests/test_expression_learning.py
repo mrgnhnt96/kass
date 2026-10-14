@@ -100,11 +100,30 @@ def test_a_learned_rule_slows_down_until_plain_words_rarely_pass():
 
 
 def test_a_stretch_written_plainly_again_is_not_drawn_out_again():
-    captures = [capture("a", ("That was really faaar away.", 0.5), shapes=[("far", 3.4, 2.0, 0.4)])]
+    captures = [capture("a", ("That was really faaar away.", 0.5), shapes=[("far", 7.4, 2.0, 0.4)])]
     edits = {"a": "That was really far away."}
     rule = learn(gather(captures, edits)).rule
-    assert not rule.holds(dict(word="far", stretch=3.4, louder=2.0, plateau=0.4))
-    assert rule.pace == pytest.approx(3.5)
+    assert not rule.holds(dict(word="far", stretch=7.4, louder=2.0, plateau=0.4))
+    assert rule.pace == pytest.approx(7.5)
+
+
+def test_a_redictation_makes_the_rules_stricter_never_looser():
+    captures = [
+        capture("a", ("This is way better.", 0.5), shapes=[("way", 2.2, 0.9, 0.25)]),
+        capture("b", ("That was so good.", 0.5), shapes=[("so", 2.6, 1.2, 0.3)]),
+        capture("c", ("That's great news.", 2.0)),
+        capture("d", ("We did it.", 2.2)),
+    ]
+    edits = {"a": "This is wayyy better.", "b": "That was sooo good.", "c": "That's great news!", "d": "We did it!"}
+    assert learn(gather(captures, edits, frozenset(edits))) == Learned()
+    stricter = [
+        capture("e", ("That was really faaar away.", 0.5), shapes=[("far", 7.4, 2.0, 0.4)]),
+        capture("f", ("That's great news!", 2.7)),
+    ]
+    edits = {"e": "That was really far away.", "f": "That's great news."}
+    learned = learn(gather(stricter, edits, frozenset(edits)))
+    assert learned.rule.pace == pytest.approx(7.5)
+    assert learned.cutoff == pytest.approx(2.95)
 
 
 @pytest.fixture
@@ -152,6 +171,29 @@ def test_learned_from_the_newest_report_of_each_capture(database):
         db.add(CaptureFeedback(capture_id="a", target="raw", expected_text="that's great news", snapshot="{}"))
         db.commit()
     assert expression_learning.load().cutoff == pytest.approx(1.75)
+
+
+def test_a_redictation_report_teaches_only_stricter_rules(database):
+    with database() as db:
+        add_capture(db, "a", said(("That's great news.", 2.0)), "That's great news.")
+        add_capture(db, "b", said(("We did it.", 2.2)), "We did it.")
+        add_capture(db, "c", said(("That's great news!", 2.7)), "That's great news!")
+        db.flush()
+        start = datetime(2026, 10, 5)
+        reports = [("a", "That's great news!"), ("b", "We did it!"), ("c", "That's great news.")]
+        for minute, (capture_id, text) in enumerate(reports):
+            db.add(
+                CaptureFeedback(
+                    capture_id=capture_id,
+                    target="refined",
+                    expected_text=text,
+                    snapshot="{}",
+                    source="redictation",
+                    created_at=start + timedelta(minutes=minute),
+                )
+            )
+        db.commit()
+    assert expression_learning.load().cutoff == pytest.approx(2.95)
 
 
 def test_unreadable_measurements_are_skipped(database):

@@ -10,6 +10,9 @@ their text, in Captures or by voice:
 - A word they write drawn out ("way" to "wayyy") teaches what their own
   stretches sound like; one they write plainly again stops it.
 
+A redictation is weaker evidence (the user may only have reworded): it can
+make the rules stricter, never looser.
+
 The rule never moves on one edit, and never so far that more than a few of
 the speaker's own plain sentences or words would change. Learning goes on
 with "Write how it was said" off; only applying it waits for the switch.
@@ -107,11 +110,14 @@ def _shape(saved: list) -> dict:
     return dict(word=word, stretch=stretch, louder=louder, plateau=plateau)
 
 
-def gather(captures: list[tuple[str, dict, str]], edits: dict[str, str]) -> Evidence:
+def gather(
+    captures: list[tuple[str, dict, str]], edits: dict[str, str], redictated: frozenset[str] = frozenset()
+) -> Evidence:
     """Evidence from each capture's saved measurements and, for an edited one, its text as the user left it.
 
     ``captures`` are (id, measured, text delivered); ``edits`` maps a capture
-    id to its edited text.
+    id to its edited text. An edit in ``redictated`` counts only where it
+    makes the rules stricter.
     """
     evidence = Evidence()
     for capture_id, measured, delivered in captures:
@@ -122,27 +128,31 @@ def gather(captures: list[tuple[str, dict, str]], edits: dict[str, str]) -> Evid
         if edited is None:
             evidence.plain += [sentence["energy"] for sentence in written if _ending(sentence["text"]) == "."]
             continue
+        strict_only = capture_id in redictated
         endings = {_words_key(sentence): _ending(sentence) for sentence in _sentences(edited)}
         for sentence in written:
             before, after = _ending(sentence["text"]), endings.get(_words_key(sentence["text"]))
             if before == "." and after == "!":
-                evidence.wanted.append(sentence["energy"])
+                if not strict_only:
+                    evidence.wanted.append(sentence["energy"])
             elif before == "!" and after == ".":
                 evidence.unwanted.append(sentence["energy"])
             elif before == "." and after == ".":
                 evidence.plain.append(sentence["energy"])
-        _gather_stretches(evidence, capture_id, shapes, delivered, edited)
+        _gather_stretches(evidence, capture_id, shapes, delivered, edited, strict_only)
     return evidence
 
 
-def _gather_stretches(evidence: Evidence, capture_id: str, shapes: list[dict], delivered: str, edited: str) -> None:
+def _gather_stretches(
+    evidence: Evidence, capture_id: str, shapes: list[dict], delivered: str, edited: str, strict_only: bool
+) -> None:
     before, after = delivered.split(), edited.split()
     matcher = difflib.SequenceMatcher(None, [_plain(w) for w in before], [_plain(w) for w in after], autojunk=False)
     for block in matcher.get_matching_blocks():
         for offset in range(block.size):
             was, now = before[block.a + offset], after[block.b + offset]
             drawn_before, drawn_now = bool(_DRAWN.search(was)), bool(_DRAWN.search(now))
-            if drawn_before == drawn_now:
+            if drawn_before == drawn_now or (drawn_now and strict_only):
                 continue
             # The most drawn-out reading of that word in the recording.
             found = [(index, shape) for index, shape in enumerate(shapes) if _plain(shape["word"]) == _plain(was)]
@@ -225,28 +235,32 @@ def load() -> Learned:
         )
         reports = (
             db.query(
-                CaptureFeedback.capture_id, CaptureFeedback.expected_text, Capture.prosody, Capture.transcript_refined
+                CaptureFeedback.capture_id,
+                CaptureFeedback.expected_text,
+                CaptureFeedback.source,
+                Capture.prosody,
+                Capture.transcript_refined,
             )
             .join(Capture, Capture.id == CaptureFeedback.capture_id)
-            .filter(
-                CaptureFeedback.target == "refined",
-                CaptureFeedback.source.in_(CaptureFeedback.EXPLICIT_SOURCES),
-                Capture.prosody.isnot(None),
-            )
+            .filter(CaptureFeedback.target == "refined", Capture.prosody.isnot(None))
             .order_by(CaptureFeedback.created_at, CaptureFeedback.id)
             .all()
         )
-    captures, edits = {}, {}
+    captures, edits, redictated = {}, {}, set()
     for capture_id, saved, delivered in recent:
         captures[capture_id] = (saved, delivered)
-    for capture_id, expected, saved, delivered in reports:
+    for capture_id, expected, source, saved, delivered in reports:
         captures[capture_id] = (saved, delivered)
         # Reports stack: the newest is the text as the user left it.
         edits[capture_id] = expected
+        if source in CaptureFeedback.EXPLICIT_SOURCES:
+            redictated.discard(capture_id)
+        else:
+            redictated.add(capture_id)
     measured = []
     for capture_id, (saved, delivered) in captures.items():
         try:
             measured.append((capture_id, json.loads(saved), delivered or ""))
         except ValueError:
             continue
-    return learn(gather(measured, edits))
+    return learn(gather(measured, edits, frozenset(redictated)))

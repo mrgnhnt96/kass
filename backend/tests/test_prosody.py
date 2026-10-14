@@ -104,17 +104,17 @@ def test_baseline_needs_enough_statements():
 
 
 TEXT = "That was really far away from the old house."
-TIMES = [0.0, 0.2, 0.4, 0.6, 1.3, 1.6, 1.8, 2.0, 2.3, 3.0]
+TIMES = [0.0, 0.2, 0.4, 0.6, 1.9, 2.2, 2.4, 2.6, 2.9, 3.6]
 
 
 def far_said(louder=6.0):
-    """3 s of voice at 150 Hz with a break every fifth frame, except a
-    steady half second in "far", which is also louder."""
-    hz = np.full(300, 150.0)
-    hz[np.arange(300) % 5 == 4] = np.nan
+    """3.6 s of voice at 150 Hz with a break every fifth frame, except a
+    steady half second in "far", which is also louder and lasts 1.3 s."""
+    hz = np.full(360, 150.0)
+    hz[np.arange(360) % 5 == 4] = np.nan
     hz[70:120] = 150.0
-    db = np.full(300, -20.0)
-    db[60:130] += louder
+    db = np.full(360, -20.0)
+    db[60:190] += louder
     words = [Word(text, start, end) for text, start, end in zip(TEXT.split(), TIMES, TIMES[1:], strict=False)]
     return Frames(hz, db), words
 
@@ -131,7 +131,7 @@ def test_a_long_loud_steady_word_is_drawn_out():
     (stretched,) = measured["stretched"]
     assert stretched["word"] == "far"
     assert stretched["index"] == 3
-    assert stretched["written"] == "faaar"
+    assert stretched["written"] == "faaaaar"
 
 
 def test_a_long_word_said_no_louder_is_not():
@@ -315,7 +315,7 @@ def test_a_drawn_out_word_is_written_drawn_out_where_the_text_kept_it():
     voice = Voice(frames, words)
     stretched = prosody.measure_voice(voice, None)["stretched"]
     assert stretch("That was really far away from the old house.", voice, stretched) == (
-        "That was really faaar away from the old house."
+        "That was really faaaaar away from the old house."
     )
     # The cleanup wrote another word: nothing to draw out.
     assert stretch("That was really distant from the old house.", voice, stretched) == (
@@ -342,8 +342,24 @@ def test_a_speakers_own_rule_can_draw_out_more():
     assert [word["word"] for word in prosody.measure_voice(voice, None, rule)["stretched"]] == ["far"]
 
 
+@pytest.mark.parametrize(
+    "shape",
+    [
+        # Thinking drawls from real dictations, measured the same way.
+        dict(word="name", stretch=3.54, louder=1.68, plateau=0.46),
+        dict(word="forward", stretch=3.77, louder=2.57, plateau=0.35),
+        dict(word="learn", stretch=3.81, louder=3.13, plateau=0.48),
+        dict(word="seeing", stretch=5.45, louder=2.84, plateau=0.36),
+        dict(word="mode", stretch=5.7, louder=7.2, plateau=0.45),
+        dict(word="code", stretch=6.38, louder=4.03, plateau=0.44),
+    ],
+)
+def test_a_thinking_drawl_is_not_drawn_out_by_default(shape):
+    assert not prosody.StretchRule().holds(shape)
+
+
 def test_a_closed_class_word_is_drawn_out_only_by_a_speakers_own_rule():
-    shape = dict(word="so", stretch=4.0, louder=3.0, plateau=0.4)
+    shape = dict(word="so", stretch=8.0, louder=3.0, plateau=0.4)
     assert not prosody.StretchRule().holds(shape)
     assert prosody.StretchRule(words=frozenset(["so"])).holds(shape)
 
