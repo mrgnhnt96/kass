@@ -4,7 +4,7 @@ import re
 
 _CUE = re.compile(
     r"\b(?:no(?:[,\s]+no)+(?:[,\s]+(?:actually|wait))?|"
-    r"no\s*,?\s*(?:actually|wait)|wait\s*,?\s*no|(?:sorry\s*,?\s*)?I mean)\b[\s,]*",
+    r"no\s*,?\s*(?:actually|wait)|wait\s*,?\s*no|(?:sorry\s*,?\s*)?I meant?|or rather)\b[\s,]*",
     re.I,
 )
 _WORD = re.compile(r"\w+(?:['\u2019]\w+)*")
@@ -109,4 +109,104 @@ def apply_spoken_corrections(text: str) -> str | None:
             replacement = replacement[:1].upper() + replacement[1:]
         result = before[:start] + replacement
         changed = True
+    return None
+
+
+# Cues that only ever take words back.
+_RETRACTION = re.compile(
+    r"\b(?:no[,\s]+(?:no|wait|actually)|wait[,\s]+no|scratch that|make that|I meant|or rather|sorry[,\s]+I mean)\b",
+    re.I,
+)
+# Cues that open a correction, and also an answer or a new thought.
+_OPENING_CUE = re.compile(r"^(?:(?:no|nope|wait|sorry|oops|actually|I mean)\b[\s,.!-]*)+", re.I)
+# After a cue, these continue the thought instead of replacing words.
+_CONTINUES = re.compile(r"(?:unless|if|because|but|and|so|since|though|although|when|until|that['’]s)\b", re.I)
+# A bare replacement value ("Wednesday", "it's the blue one") is this short.
+_REPLACEMENT_WORDS = 4
+_FUNCTION_WORDS = frozenset(
+    [
+        "a",
+        "an",
+        "the",
+        "i",
+        "i'm",
+        "we",
+        "you",
+        "he",
+        "she",
+        "they",
+        "it",
+        "it's",
+        "my",
+        "our",
+        "your",
+        "their",
+        "to",
+        "of",
+        "in",
+        "on",
+        "at",
+        "for",
+        "with",
+        "and",
+        "or",
+        "but",
+        "so",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "do",
+        "did",
+        "want",
+        "need",
+        "think",
+        "that",
+        "this",
+        "there",
+        "then",
+        "just",
+    ]
+)
+
+
+def _restates(phrase: list[str], earlier: list[str], anchor: int) -> bool:
+    """Whether ``phrase`` opens by repeating ``anchor`` or more earlier words, then says something else in their place."""
+    run = phrase[:anchor]
+    if len(run) < anchor or all(word in _FUNCTION_WORDS for word in run):
+        return False
+    for start in range(len(earlier) - anchor):
+        if earlier[start : start + anchor] != run:
+            continue
+        shared = anchor
+        while shared < len(phrase) and start + shared < len(earlier) and earlier[start + shared] == phrase[shared]:
+            shared += 1
+        if shared < len(phrase) and start + shared < len(earlier):
+            return True
+    return False
+
+
+def retracted_by(phrase: str, earlier: str) -> str | None:
+    """What ``phrase``, said after ``earlier``, may take back: ``earlier`` and the cue; None if it corrects nothing.
+
+    A retraction cue always corrects. A cue that can also open an answer or
+    a new thought ("No, unless...") does only when a short replacement value
+    follows, or the rest restates earlier words with a change. Without a cue
+    the phrase must restate three earlier words, one of them a content word,
+    and then differ.
+    """
+    phrase = phrase.strip()
+    if retraction := _RETRACTION.search(phrase):
+        return f"{earlier} {phrase[: retraction.end()]}"
+    previous = _words(earlier)
+    cue = _OPENING_CUE.match(phrase)
+    if not cue:
+        return earlier if _restates(_words(phrase), previous, 3) else None
+    rest = phrase[cue.end() :]
+    words = _words(rest)
+    if not words or _CONTINUES.match(rest):
+        return None
+    if len(words) <= _REPLACEMENT_WORDS or _restates(words, previous, 2):
+        return f"{earlier} {phrase[: cue.end()]}"
     return None
