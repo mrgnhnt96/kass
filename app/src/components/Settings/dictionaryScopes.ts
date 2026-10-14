@@ -164,13 +164,14 @@ export function newPhrase(
   return { written: written.trim(), spoken: spoken.trim(), places, phrase: true };
 }
 
-/** What a row notes beside its word: added by a spoken fix, or fixed only where spelled exactly. */
-export type EntryNote = 'spokenFix' | 'exact' | null;
+/** What a row notes beside its word: added by a spoken fix or a correction, or fixed only where spelled exactly. */
+export type EntryNote = 'spokenFix' | 'correction' | 'exact' | null;
 
 export function entryNote(
   entry: Partial<Pick<DictionaryEntry, 'match_sound' | 'source'>>,
 ): EntryNote {
   if (entry.source === 'spoken_fix') return 'spokenFix';
+  if (entry.source === 'correction') return 'correction';
   return entry.match_sound === false ? 'exact' : null;
 }
 

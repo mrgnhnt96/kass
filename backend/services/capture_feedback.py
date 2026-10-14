@@ -3,11 +3,12 @@
 import json
 import logging
 
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from ..database.models import CaptureFeedback
 from ..models import CaptureFeedbackCreate, CaptureFeedbackResponse
-from . import correction_learning, known_names, personal_examples, writing_style
+from . import correction_learning, dictionary, known_names, personal_examples, writing_style
 from .captures import get_capture
 from .spelling import join_spelling
 from .text_merge import take_back
@@ -66,8 +67,21 @@ def save_feedback(capture_id: str, request: CaptureFeedbackCreate, db: Session, 
     db.add(row)
     db.commit()
     db.refresh(row)
+    if replaced is not None:
+        dictionary.delete_added_by(db, replaced.id)
+    _learn_words(row, original, db)
     _reports_changed(row.target, row.source, db, withdrawn=replaced is not None)
     return to_response(row)
+
+
+def _learn_words(row: CaptureFeedback, original: str, db: Session) -> None:
+    """A word the user fixed goes in the dictionary, so it isn't misheard again."""
+    if row.source not in CaptureFeedback.EXPLICIT_SOURCES:
+        return
+    try:
+        dictionary.add_corrected_words(db, original, row.expected_text, row.id)
+    except Exception:
+        logger.warning("Could not add the corrected words to the dictionary", exc_info=True)
 
 
 def latest_feedback(db: Session, capture_id: str, target: str) -> CaptureFeedback | None:
@@ -113,6 +127,11 @@ def withdraw_feedback(capture_id: str, report_id: str, db: Session) -> bool:
             newer.expected_text = text
     db.delete(row)
     db.commit()
+    dictionary.delete_added_by(db, row.id)
+    # A newer report that still has the fix keeps its word.
+    for newer in stack[at + 1 :]:
+        if inspect(newer).persistent:
+            _learn_words(newer, original, db)
     for target, source in changed:
         _reports_changed(target, source, db, withdrawn=True)
     return True
@@ -122,8 +141,6 @@ def forget_capture(capture_id: str, db: Session) -> None:
     """Before a capture the user deletes goes: withdraw its own reports and
     the ones it filed as a voice edit, with everything they taught, and the
     words it spelled into the dictionary. Commits."""
-    from . import dictionary
-
     rows = (
         db.query(CaptureFeedback)
         .filter((CaptureFeedback.capture_id == capture_id) | (CaptureFeedback.filed_by == capture_id))
@@ -136,6 +153,8 @@ def forget_capture(capture_id: str, db: Session) -> None:
     for target, source in changed:
         _reports_changed(target, source, db, withdrawn=True)
     dictionary.delete_added_by(db, capture_id)
+    for row in rows:
+        dictionary.delete_added_by(db, row.id)
 
 
 def _reports_changed(target: str, source: str, db: Session, withdrawn: bool = False) -> None:

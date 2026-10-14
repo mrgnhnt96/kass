@@ -216,3 +216,65 @@ def test_http_withdraw_removes_only_that_report():
             assert client.delete(f"/captures/take/feedback/{withdrawn.id}").status_code == 404
         assert [report.id for report in list_feedback(session)] == [kept.id]
     engine.dispose()
+
+
+def _misheard(db):
+    db.add(
+        Capture(
+            id="pikto",
+            audio_path="captures/pikto.wav",
+            source="dictation",
+            transcript_raw="test that Pikto works",
+            transcript_refined="Test that Pikto works.",
+        )
+    )
+    db.commit()
+    return CaptureFeedbackCreate(
+        snapshot=get_capture("pikto", db), target="refined", expected_text="Test that Picto works."
+    )
+
+
+def _words(db):
+    from backend.services import dictionary
+
+    return [(group.written, group.source) for group in dictionary.list_groups(db)]
+
+
+@pytest.fixture(autouse=True)
+def common_words(monkeypatch):
+    from backend.services import phrase_seams
+
+    # The real check reads Whisper's vocabulary and the system word list.
+    monkeypatch.setattr(phrase_seams, "_common_word", lambda word: word.casefold() not in {"pikto", "picto"})
+
+
+def test_a_corrected_word_goes_in_the_dictionary_until_withdrawn(db):
+    report = save_feedback("pikto", _misheard(db), db)
+    assert _words(db) == [("Picto", "correction")]
+    assert withdraw_feedback("pikto", report.id, db)
+    assert _words(db) == []
+
+
+def test_amending_a_correction_keeps_only_the_words_it_still_fixes(db):
+    first = save_feedback("pikto", _misheard(db), db)
+    amended = CaptureFeedbackCreate(
+        snapshot=get_capture("pikto", db), target="refined", expected_text="Test that it works.", replaces=first.id
+    )
+    save_feedback("pikto", amended, db)
+    assert _words(db) == []
+
+
+def test_a_redictation_adds_no_words(db):
+    report = _misheard(db)
+    report.source = "redictation"
+    save_feedback("pikto", report, db)
+    assert _words(db) == []
+
+
+def test_deleting_the_capture_removes_its_corrected_words(db, monkeypatch):
+    from backend import config
+
+    monkeypatch.setattr(config, "resolve_storage_path", lambda _: None)
+    save_feedback("pikto", _misheard(db), db)
+    assert delete_capture("pikto", db)
+    assert _words(db) == []
