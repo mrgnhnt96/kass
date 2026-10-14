@@ -75,7 +75,7 @@ function PhraseMark({ text, phrase }: { text: string; phrase: FiredPhrase }) {
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[280px]" onClick={stop}>
         <DropdownMenuLabel className="flex items-center gap-2 pt-2 pb-1 font-normal">
-          <span className="inline-flex h-[18px] items-center rounded-full bg-accent/10 px-1.5 font-mono text-[10px] text-accent">
+          <span className="inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded-full bg-accent/10 px-1.5 font-mono text-[10px] text-accent">
             {t('captures.phrase.chip')}
           </span>
           <span className="text-xs text-muted-foreground">{t('captures.phrase.from')}</span>
@@ -186,7 +186,7 @@ export function TranscriptCard({
       <div className="flex items-center gap-2">
         <span className="font-mono text-[11px] uppercase tracking-wider text-accent">{label}</span>
         {saved && (
-          <span className="inline-flex h-[18px] items-center rounded-full bg-success/15 px-1.5 font-mono text-[10px] text-success">
+          <span className="inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded-full bg-success/15 px-1.5 font-mono text-[10px] text-success">
             {t('captures.teach.correctedByYou')}
           </span>
         )}
@@ -349,7 +349,7 @@ export function ChangesDisclosure({
         {chips.map((chip) => (
           <span
             key={chip}
-            className="inline-flex h-[18px] items-center rounded-full bg-accent/10 px-1.5 font-mono text-[10px] text-accent"
+            className="inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded-full bg-accent/10 px-1.5 font-mono text-[10px] text-accent"
           >
             {chip}
           </span>
