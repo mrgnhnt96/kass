@@ -6,6 +6,7 @@ pauses is cleaned as one.
 """
 
 import asyncio
+import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -329,6 +330,110 @@ async def test_a_line_break_settled_at_is_not_doubled(tmp_path, monkeypatch):
     session.close()
     assert session.refined == "Here is a list:\nBananas and peppers."
     assert prompts[-1] == "new line, bananas and peppers."
+
+
+def words(text):
+    return re.findall(r"[\w']+", text.lower())
+
+
+def cleaned_or(whole_take=None):
+    """A refine fake that capitalizes and closes each prompt, recording them.
+
+    The whole take, once released, cleans up to ``whole_take``.
+    """
+    prompts = []
+    session = None
+
+    async def refine(prompt, flags, model_size=None):
+        prompts.append(prompt)
+        if whole_take is not None and session.finished and words(prompt) == words(session.raw):
+            return whole_take, "4B"
+        text = prompt.rstrip(" .") + "."
+        return text[0].upper() + text[1:], "4B"
+
+    def attach(value):
+        nonlocal session
+        session = value
+
+    return refine, prompts, attach
+
+
+async def replay(tmp_path, monkeypatch, phrases, whole_take=None):
+    """Each phrase cut at a pause, released during the last one."""
+    refine, prompts, attach = cleaned_or(whole_take)
+    session, _ = refining_session(tmp_path, monkeypatch, refine)
+    attach(session)
+    for phrase in phrases[:-1]:
+        await session.accept(phrase, paused=True)
+    # The correction's target is final already: cleaning the tail can't reach it.
+    assert session.settled
+    session.finish()
+    await session.accept(phrases[-1])
+    await session.run()
+    session.close()
+    return session, prompts
+
+
+# From real takes: a correction said after a pause, once the sentence it
+# corrects was settled. The second value is what the whole take cleans up to.
+CORRECTIONS_AFTER_A_PAUSE = [
+    (["The meeting is on Tuesday. Bring the slides.", "No, the meeting is on Wednesday."], "no"),
+    (["The meeting is on Tuesday. Bring the slides.", "Wait, the meeting is on Wednesday."], "wait"),
+    (["The meeting is on Tuesday. Bring the slides.", "Sorry, Wednesday."], "sorry"),
+    (["The meeting is on Tuesday. Bring the slides.", "I meant the meeting is on Wednesday."], "I meant"),
+    (["The meeting is on Tuesday. Bring the slides.", "Or rather on Wednesday."], "or rather"),
+    # A plain restatement, no cue word.
+    (["The meeting is on Tuesday. Bring the slides.", "The meeting is on Wednesday."], "restated"),
+    # The correction targets a sentence settled before the last one.
+    (
+        [
+            "The meeting is on Tuesday. Bring the slides.",
+            "And the snacks. Ask Sam for cups.",
+            "Sorry, the meeting is on Wednesday.",
+        ],
+        "older",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("phrases", "case"), CORRECTIONS_AFTER_A_PAUSE)
+async def test_a_correction_after_a_pause_cleans_the_whole_take_again(tmp_path, monkeypatch, phrases, case):
+    expected = "The meeting is on Wednesday. Bring the slides."
+    session, prompts = await replay(tmp_path, monkeypatch, phrases, expected)
+    # Either the reopened tail or, for an older target, the whole take.
+    assert words(prompts[-1]) == words(session.raw)
+    assert session.refined == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "phrases",
+    [
+        # "No" answers a question; what follows adds to it and must all stay.
+        ["Can I use your token? I need it today.", "No, unless you replace that token, that token is my personal one."],
+        ["We need to update the docs. Then ship it.", "Then update the docs again."],
+        ["I want to go home. It is late.", "I want to eat first."],
+        ["The fix is merged. We are waiting on QA.", "We ship Thursday."],
+        ["Actually, the fix is merged. We are waiting on QA.", "If nothing comes up we ship Thursday."],
+    ],
+)
+async def test_a_phrase_that_corrects_nothing_does_not_clean_the_whole_take(tmp_path, monkeypatch, phrases):
+    session, prompts = await replay(tmp_path, monkeypatch, phrases, "Lost text.")
+    assert words(session.raw) not in [words(prompt) for prompt in prompts]
+    assert "Lost" not in session.refined
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_whole_take_cleanup_keeps_the_streamed_text(tmp_path, monkeypatch):
+    phrases = ["The meeting is on Tuesday. Bring the slides.", "And the snacks. Ask Sam for cups.", "Sorry, Wednesday."]
+    # Answers with something never said: the content check rejects it.
+    session, prompts = await replay(
+        tmp_path, monkeypatch, phrases, "Here is your text: the party is at the beach on Friday."
+    )
+    assert words(prompts[-1]) == words(session.raw)
+    assert "party" not in session.refined
+    assert words(session.refined) == words(session.raw)
 
 
 @pytest.mark.asyncio

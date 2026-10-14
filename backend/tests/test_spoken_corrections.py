@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.services.refinement import RefinementFlags, refine_transcript
-from backend.services.spoken_corrections import apply_spoken_corrections
+from backend.services.spoken_corrections import apply_spoken_corrections, retracted_by
 
 
 @pytest.mark.parametrize(
@@ -22,6 +22,8 @@ from backend.services.spoken_corrections import apply_spoken_corrections
         ("I want coffee. I mean, I want tea. Bring two cups.", "I want tea. Bring two cups."),
         ("I like climbing. No actually I like coding. No wait I like sailing.", "I like sailing."),
         ("The meeting is on Monday. No actually the meeting is on Friday.", "The meeting is on Friday."),
+        ("The meeting is on Monday. I meant the meeting is on Friday.", "The meeting is on Friday."),
+        ("The meeting is on Monday, or rather the meeting is on Friday.", "The meeting is on Friday."),
     ],
 )
 def test_repeated_clause_corrections(raw, expected):
@@ -144,3 +146,39 @@ async def test_refinement_does_not_invent_a_name_from_a_misheard_phrase(monkeypa
     )
     assert actual == "I'm going to hunt and I like coding."
     backend.generate.assert_not_awaited()
+
+
+EARLIER = "The meeting is on Tuesday. Bring the slides."
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "No, the meeting is on Wednesday.",
+        "Wait, the meeting is on Wednesday.",
+        "Sorry, Wednesday.",
+        "I meant the meeting is on Wednesday.",
+        "Or rather on Wednesday.",
+        "Scratch that, bring the laptop.",
+        "The meeting is on Wednesday.",
+    ],
+)
+def test_a_phrase_that_takes_back_earlier_words(phrase):
+    retracted = retracted_by(phrase, EARLIER)
+    assert retracted is not None
+    assert retracted.startswith(EARLIER)
+
+
+@pytest.mark.parametrize(
+    ("earlier", "phrase"),
+    [
+        ("Can I use your key? I need it today.", "No, unless you replace that key, that key is my personal one."),
+        ("We need to update the docs. Then ship it.", "Then update the docs again."),
+        ("I want to go home. It is late.", "I want to eat first."),
+        ("The fix is merged. We are waiting on QA.", "We ship Thursday."),
+        ("Do you need the slides?", "No, I already have a copy of them from last week."),
+        ("Is it ready?", "Sorry I'm late, the train was slow this morning."),
+    ],
+)
+def test_an_answer_or_new_thought_takes_nothing_back(earlier, phrase):
+    assert retracted_by(phrase, earlier) is None

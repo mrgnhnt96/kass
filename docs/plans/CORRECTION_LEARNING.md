@@ -55,16 +55,25 @@ data. Captures' Undo on a report withdraws it.
   first two thirds propose candidates and the last third is held out from
   candidate generation. With it (beta), every report is evidence as soon as it is
   saved: no chronological hold-out keeps new reports from proposing rules.
-- Learn only one short, spelling-similar vocabulary replacement per report,
-  anchored by an unchanged word on each side. Numeric edits, insertions,
-  deletions, broad rewrites and edits across punctuation do not qualify.
+- Learn only one short, spelling-similar vocabulary replacement per report
+  (one to three words for one to three, compared by letters so a split or
+  join counts: "domain" for "to main"). It is anchored on each side by an
+  unchanged word or, where the edit has none, the start or end of the take:
+  "Commit, merge, domain" teaches "merge domain" → "merge to main" only at
+  the end of a take. A comma may stand for a pause between the anchor and the
+  words and is dropped with them. Numeric edits, insertions, deletions, broad
+  rewrites and edits across other punctuation do not qualify. Rules learned
+  before edges keep matching a word on each side with spaces only.
 - Without the beta, require two distinct training recordings supporting the same
   contextual rule and an improvement on a distinct held-out recording. With it
   (beta), require two distinct recordings whose reports propose the same rule, at
   least one of them an explicit report, and an improvement on a third distinct
   recording; each run checks active rules the same way and drops those that lost
   this support (a withdrawn or deleted report), without blocking them. Match case
-  and language either way.
+  and language either way. Whisper mishears a phrase differently each time, so
+  the third recording may instead be a report that wrote the rule's corrected
+  phrase (its anchors and new words, at the same edge) where its take had
+  something else ("merged, been" → "merge to main").
 - Reject any candidate that increases token edit distance on any saved example,
   changes any user-corrected expected text, or changes the independent unchanged
   examples in `correction_rules.KNOWN_GOOD`.

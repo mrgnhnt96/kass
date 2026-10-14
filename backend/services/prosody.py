@@ -50,7 +50,10 @@ MIN_RUN_FRAMES = 3
 # A word is drawn out (all must hold): this many times the recording's time
 # per syllable, this much louder than its sentence, a steady vowel this long,
 # and neither first nor last in its sentence nor a closed-class word.
-STRETCH_PACE = 3.0
+# The default pace is past a thinking drawl ("naaame", "cooode" said while
+# finding the next words), which sounds just like emphasis: real drawls reached
+# 6.4. A speaker who writes their own stretches teaches a closer rule.
+STRETCH_PACE = 7.0
 STRETCH_LOUDER_DB = 1.5
 STRETCH_PLATEAU_S = (0.3, 0.6)
 
@@ -533,9 +536,10 @@ def _letters(stretch: float) -> int:
 # A sentence said with at least this much energy (spreads above the
 # speaker's statements) ends with "!". On the user's labelled takes, excited
 # sentences scored 2.96–4.07 and everything else 2.03 or less; none of 198
-# ordinary sentences reached it. Strict on purpose: it adapts per user from
-# their edits, never by lowering this (docs/plans/EXPRESSIVE_DICTATION.md).
-EXCLAIM_ENERGY = 2.5
+# ordinary sentences reached it. Later plain sentences reached 2.51 and 2.59, so
+# it sits just under the excited takes. Strict on purpose: it adapts per user
+# from their edits, never by lowering this (docs/plans/EXPRESSIVE_DICTATION.md).
+EXCLAIM_ENERGY = 2.9
 # At least this share of a written sentence's words must be found among the
 # words heard, or it isn't measured (cleanup rewrote it).
 MIN_FOUND = 0.5

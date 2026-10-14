@@ -1497,6 +1497,8 @@
       "note": {
         "spokenFix": "spelled aloud",
         "spokenFixHint": "Added when you spelled it aloud to fix it. Only this exact spelling is fixed; words that sound like it are left alone.",
+        "correction": "from a correction",
+        "correctionHint": "Added when you corrected it in a transcript, so it isn't misheard again. Withdrawing that correction removes it.",
         "exact": "exact spelling",
         "exactHint": "Only this exact spelling is fixed; words that sound like it are left alone."
       }

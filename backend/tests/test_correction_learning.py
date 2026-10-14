@@ -117,6 +117,68 @@ def test_deletions_and_broad_rewrites_are_not_learned(expected):
     assert rules.candidate(rules.Example("1", "1", samples()[0].original, expected, None)) is None
 
 
+def merges(*originals):
+    return [rules.Example(str(i), str(i), original, expected, "en") for i, (original, expected) in enumerate(originals)]
+
+
+def test_an_edit_at_the_end_of_a_take_is_anchored_to_the_end():
+    rule = rules.candidate(merges(("Commit, PR, merge, domain.", "Commit, PR, merge to main."))[0])
+    assert (rule["source"], rule["replacement"], rule["edges"]) == (["merge", "domain"], ["to", "main"], [False, True])
+    compiled = rules.compile_rules([rule])
+    assert rules.apply_rules("Commit and merge, domain", compiled, "en") == "Commit and merge to main"
+    assert rules.apply_rules("Okay merge domain.", compiled, "en") == "Okay merge to main."
+    for text in ("Merge domain names first.", "We merge domain logic, then ship.", "Commit, merge, domains"):
+        assert rules.apply_rules(text, compiled, "en") == text
+
+
+def test_an_edit_at_the_start_or_the_whole_take_is_anchored_to_the_start():
+    rule = rules.candidate(merges(("The market is done", "Mark it is done"))[0])
+    assert (rule["source"], rule["edges"]) == (["The", "market", "is"], [True, False])
+    compiled = rules.compile_rules([rule])
+    assert rules.apply_rules("The market is done", compiled, "en") == "Mark it is done"
+    assert rules.apply_rules("So the market is done", compiled, "en") == "So the market is done"
+    whole = rules.compile_rules([rules.candidate(merges(("Clod.", "Claude."))[0])])
+    assert rules.apply_rules("Clod.", whole, "en") == "Claude."
+    assert rules.apply_rules("Clod hopper.", whole, "en") == "Clod hopper."
+
+
+@pytest.mark.parametrize(
+    ("original", "expected"),
+    [
+        ("Commit, merge, domain", "Commit, merge to bananas"),
+        ("Commit, merge to me", "Commit, merge to main"),
+        ("Run it in src/domain", "Run it in src/to main"),
+        ('Commit, merge, domain "', 'Commit, merge to main "'),
+    ],
+)
+def test_one_sided_edits_still_need_a_similar_spelling_and_plain_words(original, expected):
+    assert rules.candidate(merges((original, expected))[0]) is None
+
+
+@pytest.mark.parametrize("every_report", [False, True])
+def test_a_phrase_misheard_another_way_confirms_a_repeated_fix(every_report):
+    repeated = [
+        ("Commit, merge, domain", "Commit, merge to main"),
+        ("Commit, PR, merge, domain.", "Commit, PR, merge to main."),
+    ]
+    assert rules.evaluate(merges(*repeated), [], every_report=every_report)[0] == []
+    # Whisper heard "merge to main" another way here; the report still wrote it.
+    misheard = ("Commit, PR, merged, been", "Commit, PR, merge to main")
+    selected, metrics = rules.evaluate(merges(*repeated, misheard), [], every_report=every_report)
+    assert [(r["source"], r["replacement"]) for r in selected] == [(["merge", "domain"], ["to", "main"])]
+    assert metrics["accepted"] == 1
+    # The phrase written mid-take is not the end-of-take phrase the rule writes.
+    elsewhere = ("Commit, merged, been then deploy", "Commit, merge to main then deploy")
+    assert rules.evaluate(merges(*repeated, elsewhere), [], every_report=every_report)[0] == []
+
+
+def test_rules_learned_before_edges_keep_matching_as_they_did():
+    legacy = {"id": "old", "source": ["use", "voice", "box", "today"], "replacement": ["Voicebox"], "language": None}
+    compiled = rules.compile_rules([legacy])
+    assert rules.apply_rules("Please use voice box today.", compiled) == "Please use Voicebox today."
+    assert rules.apply_rules("Please use, voice box today.", compiled) == "Please use, voice box today."
+
+
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path}/test.db")

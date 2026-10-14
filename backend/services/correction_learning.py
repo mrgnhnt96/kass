@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from .. import config
 from ..database import session as database_session
 from ..database.models import CaptureFeedback
-from . import spoken_punctuation
+from . import capture_events, spoken_punctuation
 from .correction_rules import MAX_TEXT, Example, apply_rules, compile_rules, evaluate, loss
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,7 @@ def _publish(state):
     _state = state
     _compiled = compiled
     _punctuation = _punctuation_of(state)
+    capture_events.publish("learned")
 
 
 def request_run(retrain=False):

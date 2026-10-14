@@ -20,7 +20,7 @@ from pathlib import Path
 
 from ... import config
 from ...database import session as database_session
-from .. import correction_learning, shared_adapters
+from .. import capture_events, correction_learning, shared_adapters
 from .data import collect, digest, readiness
 from .evaluation import score_rows, score_speech
 
@@ -163,6 +163,7 @@ def _save():
         stream.flush()
         os.fsync(stream.fileno())
     temp.replace(_root / "state.json")
+    capture_events.publish("learned")
 
 
 def status():

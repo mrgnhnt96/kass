@@ -26,8 +26,9 @@ from difflib import SequenceMatcher
 logger = logging.getLogger(__name__)
 
 SCOPES = ("app", "style", "global")
-# Who added an entry: the user, or a word spelled aloud to fix it.
-SOURCES = ("user", "spoken_fix")
+# Who added an entry: the user, a word spelled aloud to fix it, or a word
+# fixed in a correction.
+SOURCES = ("user", "spoken_fix", "correction")
 MAX_ENTRIES = 1000
 MAX_LENGTH = 200
 # What a phrase writes: an address or a sign-off, longer than a word.
@@ -773,13 +774,14 @@ def delete_group(db, group_id: str) -> bool:
 
 
 def delete_added_by(db, capture_id: str) -> None:
-    """Remove the words a voice edit capture spelled into the dictionary,
-    except those the user has edited since (they are theirs then)."""
+    """Remove the words a voice edit capture spelled, or a report corrected
+    (``capture_id`` is the report's id then), into the dictionary, except
+    those the user has edited since (they are theirs then)."""
     from ..database.models import DictionaryEntry
 
     rows = (
         db.query(DictionaryEntry)
-        .filter(DictionaryEntry.added_by == capture_id, DictionaryEntry.source == "spoken_fix")
+        .filter(DictionaryEntry.added_by == capture_id, DictionaryEntry.source.in_(("spoken_fix", "correction")))
         .all()
     )
     if not rows:
@@ -889,3 +891,65 @@ def add_spelled_word(
     except ValueError:
         logger.warning("Could not add the spelled word %r to the dictionary", written, exc_info=True)
         return None
+
+
+# -- words fixed in a correction ---------------------------------------------------
+
+# A word written drawn out ("wayyy") is how it was said, not vocabulary.
+_DRAWN = re.compile(r"([^\W\d_])\1\1", re.IGNORECASE)
+
+
+def corrected_words(original: str, corrected: str) -> list[tuple[str, str | None]]:
+    """The terms a correction fixed, as (written, misheard form to replace or None).
+
+    A term is one or two words the user wrote in place of up to three
+    heard ones ("Pikto" -> "Picto"), that aren't all common words, digits or
+    a drawn-out spelling. It is kept only when it fixes the mistake: matched
+    by sound like any term, or, for a heard form that isn't a common word
+    ("Clard"), as a replacement of that form. A common word heard ("cloud",
+    "clod") is never replaced, since the user likely says it too; the term is
+    still prompted, which helps Whisper hear it.
+    """
+    from .phrase_seams import _common_word
+
+    heard, wrote = list(_WORD.finditer(original)), list(_WORD.finditer(corrected))
+    matcher = SequenceMatcher(None, [m.group() for m in heard], [m.group() for m in wrote], autojunk=False)
+    found = []
+    for tag, a, b, c, d in matcher.get_opcodes():
+        if tag != "replace" or not (1 <= b - a <= 3 and 1 <= d - c <= 2):
+            continue
+        term = corrected[wrote[c].start() : wrote[d - 1].end()]
+        said = original[heard[a].start() : heard[b - 1].end()]
+        words = _WORD.findall(term)
+        if any(char.isdigit() for char in term) or _DRAWN.search(term) or all(_common_word(w) for w in words):
+            continue
+        alone = Dictionary(terms=(term,), spellings={_normal(term): term})
+        if _normal(alone.apply(said)) == _normal(term):
+            found.append((term, None))
+        elif not any(_common_word(word) for word in _WORD.findall(said)):
+            found.append((term, said))
+        else:
+            found.append((term, None))
+    return found
+
+
+def add_corrected_words(db, original: str, corrected: str, added_by: str) -> list[Group]:
+    """Keep the terms a correction fixed (``corrected_words``), everywhere.
+
+    The user corrected the word once; dictation should not get it wrong
+    again, with no second step. A word a dictionary entry already writes,
+    or a misheard form an entry already replaces, is left to that entry: it
+    is the user's. ``added_by`` is the report, so withdrawing it removes them.
+    """
+    groups = []
+    for written, spoken in corrected_words(original, corrected):
+        if any(
+            _normal(entry.written) == _normal(written) or (spoken and _normal(entry.spoken or "") == _normal(spoken))
+            for entry in list_entries(db)
+        ):
+            continue
+        try:
+            groups.append(add_group(db, written, spoken, [Place("global")], source="correction", added_by=added_by))
+        except ValueError:
+            logger.warning("Could not add the corrected word %r to the dictionary", written, exc_info=True)
+    return groups

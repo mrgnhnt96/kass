@@ -62,12 +62,12 @@ Not in scope: question marks from intonation (hint only, see below) and sarcasm.
 
 Built 2026-10-05, while the user was away, from their go-ahead to continue.
 
-- **"!" is decided in code, not by the cleanup model** (a change from step 6). `prosody.exclaim` splits the *cleaned* text into sentences and finds each in the recording by its words (difflib against Whisper's timed words). A sentence ending in a period (after a letter, not an abbreviation like "Dr.", not a period the speaker said aloud) gets "!" when its energy against the speaker's baseline is at least `EXCLAIM_ENERGY` = 2.5. Why not the hint: no prompt change (the cached prefill stays valid, no added tokens), the small model can't misplace or drop it, and a strict fixed cutoff is what the user asked for. Because sentences come from the cleaned text, the mixed take now works: only its middle sentence got "!".
+- **"!" is decided in code, not by the cleanup model** (a change from step 6). `prosody.exclaim` splits the *cleaned* text into sentences and finds each in the recording by its words (difflib against Whisper's timed words). A sentence ending in a period (after a letter, not an abbreviation like "Dr.", not a period the speaker said aloud) gets "!" when its energy against the speaker's baseline is at least `EXCLAIM_ENERGY` (2.5 when built, 2.9 since 2026-10-14; see below). Why not the hint: no prompt change (the cached prefill stays valid, no added tokens), the small model can't misplace or drop it, and a strict fixed cutoff is what the user asked for. Because sentences come from the cleaned text, the mixed take now works: only its middle sentence got "!".
 - **Stretched words** (`prosody.stretch`): the strict rule (`StretchRule`) picks words in the recording, and the written word that matches the heard word is drawn out ("faaar"). A word the cleanup changed is left alone.
 - **No added time.** `StreamingCapture.express` uses only what is already worked out and never waits. With the switch on, the last phrase's word times start on a worker thread as soon as it is recognized (`Expression(eager=True)`), so they are ready while the cleanup still runs. If they aren't, the text goes out as written and the log says so. Settled sentences get their "!" when they settle, so provisional text (live text, off by default) already has it.
 - **Switch.** Only `capture_settings.expressive` (with cleanup on, not commands) applies anything. Measuring and learning run either way.
 - **Saved for learning** (`captures.prosody`, after the final event): `written` (each sentence of the delivered text with its energy) and `shapes` (each word's stretch, loudness and steady vowel), with or without the switch.
-- **Learning** (`expression_learning.py`), read again when each dictation starts, from saved measurements and refined-text reports (Captures edits and voice fixes; newest report per capture):
+- **Learning** (`expression_learning.py`), read again when each dictation starts, from saved measurements and refined-text reports (Captures edits, voice fixes and redictations; newest report per capture). A redictation only makes the rules stricter: its new "!" or drawn-out words teach nothing.
   - "." changed to "!" on a sentence said with energy ≥ 1.5 lowers the cutoff to 0.25 below it. This needs 2 such edits. It is never lower than 98% of the speaker's own plain sentences (with 50+ of them), and never below 1.5. A "!" typed on a calm sentence teaches nothing.
   - "!" changed back to "." raises the cutoff 0.25 above that sentence, from one edit.
   - Words written drawn out ("way" to "wayyy") set the speaker's own stretch rule. This needs 2 such edits; the rule goes 10% under their slowest, 0.5 dB under their quietest, and widens the steady vowel. Closed-class words they stretched ("sooo") are allowed for them only. The rule is slowed until at most 0.5% of their plain words would pass.
@@ -88,6 +88,15 @@ Full pipeline, real-time replay through `StreamingCapture` (4B cleanup, baseline
   - The rerun was after the other job finished: 8 dictations × 2 rounds, alternating on and off, 0.6B cleanup.
   - Paired difference (on − off): median −1 ms, mean +1 ms (−176 to +190). No added time.
   - Absolute release-to-text was ~1.1 s in both arms, against 0.43 s in phase 1's check. The extra time is in Whisper after release, not in this feature: the same audio took 0.34 s on fresh runs and 0.7 s on later ones, with or without expression. The first run also overlapped another session's shared-adapter evaluation on the GPU (~1.2 s in both arms) and doesn't count.
+
+### Thinking drawls (2026-10-14)
+
+Real dictations from 2026-10-05 to 10-14 wrote stretched words the user never meant: "naaame", "cooooode", "leaaarn", "forwaaard", "seeiiing the goaaals". These were words drawn out while finding the next words. The default rule fired on 23 content words, all of them drawls. It never caught a deliberate stretch.
+
+- **No acoustic test separates them.** Drawls are not reliably followed by a pause: "forward" had 0.14 s after it, while the deliberate "fiiive" had 0.32 s. Deliberate "fiiive" and "sooo" are as flat in pitch (0.6–0.8 semitones) as "naaame" (0.5).
+- **The default pace went from 3× to 7×.** The drawls reached 6.4×; at 7×, none of the 11,007 saved word shapes passes. The default now practically never stretches. Speakers who write their own stretches still teach a closer rule, as before.
+- **The "!" cutoff went from 2.5 to 2.9.** Plain sentences reached 2.51 ("Okay, I still don't love the UI for taskboard") and 2.59. The labelled excited takes start at 2.96.
+- **Redictations teach expression learning, stricter only.** A report from dictating again (in terminals, where edits can't be read) can take back a stretch or a "!", never add one.
 
 ## Labelled set (2026-10-05)
 

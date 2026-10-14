@@ -138,7 +138,7 @@ export interface DictionaryEntry {
 }
 
 /** Who added an entry: the user, or a word they spelled aloud to fix it. Editing makes it the user's. */
-export type DictionarySource = 'user' | 'spoken_fix';
+export type DictionarySource = 'user' | 'spoken_fix' | 'correction';
 
 export interface DictionaryListResponse {
   /** Newest first. */
