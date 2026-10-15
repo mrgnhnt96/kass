@@ -924,6 +924,16 @@ def corrected_words(original: str, corrected: str) -> list[tuple[str, str | None
     return found
 
 
+# How alike a heard form and the term written for it must sound to be that
+# term misheard: "cloud" and "Claude" are 0.73, "midnight" and "Midna" 0.62,
+# a reword like "him" -> "Morgan" 0.22.
+SOUNDS_ALIKE = 0.5
+
+
+def sounds_alike(heard: str, written: str) -> bool:
+    return SequenceMatcher(None, _sound(heard), _sound(written), autojunk=False).ratio() >= SOUNDS_ALIKE
+
+
 def misheard_terms(original: str, corrected: str) -> list[tuple[str, str]]:
     """Each (heard, written) pair where the user fixed a misheard term.
 

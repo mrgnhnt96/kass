@@ -178,6 +178,25 @@ def test_corrected_transcript_skips_a_term_heard_more_than_once():
     assert bank.corrected_transcript("Ask clard", "Ask Clard.", "Ask Claude.") == "Ask Claude"
 
 
+def test_corrected_transcript_skips_a_reword_that_doesnt_sound_like_what_was_heard():
+    assert (
+        bank.corrected_transcript("Ask him to review it", "Ask him to review it.", "Ask Morgan to review it.") is None
+    )
+    assert bank.corrected_transcript("ask midnight", "Ask midnight.", "Ask Midna.") == "ask Midna"
+
+
+def test_training_draws_corrected_takes_more_often_and_works_without_any():
+    from backend.services.voice_training import train
+
+    rng = np.random.default_rng(0)
+    examples = [{"id": f"take-{i}"} for i in range(100)]
+    corrected = examples[:2]
+    drawn = [train.pick(rng, examples, corrected)["id"] for _ in range(2000)]
+    share = sum(take in ("take-0", "take-1") for take in drawn) / len(drawn)
+    assert share == pytest.approx(train.CORRECTED_SHARE + 0.02 * (1 - train.CORRECTED_SHARE), abs=0.03)
+    assert train.pick(rng, examples, [])["id"].startswith("take-")
+
+
 def test_voice_evaluation_checks_corrected_test_recordings_not_trained_ones():
     def sample(sample_id, target, raw, output, expected, split="test", capture_id=None):
         return {

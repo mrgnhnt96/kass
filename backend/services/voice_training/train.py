@@ -41,6 +41,12 @@ def _verified_audio(take: dict) -> np.ndarray:
     return read_wav(path)
 
 
+def pick(rng, examples: list[dict], corrected: list[dict]) -> dict:
+    """A training take: a corrected one ``CORRECTED_SHARE`` of the time, when there are any."""
+    pool = corrected if corrected and rng.random() < CORRECTED_SHARE else examples
+    return pool[rng.integers(len(pool))]
+
+
 def _beds(voice: dict, sound_beds):
     """The downloaded rooms plus the user's own room noise."""
     return list(sound_beds) + [read_wav(Path(path)) for path in voice.get("room", []) if Path(path).is_file()]
@@ -92,8 +98,7 @@ def train(plan: dict, directory: Path) -> dict:
     corrected = [take for take in examples if take.get("corrected")]
 
     def example():
-        pool = corrected if corrected and rng.random() < CORRECTED_SHARE else examples
-        take = pool[rng.integers(len(pool))]
+        take = pick(rng, examples, corrected)
         mixed = mixing.training_mix(rng, audio[take["id"]], talk, beds)
         mel = log_mel_spectrogram(mx.array(mixed), n_mels=n_mels, padding=N_SAMPLES)[:N_FRAMES]
         prompt = []

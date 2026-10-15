@@ -153,14 +153,17 @@ def corrected_transcript(raw: str, output: str, expected: str) -> str | None:
 
     The user corrects the cleaned-up text, not the transcript, so a fix like
     "Pikto" -> "Picto" is carried back to where the transcript has "Pikto".
-    Wording and formatting changes stay out: they are the cleanup's job. A
-    heard form that isn't in the transcript exactly once is skipped. None
-    when nothing carries over.
+    Wording and formatting changes stay out: they are the cleanup's job. So
+    does a term that doesn't sound like what was heard ("him" -> "Morgan"),
+    which the user reworded rather than fixed, and a heard form that isn't
+    in the transcript exactly once. None when nothing carries over.
     """
-    from ..dictionary import misheard_terms
+    from ..dictionary import misheard_terms, sounds_alike
 
     text = raw
     for heard, written in misheard_terms(output, expected):
+        if not sounds_alike(heard, written):
+            continue
         pattern = re.compile(rf"(?<!\w){re.escape(heard)}(?!\w)", re.IGNORECASE)
         matches = list(pattern.finditer(text))
         if len(matches) == 1:
