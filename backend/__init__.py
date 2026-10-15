@@ -1,3 +1,3 @@
 # Backend package
 
-__version__ = "0.10.0-beta.3"
+__version__ = "0.10.0-beta.4"
