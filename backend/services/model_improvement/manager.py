@@ -661,6 +661,9 @@ def _promote(plan, directory, result, fingerprint):
             if not _valid_voice(active["voice"]):
                 raise ValueError("Candidate voice adapter integrity check failed")
             active.pop("speech", None)
+            # The model now in use is where training continues, even when it
+            # won on noise by more clean words than worth_continuing allows.
+            voice_resume = str(path)
     previous = deepcopy(_state)
     changed = active != _active
     if changed:

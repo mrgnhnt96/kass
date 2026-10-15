@@ -497,20 +497,37 @@ def test_training_continues_only_from_a_candidate_no_worse_than_the_model_in_use
             row["candidate"] = "Commit, push."
         return rows
 
-    # Better in noise, one clean word off: not used, but the next run builds on it.
+    # Better in noise, one clean word off: the next run builds on it.
     first = voice_candidate(learning, "first")
     manager._promote(voice_plan(), first, {"voice": {"rows": on_its_way(1)}}, "fp")
     assert manager._state["voice_resume"] == str(first / "voice")
 
-    # Better in noise but two clean words off: training doesn't continue from it.
+    # Better in noise but worse on clean takes than any allowance: not used,
+    # and training doesn't continue from it.
     second = voice_candidate(learning, "second")
-    manager._promote(voice_plan(), second, {"voice": {"rows": on_its_way(2)}}, "fp-2")
+    manager._promote(voice_plan(), second, {"voice": {"rows": on_its_way(6)}}, "fp-2")
+    assert manager.voice_adapter("turbo") == str(first / "voice")
     assert manager._state["voice_resume"] == str(first / "voice")
 
     # No better in noise: nothing to continue from either.
     third = voice_candidate(learning, "third")
     manager._promote(voice_plan(), third, {"voice": {"rows": gate_rows(candidate_noisy="Come here and push.")}}, "fp-3")
     assert manager._state["voice_resume"] == str(first / "voice")
+
+
+def test_an_activated_model_becomes_the_resume_point_even_after_a_big_win(learning):
+    # A big win in noise is used with two clean words off, which is more than
+    # worth_continuing allows; training still continues from the model in use.
+    older = voice_candidate(learning, "older")
+    manager._state["voice_resume"] = str(older / "voice")
+    rows = gate_rows()
+    for row in [r for r in rows if r["condition"] == "clean"][:2]:
+        row["candidate"] = "Commit, push."
+    assert not gate.worth_continuing(gate.score_voice(rows))
+    used = voice_candidate(learning, "used")
+    manager._promote(voice_plan(), used, {"voice": {"rows": rows}}, "fp")
+    assert manager.voice_adapter("turbo") == str(used / "voice")
+    assert manager._state["voice_resume"] == str(used / "voice")
 
 
 def test_a_resume_point_chosen_under_a_looser_rule_is_dropped(learning):
