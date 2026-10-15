@@ -144,6 +144,7 @@ def test_voice_training_starts_from_the_shared_adapter(learning, shipped, monkey
     # A candidate already built on the shared one is continued.
     candidate = trained_voice(runs / "candidate", shared="voice-one")
     manager._state["voice_resume"] = candidate
+    monkeypatch.setattr(manager, "_still_worth_continuing", lambda path: True)
     plan = voice_plan(monkeypatch)
     assert (plan["resume"], plan["production"], plan["shared"]) == (candidate, stock, "voice-one")
 

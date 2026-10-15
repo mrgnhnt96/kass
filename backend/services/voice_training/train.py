@@ -6,7 +6,9 @@ one example at a time with gradients summed over ``ACCUMULATE`` examples,
 which keeps memory near 10 GB (the worker's MLX limit is 16 GB). Each example
 is one of the user's training takes, mixed with a random talker or room
 (mixing.training_mix); its target is the take's transcript, so the model
-learns to give the same text whatever is going on behind the user.
+learns to give the same text whatever is going on behind the user. Takes the
+user corrected are drawn more often (``CORRECTED_SHARE``), so it also learns
+their words.
 
 ``evaluate`` transcribes the test takes under fixed conditions with plain
 turbo, the model in use and the candidate, for gate.score_voice.
@@ -25,6 +27,9 @@ from .bank import read_wav
 
 ACCUMULATE = 4
 PROMPT_SHARE = 0.3  # examples that carry earlier text as a prompt, as phrases in a dictation do
+# Examples drawn from takes the user corrected. There are few of them among
+# a thousand takes, and they hold the mistakes training should fix.
+CORRECTED_SHARE = 0.2
 MAX_TEXT_TOKENS = 200
 EVAL_TAKES = 40
 
@@ -84,8 +89,11 @@ def train(plan: dict, directory: Path) -> dict:
     if len(examples) < 20:
         raise ValueError("Not enough voice-bank takes to train on")
 
+    corrected = [take for take in examples if take.get("corrected")]
+
     def example():
-        take = examples[rng.integers(len(examples))]
+        pool = corrected if corrected and rng.random() < CORRECTED_SHARE else examples
+        take = pool[rng.integers(len(pool))]
         mixed = mixing.training_mix(rng, audio[take["id"]], talk, beds)
         mel = log_mel_spectrogram(mx.array(mixed), n_mels=n_mels, padding=N_SAMPLES)[:N_FRAMES]
         prompt = []
@@ -141,6 +149,7 @@ def train(plan: dict, directory: Path) -> dict:
         "updates": updates,
         "seconds": round(time.monotonic() - started),
         "train_takes": len(examples),
+        "corrected_takes": len(corrected),
         "loss_first": round(float(np.mean(losses[:10])), 4),
         "loss_last": round(float(np.mean(losses[-10:])), 4),
     }

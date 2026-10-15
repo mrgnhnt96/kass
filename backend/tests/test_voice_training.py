@@ -115,6 +115,94 @@ def test_bank_labels_take_the_users_fix_but_not_a_redictation(db, data_dir, monk
     assert labels == {"take-1": "Reinstall the app.", "take-2": "Command push."}
 
 
+def refined_report(capture_id, raw, refined, expected, source="manual"):
+    return CaptureFeedback(
+        capture_id=capture_id,
+        target="refined",
+        expected_text=expected,
+        snapshot=json.dumps({"transcript_raw": raw, "transcript_refined": refined}),
+        source=source,
+    )
+
+
+def test_bank_labels_take_with_the_terms_fixed_in_the_cleaned_up_text(db, data_dir, monkeypatch):
+    add_capture(db, data_dir, "take-1", text="Open the pikto board")
+    add_capture(db, data_dir, "take-2", text="Merge that domain for me please", minutes=1)
+    add_capture(db, data_dir, "take-3", text="ship it now", minutes=2)
+    add_capture(db, data_dir, "take-4", text="Open the pikto board", minutes=3)
+    db.add_all(
+        [
+            # A misheard term: carried back to the transcript.
+            refined_report("take-1", "Open the pikto board", "Open the Pikto board.", "Open the Picto board."),
+            # Only wording changed: the transcript was right.
+            refined_report(
+                "take-2",
+                "Merge that domain for me please",
+                "Merge that domain for me, please.",
+                "Merge that domain for me.",
+            ),
+            # The cleanup's own words: nothing in the transcript to fix.
+            refined_report("take-3", "ship it now", "Ship it now.", "Ship it now"),
+            # A redictation is weaker evidence and teaches nothing here.
+            refined_report(
+                "take-4", "Open the pikto board", "Open the Pikto board.", "Open the Picto board.", "redictation"
+            ),
+        ]
+    )
+    db.commit()
+    monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
+    bank.scan(db, SETTINGS)
+    takes = {take["id"]: take for take in bank.takes()}
+    assert takes["take-1"]["text"] == "Open the Picto board"
+    assert takes["take-1"]["corrected"]
+    assert {key: takes[key]["text"] for key in ("take-2", "take-3", "take-4")} == {
+        "take-2": "Merge that domain for me please",
+        "take-3": "ship it now",
+        "take-4": "Open the pikto board",
+    }
+    assert not takes["take-4"]["corrected"]
+
+
+def test_a_fix_of_the_transcript_outranks_one_from_the_cleaned_up_text(db, data_dir, monkeypatch):
+    add_capture(db, data_dir, "take-1", text="Open the pikto board")
+    db.add(refined_report("take-1", "Open the pikto board", "Open the Pikto board.", "Open the Picto board."))
+    db.add(CaptureFeedback(capture_id="take-1", target="raw", expected_text="Open the Picto boards", snapshot="{}"))
+    db.commit()
+    monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
+    bank.scan(db, SETTINGS)
+    assert [take["text"] for take in bank.takes()] == ["Open the Picto boards"]
+
+
+def test_corrected_transcript_skips_a_term_heard_more_than_once():
+    assert bank.corrected_transcript("pikto and pikto", "Pikto and pikto.", "Picto and pikto.") is None
+    assert bank.corrected_transcript("Ask clard", "Ask Clard.", "Ask Claude.") == "Ask Claude"
+
+
+def test_voice_evaluation_checks_corrected_test_recordings_not_trained_ones():
+    def sample(sample_id, target, raw, output, expected, split="test", capture_id=None):
+        return {
+            "id": sample_id,
+            "capture_id": capture_id or sample_id,
+            "split": split,
+            "target": target,
+            "raw": raw,
+            "output": output,
+            "expected": expected,
+            "audio": f"/{sample_id}.wav",
+            "audio_hash": "hash",
+        }
+
+    samples = [
+        sample("raw-fix", "raw", "Command push", "Command push", "Commit and push"),
+        sample("term-fix", "refined", "Ask clard", "Ask Clard.", "Ask Claude."),
+        sample("wording", "refined", "ship it now", "Ship it now.", "Ship it"),
+        sample("validation", "refined", "Ask clard", "Ask Clard.", "Ask Claude.", split="validation"),
+        sample("trained", "refined", "Ask clard", "Ask Clard.", "Ask Claude.", capture_id="bank-train"),
+    ]
+    corrections = manager._voice_corrections(samples, {"bank-train"})
+    assert {c["id"]: c["expected"] for c in corrections} == {"raw-fix": "Commit and push", "term-fix": "Ask Claude"}
+
+
 def test_bank_forgets_deleted_captures_and_empties_for_discard_audio(db, data_dir, monkeypatch):
     add_capture(db, data_dir, "take-1")
     add_capture(db, data_dir, "take-2", minutes=1)
@@ -381,27 +469,45 @@ def test_candidate_better_than_the_model_in_use_on_both_counts_is_used():
     assert result["passed"], result["reasons"]
 
 
-def test_training_continues_from_a_candidate_on_its_way_but_not_from_a_bad_one(learning):
-    # Better in noise, a few clean words off: not used, but the next run builds on it.
-    on_its_way = gate_rows()
-    for row in [r for r in on_its_way if r["condition"] != "clean"][::2]:
-        row["candidate"] = row["base"]  # half the noisy takes still wrong
-    clean = [r for r in on_its_way if r["condition"] == "clean"]
-    clean[0]["candidate"] = "Commit, push."
-    clean[1]["candidate"] = "Commit, push."
+def test_training_continues_only_from_a_candidate_no_worse_than_the_model_in_use(learning):
+    def on_its_way(clean_misses):
+        rows = gate_rows()
+        for row in [r for r in rows if r["condition"] != "clean"][::2]:
+            row["candidate"] = row["base"]  # half the noisy takes still wrong
+        for row in [r for r in rows if r["condition"] == "clean"][:clean_misses]:
+            row["candidate"] = "Commit, push."
+        return rows
+
+    # Better in noise, one clean word off: not used, but the next run builds on it.
     first = voice_candidate(learning, "first")
-    manager._promote(voice_plan(), first, {"voice": {"rows": on_its_way}}, "fp")
+    manager._promote(voice_plan(), first, {"voice": {"rows": on_its_way(1)}}, "fp")
     assert manager._state["voice_resume"] == str(first / "voice")
 
-    # Far worse on clean takes: training doesn't continue from it.
+    # Better in noise but two clean words off: training doesn't continue from it.
     second = voice_candidate(learning, "second")
-    manager._promote(voice_plan(), second, {"voice": {"rows": gate_rows(candidate_clean="Come here.")}}, "fp-2")
+    manager._promote(voice_plan(), second, {"voice": {"rows": on_its_way(2)}}, "fp-2")
     assert manager._state["voice_resume"] == str(first / "voice")
 
     # No better in noise: nothing to continue from either.
     third = voice_candidate(learning, "third")
     manager._promote(voice_plan(), third, {"voice": {"rows": gate_rows(candidate_noisy="Come here and push.")}}, "fp-3")
     assert manager._state["voice_resume"] == str(first / "voice")
+
+
+def test_a_resume_point_chosen_under_a_looser_rule_is_dropped(learning):
+    rows = gate_rows()
+    for row in [r for r in rows if r["condition"] != "clean"][::2]:
+        row["candidate"] = row["base"]
+    good = voice_candidate(learning, "good")
+    (good / "result.json").write_text(json.dumps({"voice": {"rows": rows}}))
+    assert manager._still_worth_continuing(str(good / "voice"))
+
+    for row in [r for r in rows if r["condition"] == "clean"][:3]:
+        row["candidate"] = "Commit, push."
+    off = voice_candidate(learning, "off")
+    (off / "result.json").write_text(json.dumps({"voice": {"rows": rows}}))
+    assert not manager._still_worth_continuing(str(off / "voice"))
+    assert not manager._still_worth_continuing(str(learning / "missing" / "voice"))
 
 
 def test_tampered_voice_adapter_is_dropped_on_restart(learning, monkeypatch):

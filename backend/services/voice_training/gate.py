@@ -89,23 +89,25 @@ def score_voice(rows: list[dict]) -> dict:
     }
 
 
-# Early training trades a little clean accuracy for a lot in noise; later
-# training wins it back. A candidate within this margin on clean takes is
-# still worth continuing from, though it isn't activated.
-CONTINUE_CLEAN_SHARE = BIG_WIN_CLEAN_SHARE
+# A candidate is only built on when it's no worse than the model in use:
+# continuing from ones that traded clean takes for noise let clean mistakes
+# grow from 7 to 15 over a week (2026-10-14), as each run started from a
+# model already off. The allowance on clean takes is the gate's small one.
+CONTINUE_CLEAN_SHARE = 0.005
 
 
 def worth_continuing(metrics: dict) -> bool:
     """Whether the next run should continue training from this candidate.
 
     True when it beat the model in use with talk and noise, kept the user's
-    corrected takes, and lost at most 3% of clean words. Activation still
-    needs ``score_voice`` to pass.
+    corrected takes, and is no worse on clean takes than plain turbo or the
+    model in use (``CONTINUE_CLEAN_SHARE`` of words). Activation still needs
+    ``score_voice`` to pass.
     """
     candidate, current, base = metrics.get("candidate"), metrics.get("production"), metrics.get("base")
     if not candidate or not current or not base:
         return False
-    margin = max(1, math.ceil(CONTINUE_CLEAN_SHARE * metrics["words"]["clean"]))
+    margin = max(1, round(CONTINUE_CLEAN_SHARE * metrics["words"]["clean"]))
     return (
         candidate["noisy"] < current["noisy"]
         and candidate["correction"] <= current["correction"]
