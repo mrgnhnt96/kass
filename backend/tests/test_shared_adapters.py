@@ -149,6 +149,18 @@ def test_voice_training_starts_from_the_shared_adapter(learning, shipped, monkey
     assert (plan["resume"], plan["production"], plan["shared"]) == (candidate, stock, "voice-one")
 
 
+def test_voice_training_drops_a_resume_point_that_no_longer_passes(learning, shipped, monkeypatch):
+    shared = str(shipped / "voice-turbo")
+    runs = learning / "model-improvement" / "runs"
+    candidate = trained_voice(runs / "candidate", shared="voice-one")
+    manager._state["voice_resume"] = candidate
+    monkeypatch.setattr(manager, "_still_worth_continuing", lambda path: False)
+    assert voice_plan(monkeypatch)["resume"] == shared
+
+    monkeypatch.setattr(manager, "_still_worth_continuing", lambda path: path == candidate)
+    assert voice_plan(monkeypatch)["resume"] == candidate
+
+
 def test_voice_training_without_shared_adapters_starts_from_plain_turbo(learning, shipped, monkeypatch):
     shared_adapters._enabled = False
     runs = learning / "model-improvement" / "runs"

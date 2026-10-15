@@ -493,7 +493,8 @@ def _voice_plan(summary, active, samples, language):
         resume = str(_inside_root(resume)) if resume and (Path(resume) / "adapter.safetensors").is_file() else None
     except ValueError:
         resume = None
-    if resume and not (personal and resume == personal["path"]) and not _still_worth_continuing(resume):
+    # A resume point chosen under a looser rule falls back to the model in use.
+    if resume and not _still_worth_continuing(resume):
         resume = None
     if personal and not shared_adapters.usable(personal.get("shared")):
         personal = None
