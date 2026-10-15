@@ -77,6 +77,23 @@ def test_protected_facts_cannot_trade_off_against_other_improvements():
     assert any("protected facts" in reason for reason in evaluation.score_rows(rows)["reasons"])
 
 
+def test_a_fact_the_model_in_use_also_misses_is_a_mistake_not_a_changed_fact():
+    # The user wrote "second item" as "2."; neither model does. That counts as
+    # an error, but it doesn't block every candidate as a changed fact.
+    rows = successful_rows()
+    rows.append(
+        dict(
+            rows[0],
+            id="numbered",
+            kind="control",
+            expected="2. Record the video.",
+            baseline="Second item. Record the video.",
+            candidate="Second item, record the video.",
+        )
+    )
+    assert not any("protected facts" in reason for reason in evaluation.score_rows(rows)["reasons"])
+
+
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path}/db.sqlite")

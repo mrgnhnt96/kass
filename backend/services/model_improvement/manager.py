@@ -444,7 +444,7 @@ def _prepare():
     with _lock:
         refinement_due = plan["train_ready"] and fingerprint not in _state["attempted"] + _state["blocked"]
     if voice_bank and current_stt == "turbo" and not refinement_due:
-        plan["voice"] = _voice_plan(voice_bank, active, raw_tests, language)
+        plan["voice"] = _voice_plan(voice_bank, active, samples, language)
         if plan["voice"]:
             plan["train_ready"] = False
             fingerprint = digest([fingerprint, plan["voice"]["bank_digest"], plan["voice"]["resume"]])
@@ -471,7 +471,7 @@ def _scan_bank(db, settings):
         return None
 
 
-def _voice_plan(summary, active, raw_tests, language):
+def _voice_plan(summary, active, samples, language):
     """The voice-training part of a run, or None until there's enough to train on."""
     from ...backends import WHISPER_HF_REPOS
     from ..voice_training import bank, sounds
@@ -487,12 +487,15 @@ def _voice_plan(summary, active, raw_tests, language):
         except OSError:
             continue
         takes.append(take)
+    personal = active.get("voice")
     resume = _state.get("voice_resume")
     try:
         resume = str(_inside_root(resume)) if resume and (Path(resume) / "adapter.safetensors").is_file() else None
     except ValueError:
         resume = None
-    personal = active.get("voice")
+    # A resume point chosen under a looser rule falls back to the model in use.
+    if resume and not _still_worth_continuing(resume):
+        resume = None
     if personal and not shared_adapters.usable(personal.get("shared")):
         personal = None
     shared = shared_adapters.voice("turbo")
@@ -513,13 +516,51 @@ def _voice_plan(summary, active, raw_tests, language):
         "production": production,
         "shared": lineage,
         "bank_digest": bank.digest(),
-        "corrections": [
-            {"id": s["id"], "audio": s["audio"], "audio_hash": s["audio_hash"], "expected": s["expected"]}
-            for s in raw_tests
-        ],
+        "corrections": _voice_corrections(samples, {take["id"] for take in takes if take["split"] == "train"}),
         "train_seconds": 900,
         "max_updates": 250,
     }
+
+
+def _voice_corrections(samples, trained):
+    """The user's corrected test recordings, labelled with what they said.
+
+    A fix of the transcript is the label as is. A fix of the cleaned-up text
+    labels the transcript with the misheard terms it fixed
+    (bank.corrected_transcript); one that fixed none says nothing about
+    hearing. Recordings the voice bank trains on (``trained``) are left out.
+    """
+    from ..voice_training.bank import corrected_transcript
+
+    corrections = []
+    for sample in samples:
+        if sample["split"] != "test" or not sample.get("audio") or sample["capture_id"] in trained:
+            continue
+        if sample["target"] == "raw":
+            expected = sample["expected"]
+        else:
+            expected = corrected_transcript(sample["raw"], sample.get("output") or "", sample["expected"])
+            if expected is None:
+                continue
+        corrections.append(
+            {"id": sample["id"], "audio": sample["audio"], "audio_hash": sample["audio_hash"], "expected": expected}
+        )
+    return corrections
+
+
+def _still_worth_continuing(path):
+    """Whether the candidate at ``path`` still passes ``gate.worth_continuing``.
+
+    Re-judged from its saved evaluation, so a resume point chosen under an
+    older, looser rule is dropped.
+    """
+    from ..voice_training.gate import score_voice, worth_continuing
+
+    try:
+        rows = json.loads((Path(path).parent / "result.json").read_text())["voice"]["rows"]
+        return worth_continuing(score_voice(rows))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def _voice_lineage(path):
@@ -620,6 +661,9 @@ def _promote(plan, directory, result, fingerprint):
             if not _valid_voice(active["voice"]):
                 raise ValueError("Candidate voice adapter integrity check failed")
             active.pop("speech", None)
+            # The model now in use is where training continues, even when it
+            # won on noise by more clean words than worth_continuing allows.
+            voice_resume = str(path)
     previous = deepcopy(_state)
     changed = active != _active
     if changed:

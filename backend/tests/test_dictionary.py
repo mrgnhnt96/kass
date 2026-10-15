@@ -686,6 +686,9 @@ def test_a_word_already_said_as_the_app_name_keeps_startup_working(storage, tmp_
         ("ticket T3 or 4 is done", "ticket T304 is done", []),
         # Only words swapped for others, not ones added.
         ("send the notes", "send the notes to Picto", []),
+        # Words only dropped were heard right; a recased name is still a term.
+        ("Whenever I. I. Don't have it", "Whenever I don't have it", []),
+        ("push it to github", "push it to GitHub", [("GitHub", None)]),
     ],
 )
 def test_a_correction_finds_the_words_it_fixed(original, corrected, words, monkeypatch):

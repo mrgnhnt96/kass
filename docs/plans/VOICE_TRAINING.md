@@ -159,6 +159,22 @@ continues from the restored model.
 
 Start here when picking this work back up.
 
+**Update 2026-10-15 (learning from corrections):**
+
+- **Corrections reach voice training.** The user fixes the cleaned-up text,
+  almost never the transcript, so voice training had learned from none of
+  their 136 reports. Misheard terms fixed in the cleaned-up text
+  (`dictionary.misheard_terms`: "ZoneEye" -> "Zonai", "Sagar" -> "Saggar")
+  are now carried back to the transcript (`bank.corrected_transcript`). They
+  label the take in the bank, and the corrected test recordings are checked
+  under the "correction" condition. Corrected takes make up
+  `train.CORRECTED_SHARE` of the training examples. On 2026-10-15 this
+  carried over 17 reports.
+- **Training resumes only from a candidate no worse than the model in use**
+  (`gate.worth_continuing`, 0.5% of clean words). The old 3% allowance let
+  clean mistakes climb from 9 to 13 as runs built on runs. A resume point is
+  re-judged against the current rule from its saved `result.json`.
+
 **Where it stands:**
 
 - **Shipped:** on `main` and pushed, in 24d4d8f6 (voice training) and

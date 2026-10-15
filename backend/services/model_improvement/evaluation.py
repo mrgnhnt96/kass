@@ -20,6 +20,16 @@ def preserves_facts(actual, expected):
     )
 
 
+def changes_facts(candidate, expected, baseline):
+    """Whether ``candidate`` changed a protected fact that the model in use kept.
+
+    A report whose fix the model in use also misses ("second item" written
+    as "2.") is a mistake to learn from, not a fact the candidate changed;
+    it already counts in the error totals.
+    """
+    return not preserves_facts(candidate, expected) and not preserves_facts(candidate, baseline)
+
+
 def score_rows(rows):
     """All rows contain A/B outputs from the same prompt, seed and pipeline."""
     if not rows:
@@ -42,7 +52,7 @@ def score_rows(rows):
             audio_groups.add(row["id"])
         # Numerical facts and negations are protected even if total edit score
         # improves. Cleanup must not change these to compensate for other wins.
-        if not preserves_facts(row["candidate"], row["expected"]):
+        if changes_facts(row["candidate"], row["expected"], row["baseline"]):
             reasons.append(f"Changed protected facts: {row['id']}")
     if candidate >= baseline or len(improved) < 2:
         reasons.append("No improvement on at least two independent held-out recordings")
@@ -95,7 +105,7 @@ def score_speech(rows):
         candidate = loss(normalize(row["candidate"]), normalize(row["expected"]))
         before += baseline
         after += candidate
-        if not preserves_facts(row["candidate"], row["expected"]):
+        if changes_facts(row["candidate"], row["expected"], row["baseline"]):
             reasons.append("Speech changed protected facts")
         if candidate > baseline:
             reasons.append("Speech accuracy regressed on a recording")

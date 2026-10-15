@@ -912,6 +912,37 @@ def corrected_words(original: str, corrected: str) -> list[tuple[str, str | None
     """
     from .phrase_seams import _common_word
 
+    found = []
+    for said, term in misheard_terms(original, corrected):
+        alone = Dictionary(terms=(term,), spellings={_normal(term): term})
+        if _normal(alone.apply(said)) == _normal(term):
+            found.append((term, None))
+        elif not any(_common_word(word) for word in _WORD.findall(said)):
+            found.append((term, said))
+        else:
+            found.append((term, None))
+    return found
+
+
+# How alike a heard form and the term written for it must sound to be that
+# term misheard: "cloud" and "Claude" are 0.73, "midnight" and "Midna" 0.62,
+# a reword like "him" -> "Morgan" 0.22.
+SOUNDS_ALIKE = 0.5
+
+
+def sounds_alike(heard: str, written: str) -> bool:
+    return SequenceMatcher(None, _sound(heard), _sound(written), autojunk=False).ratio() >= SOUNDS_ALIKE
+
+
+def misheard_terms(original: str, corrected: str) -> list[tuple[str, str]]:
+    """Each (heard, written) pair where the user fixed a misheard term.
+
+    The written term is one or two words in place of up to three heard ones,
+    and isn't all common words, digits or a drawn-out spelling: vocabulary,
+    not a wording or formatting change.
+    """
+    from .phrase_seams import _common_word
+
     heard, wrote = list(_WORD.finditer(original)), list(_WORD.finditer(corrected))
     matcher = SequenceMatcher(None, [m.group() for m in heard], [m.group() for m in wrote], autojunk=False)
     found = []
@@ -923,13 +954,12 @@ def corrected_words(original: str, corrected: str) -> list[tuple[str, str | None
         words = _WORD.findall(term)
         if any(char.isdigit() for char in term) or _DRAWN.search(term) or all(_common_word(w) for w in words):
             continue
-        alone = Dictionary(terms=(term,), spellings={_normal(term): term})
-        if _normal(alone.apply(said)) == _normal(term):
-            found.append((term, None))
-        elif not any(_common_word(word) for word in _WORD.findall(said)):
-            found.append((term, said))
-        else:
-            found.append((term, None))
+        # Words only dropped ("I. Don't" -> "don't") were heard right. A
+        # recased name ("github" -> "GitHub") is still the user's term.
+        heard_words = _WORD.findall(said)
+        if len(words) < len(heard_words) and {w.casefold() for w in words} <= {w.casefold() for w in heard_words}:
+            continue
+        found.append((said, term))
     return found
 
 

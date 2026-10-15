@@ -97,6 +97,8 @@ def collect(db, groups):
             "split": match["split"],
             "target": row.target,
             "raw": raw,
+            # What the user saw and corrected: the cleaned-up text for a refined report.
+            "output": snapshot.get("transcript_refined") if row.target == "refined" else raw,
             "expected": row.expected_text,
             "flags": snapshot.get("refinement_flags"),
             "language": snapshot.get("language"),

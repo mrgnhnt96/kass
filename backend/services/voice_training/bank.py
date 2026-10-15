@@ -4,7 +4,9 @@ While the Mac is idle, ``scan`` reads dictations it hasn't seen yet:
 
 - A clean take (quiet room, clear speech, 1–28 s) is copied into the bank as
   16 kHz mono audio with its transcript, or the user's own fix of the
-  transcript when they made one. History retention doesn't delete these
+  transcript when they made one. The user mostly fixes the cleaned-up text
+  instead; the misheard terms fixed there are carried back to the transcript
+  (``corrected_transcript``). History retention doesn't delete these
   copies; the bank keeps the newest ``BANK_SECONDS`` of takes.
 - From a noisy take, the stretches without speech are kept as room noise
   (``ROOM_SECONDS`` at most), so training hears the rooms the user really
@@ -18,6 +20,7 @@ training (85%) and test (15%) takes; test takes are never trained on.
 import hashlib
 import json
 import logging
+import re
 import shutil
 import threading
 import wave
@@ -145,24 +148,54 @@ def _room_stretches(y: np.ndarray, probabilities: np.ndarray) -> np.ndarray:
     return np.concatenate(pieces) if pieces else np.zeros(0, np.float32)
 
 
+def corrected_transcript(raw: str, output: str, expected: str) -> str | None:
+    """``raw`` with the misheard terms the user fixed in the cleaned-up text.
+
+    The user corrects the cleaned-up text, not the transcript, so a fix like
+    "Pikto" -> "Picto" is carried back to where the transcript has "Pikto".
+    Wording and formatting changes stay out: they are the cleanup's job. So
+    does a term that doesn't sound like what was heard ("him" -> "Morgan"),
+    which the user reworded rather than fixed, and a heard form that isn't
+    in the transcript exactly once. None when nothing carries over.
+    """
+    from ..dictionary import misheard_terms, sounds_alike
+
+    text = raw
+    for heard, written in misheard_terms(output, expected):
+        if not sounds_alike(heard, written):
+            continue
+        pattern = re.compile(rf"(?<!\w){re.escape(heard)}(?!\w)", re.IGNORECASE)
+        matches = list(pattern.finditer(text))
+        if len(matches) == 1:
+            text = text[: matches[0].start()] + written + text[matches[0].end() :]
+    return text if text != raw else None
+
+
 def _corrections(db, capture_ids: list[str]) -> dict[str, str]:
-    """The user's newest fix of each raw transcript. Re-dictations don't count."""
+    """The user's newest fix of each raw transcript, else the transcript with
+    the terms they fixed in the cleaned-up text. Re-dictations don't count."""
     from ...database.models import CaptureFeedback
 
     fixes: dict[str, tuple] = {}
     if not capture_ids:
         return {}
-    rows = (
-        db.query(CaptureFeedback)
-        .filter(CaptureFeedback.capture_id.in_(capture_ids), CaptureFeedback.target == "raw")
-        .all()
-    )
+    rows = db.query(CaptureFeedback).filter(CaptureFeedback.capture_id.in_(capture_ids)).all()
     for row in rows:
-        if row.source == "redictation":
+        if row.source not in CaptureFeedback.EXPLICIT_SOURCES:
             continue
-        created = row.created_at or datetime.min
-        if row.capture_id not in fixes or created > fixes[row.capture_id][0]:
-            fixes[row.capture_id] = (created, row.expected_text.strip())
+        if row.target == "raw":
+            text = row.expected_text.strip()
+        else:
+            snapshot = json.loads(row.snapshot or "{}")
+            text = corrected_transcript(
+                snapshot.get("transcript_raw") or "", snapshot.get("transcript_refined") or "", row.expected_text
+            )
+            if text is None:
+                continue
+        # A fix of the transcript itself outranks one carried over from the cleaned-up text.
+        rank = (row.target == "raw", row.created_at or datetime.min)
+        if row.capture_id not in fixes or rank > fixes[row.capture_id][0]:
+            fixes[row.capture_id] = (rank, text)
     return {key: value[1] for key, value in fixes.items()}
 
 
@@ -241,6 +274,7 @@ def scan(db, settings, limit: int = SCAN_BATCH) -> dict:
         fixes = _corrections(db, [take["id"] for take in data["takes"]])
         for take in data["takes"]:
             take["text"] = fixes.get(take["id"], take["transcript"])
+            take["corrected"] = take["text"] != take["transcript"]
         _evict(data)
         _save(data)
         return summary(data)
