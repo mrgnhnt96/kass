@@ -954,8 +954,10 @@ def misheard_terms(original: str, corrected: str) -> list[tuple[str, str]]:
         words = _WORD.findall(term)
         if any(char.isdigit() for char in term) or _DRAWN.search(term) or all(_common_word(w) for w in words):
             continue
-        # Words only dropped or recased ("I. Don't" -> "don't") were heard right.
-        if {w.casefold() for w in words} <= {w.casefold() for w in _WORD.findall(said)}:
+        # Words only dropped ("I. Don't" -> "don't") were heard right. A
+        # recased name ("github" -> "GitHub") is still the user's term.
+        heard_words = _WORD.findall(said)
+        if len(words) < len(heard_words) and {w.casefold() for w in words} <= {w.casefold() for w in heard_words}:
             continue
         found.append((said, term))
     return found
