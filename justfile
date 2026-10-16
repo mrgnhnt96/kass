@@ -88,9 +88,9 @@ dmg:
 install:
     ./scripts/install.sh
 
-# Set the version, tag vX.Y.Z and push; CI builds and publishes the GitHub release
+# Cut vX.Y.Z through the task board (tb release cut runs scripts/release.sh); CI builds and publishes the GitHub release
 release version:
-    ./scripts/release.sh {{ version }}
+    tb release cut v{{ trim_start_match(version, "v") }}
 
 # ─── Code Quality ────────────────────────────────────────────────────
 
