@@ -1,8 +1,12 @@
 #!/bin/bash
 # Cut a release: set the version, commit, tag and push.
 #
-#   ./scripts/release.sh 0.6.0          a public release
-#   ./scripts/release.sh 0.7.0-beta.1   a beta
+#   tb release cut v0.6.0          a public release
+#   tb release cut v0.7.0-beta.1   a beta
+#
+# Releases go through the task board: tb release cut runs this script with
+# TB_RELEASE set and records the release on the board when it succeeds. Run on
+# its own, the script refuses unless you pass --force. A leading v is optional.
 #
 # Every release, beta or not, is built from main.
 #
@@ -15,9 +19,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-version="${1:-}"
+force=
+args=()
+for arg in "$@"; do
+  if [ "$arg" = --force ]; then force=1; else args+=("$arg"); fi
+done
+version="${args[0]:-}"
+version="${version#v}"
+if [ -z "${TB_RELEASE:-}" ] && [ -z "$force" ]; then
+  echo "Run tb release cut v${version:-<version>} instead; it runs this script and records the release. (--force to run it without the board.)" >&2
+  exit 1
+fi
 if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
-  echo "Usage: $0 <major.minor.patch[-beta.N]>" >&2
+  echo "Usage: $0 [v]<major.minor.patch[-beta.N]> [--force]" >&2
   exit 1
 fi
 tag="v$version"

@@ -63,9 +63,9 @@ You'll need [Bun](https://bun.sh), [Rust](https://rustup.rs), [Python 3.12](http
 
 `git push` runs a pre-push hook (`scripts/hooks/pre-push`) that lints and formats only the files the push changes. If it fixes anything, it stops the push and lists the files: commit them and push again. `SKIP=1 git push` skips it once.
 
-To release, move the Unreleased notes in [CHANGELOG.md](CHANGELOG.md) under the new version, commit, and run `./scripts/release.sh <version>` from a clean `main`.
+To release, move the Unreleased notes in [CHANGELOG.md](CHANGELOG.md) under the new version, commit, and run `tb release cut v<version>` from a clean `main` (it runs `scripts/release.sh` and records the release on the task board).
 
-To try a feature before it's public, run `./scripts/release.sh 0.7.0-beta.1` from any clean branch. Betas are published as prereleases: the website and the public update skip them, and only copies with **Settings › General › Beta updates** on install them. Betas keep their notes under Unreleased until the public release.
+To try a feature before it's public, run `tb release cut v0.7.0-beta.1` from a clean `main`. Betas are published as prereleases: the website and the public update skip them, and only copies with **Settings › General › Beta updates** on install them. Betas keep their notes under Unreleased until the public release.
 
 To ship a feature in a public release without showing it yet, add its name to `BETA_FEATURES` in [app/src/lib/betaFeatures.ts](app/src/lib/betaFeatures.ts) and gate it with `useBetaFeature(name)` (the server has `beta.enabled(name)` in [backend/beta.py](backend/beta.py); Rust has `updater::beta_features`). It only shows for beta users. Remove the name to make it public; the compiler points at every gate to remove.
 

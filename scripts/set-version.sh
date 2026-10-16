@@ -5,6 +5,8 @@
 #   ./scripts/set-version.sh 0.7.0-beta.1   a beta works the same way
 #   ./scripts/set-version.sh --check   fail unless every file has the same version
 #
+# A leading v is optional: v0.6.0 and 0.6.0 are the same version.
+#
 # GitHub releases are the source of truth: scripts/release.sh calls this
 # before it tags, and the release workflow runs --check against the tag.
 set -euo pipefail
@@ -37,6 +39,7 @@ versions() {
 
 if [ "${1:-}" = "--check" ]; then
   expected="${2:-}"
+  expected="${expected#v}"
   list=$(versions)
   echo "$list"
   unique=$(echo "$list" | awk '{print $2}' | sort -u)
@@ -52,6 +55,7 @@ if [ "${1:-}" = "--check" ]; then
 fi
 
 version="${1:-}"
+version="${version#v}"
 if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
   echo "Usage: $0 <major.minor.patch[-beta.N]> | --check [version]" >&2
   exit 1
