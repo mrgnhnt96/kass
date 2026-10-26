@@ -28,6 +28,7 @@ mock.module('../src/stores/serverStore', () => ({
   serverUrl: () => 'http://127.0.0.1:17493',
   useServerUrl: () => 'http://127.0.0.1:17493',
   remoteServerUrl: () => null,
+  useRemoteServerUrl: () => null,
   sharesOnNetwork: () => false,
   useServerStore: Object.assign(
     (select: (state: typeof serverState) => unknown) => select(serverState),

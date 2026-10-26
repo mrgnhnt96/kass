@@ -27,3 +27,15 @@ export function normalizeServerAddress(input: string): string | null {
   const port = url.port || (typedPort || url.protocol === 'https:' ? '' : String(SERVER_PORT));
   return `${url.protocol}//${url.hostname}${port ? `:${port}` : ''}`;
 }
+
+/** Whether `url` answers as a Kass server within `timeoutMs`. */
+export async function answersAsKass(url: string, timeoutMs = 5000): Promise<boolean> {
+  try {
+    const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) return false;
+    const health = await response.json();
+    return health?.status === 'healthy';
+  } catch {
+    return false;
+  }
+}

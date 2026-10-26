@@ -671,7 +671,7 @@
         "remote": {
           "title": "Use another Mac",
           "description": "Enter the other Mac's name or address, like studio.local. It needs Share with other Macs on.",
-          "using": "Using Kass on {{url}}. Your dictionary, styles and captures live on that Mac.",
+          "using": "Using Kass on {{url}}. Your dictionary, styles and captures live on that Mac. When it’s away, Kass dictates on this Mac and syncs once it’s back.",
           "connect": "Connect",
           "connecting": "Connecting…",
           "stop": "Use this Mac",
