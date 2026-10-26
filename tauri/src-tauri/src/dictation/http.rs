@@ -61,6 +61,15 @@ async fn json_or_error(response: reqwest::Response) -> Result<Value, String> {
     }
 }
 
+/// Whether a server answers `GET /health` within a second.
+pub async fn reachable(http: &reqwest::Client, server_url: &str) -> bool {
+    http.get(format!("{}/health", base(server_url)))
+        .timeout(Duration::from_secs(1))
+        .send()
+        .await
+        .is_ok_and(|response| response.status().is_success())
+}
+
 /// `POST /captures` with the complete recording. `source` is `dictation`,
 /// or `command` for a command take's instruction.
 pub async fn upload(

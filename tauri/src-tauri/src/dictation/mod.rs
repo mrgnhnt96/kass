@@ -31,6 +31,7 @@ pub mod live;
 pub mod mic;
 pub mod paste_command;
 pub mod protocol;
+pub mod server;
 pub mod stream;
 pub mod take;
 pub mod transport;
@@ -51,6 +52,7 @@ use client::StreamClient;
 use live::{Finish, Live, LiveTarget};
 use paste_command::Plan;
 use protocol::TargetApp;
+use server::TakeServer;
 use stream::{AudioMsg, Recovery, Timeouts};
 use take::{PillEvent, TakeEnv};
 
@@ -71,6 +73,9 @@ const IN_APP_SELECTION_TIMEOUT: Duration = Duration::from_secs(1);
 #[derive(Debug, Clone)]
 struct Config {
     server_url: String,
+    /// This Mac's own server, standing by while another Mac's is in use
+    /// (beta `network`): a take that can't reach that one moves here.
+    fallback_url: Option<String>,
     /// The webview's origin, sent only to a non-loopback server.
     origin: Option<String>,
     input_device_id: Option<String>,
@@ -87,6 +92,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             server_url: DEFAULT_SERVER_URL.to_string(),
+            fallback_url: None,
             origin: None,
             input_device_id: None,
             live_text: false,
@@ -124,6 +130,9 @@ pub struct DictationState {
     http: OnceLock<reqwest::Client>,
     /// The onboarding window's microphone test ([`mic`]).
     preview: Mutex<Option<std_mpsc::Sender<()>>>,
+    /// The other Mac's server in use is away, as the main window last saw
+    /// (beta `network`): takes start on this Mac's own.
+    away: AtomicBool,
 }
 
 impl DictationState {
@@ -201,7 +210,11 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin, mode: TakeMo
     let env = AppEnv {
         app: app.clone(),
         take_id,
-        server_url: config.server_url.clone(),
+        server: Arc::new(TakeServer::starting(
+            config.server_url.clone(),
+            config.fallback_url.clone(),
+            state.away.load(Ordering::Relaxed),
+        )),
         http: state.http(),
         focus: focus.clone(),
         clipboard: Arc::new(Mutex::new(None)),
@@ -264,7 +277,7 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin, mode: TakeMo
     let stop = capture.stopper();
     let done = capture.done;
 
-    let (out_tx, in_rx) = transport::spawn(&config.server_url, config.origin.clone());
+    let (out_tx, in_rx) = transport::spawn_for(env.server.clone(), config.origin.clone());
     let released_for_task = released.clone();
     let field_before_task = field_before.clone();
 
@@ -272,7 +285,7 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin, mode: TakeMo
     let learning_flag = recording.clone();
     tauri::async_runtime::spawn(async move {
         while learning_flag.load(Ordering::Relaxed) {
-            http::pause_learning(&learning_env.http, &learning_env.server_url).await;
+            http::pause_learning(&learning_env.http, &learning_env.server.url()).await;
             tokio::time::sleep(LEARNING_PAUSE_INTERVAL).await;
         }
     });
@@ -679,7 +692,7 @@ fn report_take(env: &AppEnv, since_release: Option<Duration>) {
         .flatten()
         .map(|d| d.as_millis() as u64);
     let http = env.http.clone();
-    let server_url = env.server_url.clone();
+    let server_url = env.server.url();
     tauri::async_runtime::spawn(async move {
         http::report_take(&http, &server_url, mode, outcome, latency_ms).await;
     });
@@ -711,7 +724,8 @@ fn outcome_label(outcome: &client::Outcome) -> String {
 struct AppEnv {
     app: AppHandle,
     take_id: u64,
-    server_url: String,
+    /// Where the take's requests go ([`TakeServer`]).
+    server: Arc<TakeServer>,
     http: reqwest::Client,
     focus: Arc<Mutex<Option<FocusSnapshot>>>,
     /// Clipboard saved at key-down so paste needn't read it after release.
@@ -963,7 +977,7 @@ impl TakeEnv for AppEnv {
 
     fn discard(&self, capture_id: String) -> impl Future<Output = ()> + Send {
         let http = self.http.clone();
-        let server_url = self.server_url.clone();
+        let server_url = self.server.url();
         let app = self.app.clone();
         async move {
             http::delete_capture(&http, &server_url, &capture_id).await;
@@ -1102,25 +1116,40 @@ impl TakeEnv for AppEnv {
 
     fn fetch_result(&self, session_id: String) -> impl Future<Output = Recovery> + Send {
         let http = self.http.clone();
-        let server_url = self.server_url.clone();
+        let server_url = self.server.url();
         async move { http::fetch_result(&http, &server_url, &session_id).await }
     }
 
     fn upload(&self, wav: Vec<u8>) -> impl Future<Output = Result<Value, String>> + Send {
         let http = self.http.clone();
-        let server_url = self.server_url.clone();
+        let server = self.server.clone();
         let app = target_app(&self.focus);
         let source = match self.mode {
             TakeMode::Dictation => "dictation",
             TakeMode::Command => "command",
         };
-        async move { http::upload(&http, &server_url, wav, source, app).await }
+        async move {
+            let result = http::upload(&http, &server.url(), wav.clone(), source, app.clone()).await;
+            // The other Mac went away mid-take: save it on this one.
+            if result.is_err()
+                && server.can_fall_back()
+                && !http::reachable(&http, &server.url()).await
+            {
+                if let Some(fallback) = server.fall_back() {
+                    eprintln!(
+                        "[dictation] the server in use is unreachable; saving the take on this Mac"
+                    );
+                    return http::upload(&http, &fallback, wav, source, app).await;
+                }
+            }
+            result
+        }
     }
 
     /// For a command take, the uploaded instruction's rewrite of the selection.
     fn refine(&self, capture_id: String) -> impl Future<Output = Result<Value, String>> + Send {
         let http = self.http.clone();
-        let server_url = self.server_url.clone();
+        let server_url = self.server.url();
         let command = (self.mode == TakeMode::Command)
             .then(|| self.selection.lock().ok().and_then(|s| s.clone()));
         async move {
@@ -1147,6 +1176,7 @@ impl TakeEnv for AppEnv {
 pub fn dictation_configure(
     state: tauri::State<'_, DictationState>,
     server_url: Option<String>,
+    fallback_url: Option<String>,
     origin: Option<String>,
     input_device_id: Option<String>,
     device_known: Option<bool>,
@@ -1166,6 +1196,7 @@ pub fn dictation_configure(
     config.server_url = server_url
         .filter(|u| !u.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string());
+    config.fallback_url = fallback_url.filter(|u| !u.trim().is_empty());
     config.origin = origin.filter(|o| !o.is_empty() && o != "null");
     let known = device_known.unwrap_or(true);
     let device = next_device(
@@ -1180,6 +1211,13 @@ pub fn dictation_configure(
     }
     config.input_device_id = device;
     Ok(())
+}
+
+/// Whether the other Mac's server in use is away (beta `network`), from the
+/// main window's health checks.
+#[tauri::command]
+pub fn dictation_set_away(state: tauri::State<'_, DictationState>, away: bool) {
+    state.away.store(away, Ordering::Relaxed);
 }
 
 /// Remember the chosen microphone across launches. The webview only learns

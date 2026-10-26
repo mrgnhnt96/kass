@@ -2,6 +2,7 @@
 //! channels. Connection starts at key-down; the driver buffers audio until
 //! the server says `ready`.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -11,9 +12,13 @@ use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 
 use super::client::Action;
+use super::server::TakeServer;
 use super::stream::Incoming;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long another Mac's server has to answer before a take moves to this
+/// Mac's own.
+const FALLBACK_CONNECT_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// `http(s)://host:port` → `ws(s)://host:port/captures/stream`.
 pub fn stream_url(server_url: &str) -> String {
@@ -55,45 +60,82 @@ pub fn is_loopback(server_url: &str) -> bool {
 /// `origin` is sent only for a remote server, where it must be the app's own
 /// webview origin (which the server's allowlist already trusts); loopback
 /// connections stay originless.
+#[cfg(test)]
 pub fn spawn(
     server_url: &str,
     origin: Option<String>,
 ) -> (UnboundedSender<Action>, UnboundedReceiver<Incoming>) {
-    let (out_tx, mut out_rx) = unbounded_channel::<Action>();
-    let (in_tx, in_rx) = unbounded_channel::<Incoming>();
+    spawn_for(
+        Arc::new(TakeServer::new(server_url.to_string(), None)),
+        origin,
+    )
+}
+
+type Socket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn connect(
+    server_url: &str,
+    origin: Option<String>,
+    timeout: Duration,
+) -> Result<Socket, String> {
     let url = stream_url(server_url);
     let origin = if is_loopback(server_url) {
         None
     } else {
         origin
     };
+    let mut request = url
+        .as_str()
+        .into_client_request()
+        .map_err(|e| format!("invalid stream URL {url}: {e}"))?;
+    if let Some(origin) = origin.and_then(|o| HeaderValue::from_str(&o).ok()) {
+        request.headers_mut().insert("Origin", origin);
+    }
+    for (name, value) in crate::this_mac::headers() {
+        if let Ok(value) = HeaderValue::from_str(&value) {
+            request.headers_mut().insert(name, value);
+        }
+    }
+    let connect = tokio_tungstenite::connect_async_with_config(request, None, true);
+    match tokio::time::timeout(timeout, connect).await {
+        Ok(Ok((socket, _))) => Ok(socket),
+        Ok(Err(e)) => Err(format!("stream connect to {server_url} failed: {e}")),
+        Err(_) => Err(format!("stream connect to {server_url} timed out")),
+    }
+}
+
+/// [`spawn`] for a take that can fall back to this Mac's own server: when
+/// the server in use doesn't answer, the take connects there instead, its
+/// audio still buffered, and its other requests follow ([`TakeServer`]).
+pub fn spawn_for(
+    server: Arc<TakeServer>,
+    origin: Option<String>,
+) -> (UnboundedSender<Action>, UnboundedReceiver<Incoming>) {
+    let (out_tx, mut out_rx) = unbounded_channel::<Action>();
+    let (in_tx, in_rx) = unbounded_channel::<Incoming>();
     tauri::async_runtime::spawn(async move {
-        let mut request = match url.as_str().into_client_request() {
-            Ok(request) => request,
-            Err(e) => {
-                eprintln!("[dictation] invalid stream URL {url}: {e}");
-                let _ = in_tx.send(Incoming::Closed);
-                return;
-            }
+        // Another Mac on the network answers in milliseconds; don't make a
+        // take wait the full timeout when there's a server standing by.
+        let timeout = if server.can_fall_back() {
+            FALLBACK_CONNECT_TIMEOUT
+        } else {
+            CONNECT_TIMEOUT
         };
-        if let Some(origin) = origin.and_then(|o| HeaderValue::from_str(&o).ok()) {
-            request.headers_mut().insert("Origin", origin);
-        }
-        for (name, value) in crate::this_mac::headers() {
-            if let Ok(value) = HeaderValue::from_str(&value) {
-                request.headers_mut().insert(name, value);
-            }
-        }
-        let connect = tokio_tungstenite::connect_async_with_config(request, None, true);
-        let socket = match tokio::time::timeout(CONNECT_TIMEOUT, connect).await {
-            Ok(Ok((socket, _))) => socket,
-            Ok(Err(e)) => {
-                eprintln!("[dictation] stream connect failed: {e}");
-                let _ = in_tx.send(Incoming::Closed);
-                return;
-            }
-            Err(_) => {
-                eprintln!("[dictation] stream connect timed out");
+        let socket = match connect(&server.url(), origin.clone(), timeout).await {
+            Ok(socket) => Ok(socket),
+            Err(e) => match server.fall_back() {
+                Some(fallback) => {
+                    eprintln!("[dictation] {e}; dictating on this Mac instead");
+                    connect(&fallback, origin, CONNECT_TIMEOUT).await
+                }
+                None => Err(e),
+            },
+        };
+        let socket = match socket {
+            Ok(socket) => socket,
+            Err(e) => {
+                eprintln!("[dictation] {e}");
                 let _ = in_tx.send(Incoming::Closed);
                 return;
             }
@@ -301,6 +343,28 @@ mod tests {
             }
             other => panic!("unexpected outcome {other:?}"),
         }
+    }
+
+    /// Another Mac's server that refuses the take: it connects to the server
+    /// standing by on this Mac instead, and the take's other requests follow.
+    #[tokio::test]
+    async fn falls_back_to_this_macs_server_when_the_other_doesnt_answer() {
+        let refused = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let away = format!("http://127.0.0.1:{}", refused.local_addr().unwrap().port());
+        drop(refused);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let here = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let accepted = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            tokio_tungstenite::accept_async(tcp).await.unwrap()
+        });
+
+        let server = Arc::new(TakeServer::new(away, Some(here.clone())));
+        let (_out, mut incoming) = spawn_for(server.clone(), None);
+
+        assert!(matches!(incoming.recv().await, Some(Incoming::Open)));
+        accepted.await.unwrap();
+        assert_eq!(server.url(), here);
     }
 
     #[test]

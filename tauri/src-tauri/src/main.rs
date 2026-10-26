@@ -444,6 +444,9 @@ struct ServerState {
     models_dir: Mutex<Option<String>>,
     /// Beta `network`: listen for other Macs, not just this one.
     share_on_network: Mutex<bool>,
+    /// Beta `network`: the other Mac's server this one stands in for while
+    /// it's away (backend/services/sync).
+    shared_server: Mutex<Option<String>>,
 }
 
 /// Whether the server should listen for other Macs on the network: asked
@@ -473,7 +476,11 @@ async fn start_server(
     state: State<'_, ServerState>,
     models_dir: Option<String>,
     share_on_network: Option<bool>,
+    shared_server: Option<String>,
 ) -> Result<String, String> {
+    if let Some(url) = shared_server {
+        *state.shared_server.lock().unwrap() = Some(url).filter(|u| !u.is_empty());
+    }
     // Store models_dir for use on restart (empty string means reset to default)
     if let Some(ref dir) = models_dir {
         if dir.is_empty() {
@@ -672,6 +679,9 @@ async fn start_server(
     ]);
     if let Some(ref dir) = effective_models_dir {
         sidecar = sidecar.env("KASS_MODELS_DIR", dir);
+    }
+    if let Some(url) = state.shared_server.lock().unwrap().clone() {
+        sidecar = sidecar.env("KASS_SHARED_SERVER", url);
     }
     println!("Spawning bundled server process...");
     let spawn_result = sidecar.spawn();
@@ -964,10 +974,14 @@ async fn restart_server(
     state: State<'_, ServerState>,
     models_dir: Option<String>,
     share_on_network: Option<bool>,
+    shared_server: Option<String>,
 ) -> Result<String, String> {
     println!("restart_server: stopping current server...");
     if let Some(share) = share_on_network {
         *state.share_on_network.lock().unwrap() = share;
+    }
+    if let Some(url) = shared_server {
+        *state.shared_server.lock().unwrap() = Some(url).filter(|u| !u.is_empty());
     }
 
     // Update stored models_dir: empty string means reset to default, non-empty means set
@@ -988,7 +1002,7 @@ async fn restart_server(
 
     // Start server again (uses the stored models_dir)
     println!("restart_server: starting server...");
-    start_server(app, state.clone(), None, None).await
+    start_server(app, state.clone(), None, None, None).await
 }
 
 /// Identifier of the Kass app itself — used to short-circuit auto-paste
@@ -1599,6 +1613,7 @@ pub fn run() {
             server_pid: Mutex::new(None),
             models_dir: Mutex::new(None),
             share_on_network: Mutex::new(false),
+            shared_server: Mutex::new(None),
         })
         .manage(dictation::DictationState::default())
         .manage(deep_link::DeepLinkState::default())
@@ -1695,6 +1710,7 @@ pub fn run() {
             dictation::mic::mic_preview_start,
             dictation::mic::mic_preview_stop,
             dictation::dictation_configure,
+            dictation::dictation_set_away,
             dictation::dictation_start,
             dictation::dictation_stop,
             dictation::command_run,
