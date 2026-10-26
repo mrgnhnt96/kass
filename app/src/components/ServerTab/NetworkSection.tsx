@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
 import { useToast } from '@/components/ui/use-toast';
 import { useBetaFeature } from '@/lib/betaFeatures';
-import { normalizeServerAddress } from '@/lib/serverAddress';
+import { answersAsKass, normalizeServerAddress } from '@/lib/serverAddress';
 import { usePlatform } from '@/platform/PlatformContext';
 import { useServerStore } from '@/stores/serverStore';
 import { SettingRow, SettingSection } from './SettingRow';
@@ -87,18 +87,6 @@ function ShareOnNetworkRow() {
   );
 }
 
-/** Whether `url` answers as a Kass server. */
-async function isKassServer(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return false;
-    const health = await response.json();
-    return health?.status === 'healthy';
-  } catch {
-    return false;
-  }
-}
-
 /** Point this Mac at another Mac's server, then restart onto it. */
 function UseAnotherMacRow() {
   const { t } = useTranslation();
@@ -132,7 +120,7 @@ function UseAnotherMacRow() {
       return;
     }
     setBusy(true);
-    if (!(await isKassServer(url))) {
+    if (!(await answersAsKass(url))) {
       setBusy(false);
       toast({
         title: t('settings.general.network.remote.unreachable', { url }),

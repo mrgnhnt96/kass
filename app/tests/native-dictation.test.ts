@@ -21,10 +21,12 @@ mock.module('@tauri-apps/api/core', () => ({ invoke }));
 mock.module('../src/lib/hooks/useSettings', () => ({ useCaptureSettings: () => ({ settings }) }));
 // bun shares module mocks across test files: keep the store's full surface.
 const serverState = { customModelsDir: null };
+let remote: string | null = null;
 mock.module('../src/stores/serverStore', () => ({
-  serverUrl: () => 'http://127.0.0.1:17493',
-  useServerUrl: () => 'http://127.0.0.1:17493',
-  remoteServerUrl: () => null,
+  serverUrl: () => remote ?? 'http://127.0.0.1:17493',
+  useServerUrl: () => remote ?? 'http://127.0.0.1:17493',
+  remoteServerUrl: () => remote,
+  useRemoteServerUrl: () => remote,
   sharesOnNetwork: () => false,
   useServerStore: Object.assign(
     (select: (state: typeof serverState) => unknown) => select(serverState),
@@ -61,6 +63,7 @@ beforeEach(() => {
   invoke.mockClear();
   unlisten.mockClear();
   settings = { input_device_id: null };
+  remote = null;
   Object.assign(globalThis, {
     window: Object.assign(globalThis, { location: { origin: 'tauri://localhost' } }),
     IS_REACT_ACT_ENVIRONMENT: true,
@@ -77,6 +80,7 @@ test('pushes the server, origin and saved native microphone to Rust', async () =
   await mount();
   expect(invoke).toHaveBeenCalledWith('dictation_configure', {
     serverUrl: 'http://127.0.0.1:17493',
+    fallbackUrl: null,
     origin: 'tauri://localhost',
     inputDeviceId: 'native:AirPods',
     deviceKnown: true,
@@ -85,11 +89,24 @@ test('pushes the server, origin and saved native microphone to Rust', async () =
   });
 });
 
+test("with another Mac's server in use, this Mac's own stands by", async () => {
+  remote = 'http://studio.local:17493';
+  await mount();
+  expect(invoke).toHaveBeenCalledWith(
+    'dictation_configure',
+    expect.objectContaining({
+      serverUrl: 'http://studio.local:17493',
+      fallbackUrl: 'http://127.0.0.1:17493',
+    }),
+  );
+});
+
 test('does not replace the remembered microphone before settings load', async () => {
   settings = undefined as unknown as typeof settings;
   await mount();
   expect(invoke).toHaveBeenCalledWith('dictation_configure', {
     serverUrl: 'http://127.0.0.1:17493',
+    fallbackUrl: null,
     origin: 'tauri://localhost',
     inputDeviceId: null,
     deviceKnown: false,

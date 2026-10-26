@@ -15,6 +15,7 @@ import { useCaptureEvents } from '@/lib/hooks/useCaptureEvents';
 import { useChordSync } from '@/lib/hooks/useChordSync';
 import { useDeepLinks } from '@/lib/hooks/useDeepLinks';
 import { useInAppDictationInsert } from '@/lib/hooks/useInAppDictationInsert';
+import { useSharedMacFallback } from '@/lib/hooks/useSharedMacFallback';
 import { useSoundCueSync } from '@/lib/hooks/useSoundCueSync';
 import { readThisMac } from '@/lib/macs';
 import { queryClient } from '@/lib/queryClient';
@@ -112,6 +113,8 @@ function MainApp() {
   useDeepLinks(serverReady);
   // Captures dictated on another Mac sharing the server (beta `network`).
   useCaptureEvents(serverReady);
+  // This Mac stands in while the other Mac's server is away (beta `network`).
+  useSharedMacFallback();
 
   // Hooks above (the chord's settings among them) ask the server before it
   // is up. Whatever failed for that is asked again once it is, so the global
@@ -231,7 +234,9 @@ function MainApp() {
         });
     };
 
-    // Beta `network`: with another Mac's server set, use it and start none here.
+    // Beta `network`: with another Mac's server set, use it. This Mac's own
+    // starts too, standing in whenever that one can't be reached
+    // (useSharedMacFallback), so the app opens on whichever answers first.
     void readUpdateChannel().then(() => {
       const remote = remoteServerUrl();
       if (!remote) {
@@ -239,11 +244,20 @@ function MainApp() {
         return;
       }
       console.log('Using the Kass server at', remote);
-      window.__kassServerStartedByApp = false;
       setConnectingTo(remote);
+      platform.lifecycle
+        .startServer(useServerStore.getState().customModelsDir)
+        .then(() => {
+          window.__kassServerStartedByApp = true;
+        })
+        .catch((error) => {
+          console.error('This Mac’s server could not start to stand in:', error);
+          window.__kassServerStartedByApp = false;
+        });
       pollForServer(
-        `Could not reach Kass at ${remote} within 2 minutes. Check that Kass is open on that ` +
-          'Mac with "Share with other Macs" on, or stop using it from Settings.',
+        `Could not reach Kass at ${remote} or start it on this Mac within 2 minutes. ` +
+          'Check that Kass is open on that Mac with "Share with other Macs" on, or stop using it ' +
+          'from Settings.',
       );
     });
 

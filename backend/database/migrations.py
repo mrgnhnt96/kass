@@ -110,6 +110,8 @@ def _migrate_writing_styles(engine, inspector, tables: set[str]) -> None:
         return
     if "description" not in _get_columns(inspector, "writing_styles"):
         _add_column(engine, "writing_styles", "description TEXT", "description")
+    if "updated_at" not in _get_columns(inspector, "writing_styles"):
+        _add_column(engine, "writing_styles", "updated_at DATETIME", "updated_at")
 
 
 def _migrate_dictionary_entries(engine, inspector, tables: set[str]) -> None:
@@ -128,6 +130,8 @@ def _migrate_dictionary_entries(engine, inspector, tables: set[str]) -> None:
         _add_column(engine, "dictionary_entries", "added_by VARCHAR", "added_by")
     if "phrase" not in columns:
         _add_column(engine, "dictionary_entries", "phrase BOOLEAN NOT NULL DEFAULT 0", "phrase")
+    if "updated_at" not in columns:
+        _add_column(engine, "dictionary_entries", "updated_at DATETIME", "updated_at")
 
 
 # Kass was Herga (com.mrgnhnt.herga), and before that Voicebox, with bundle

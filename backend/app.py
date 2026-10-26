@@ -51,22 +51,13 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        from .services import sync
+
         await _run_startup(app)
         from .services.correction_learning import initialize
-        from .services.correction_notes import periodic_job as notes_job
-        from .services.history_retention import periodic_job as retention_job
-        from .services.model_improvement.manager import periodic_job
-        from .services.model_warmth import periodic_job as warmth_job
-        from .services.usage_report import periodic_job as usage_job
 
         initialize()
-        tasks = [
-            asyncio.create_task(periodic_job()),
-            asyncio.create_task(notes_job()),
-            asyncio.create_task(retention_job()),
-            asyncio.create_task(usage_job()),
-            asyncio.create_task(warmth_job()),
-        ]
+        tasks = [asyncio.create_task(job()) for job in (_stand_in_jobs() if sync.standing_in() else _jobs())]
         try:
             yield
         finally:
@@ -97,6 +88,24 @@ def create_app() -> FastAPI:
     register_routers(application)
 
     return application
+
+
+def _jobs():
+    from .services.correction_notes import periodic_job as notes_job
+    from .services.history_retention import periodic_job as retention_job
+    from .services.model_improvement.manager import periodic_job as learning_job
+    from .services.model_warmth import periodic_job as warmth_job
+    from .services.usage_report import periodic_job as usage_job
+
+    return (learning_job, notes_job, retention_job, usage_job, warmth_job)
+
+
+def _stand_in_jobs():
+    """A stand-in for a shared Kass only syncs with it: the shared Kass learns,
+    keeps history and reports usage, and models stay unloaded until needed."""
+    from .services.sync.job import periodic_job as sync_job
+
+    return (sync_job,)
 
 
 def _configure_cors(application: FastAPI) -> None:
@@ -153,9 +162,14 @@ async def _run_startup(application: FastAPI) -> None:
     except Exception as e:
         logger.warning("Could not create HuggingFace cache directory: %s", e)
 
-    from .services.model_startup import load_startup_models
+    from .services import sync
 
-    await load_startup_models()
+    if sync.standing_in():
+        logger.info("Standing in for the shared Kass at %s; models load if the app falls back", sync.shared_server())
+    else:
+        from .services.model_startup import load_startup_models
+
+        await load_startup_models()
     logger.info("Ready")
 
 

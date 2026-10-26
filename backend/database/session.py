@@ -57,6 +57,12 @@ def init_db() -> None:
         ensure_defaults(db, _db_path.with_name("dictionary-defaulted"))
         recount_if_stale(db)
 
+    # From here on, a stand-in for a shared Kass records what it changes,
+    # to send there (services/sync).
+    from ..services.sync import changes
+
+    changes.install()
+
 
 def _rename_old_db(db_path) -> None:
     """Kass was Herga (herga.db), and before that Voicebox (voicebox.db); carry it over once."""

@@ -158,6 +158,8 @@ class WritingStyle(Base):
     # How the user says they write in this style's apps (docs/plans/TEACH_BY_REPLYING.md).
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # The last edit, so a shared Kass keeps whichever Mac's edit came later (services/sync).
+    updated_at = Column(DateTime, nullable=True, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class AppStyle(Base):
@@ -288,3 +290,20 @@ class DictionaryEntry(Base):
     # a term Whisper is prompted with or that respells other words.
     phrase = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
+    # The last edit, so a shared Kass keeps whichever Mac's edit came later (services/sync).
+    updated_at = Column(DateTime, nullable=True, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SyncChange(Base):
+    """Something this Mac's server changed while standing in for a shared Kass,
+    waiting to be sent to it (services/sync). One row per changed row, kept
+    until the shared Kass has it.
+    """
+
+    __tablename__ = "sync_changes"
+
+    # What changed (services/sync/rows.py KINDS) and its id there.
+    kind = Column(String, primary_key=True)
+    ref_id = Column(String, primary_key=True)
+    deleted = Column(Boolean, nullable=False, default=False)
+    changed_at = Column(DateTime, nullable=False, default=datetime.utcnow)

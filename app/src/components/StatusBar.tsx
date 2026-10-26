@@ -5,6 +5,7 @@ import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { useNativeInputDevices } from '@/lib/hooks/useNativeInputDevices';
 import { useServerHealth } from '@/lib/hooks/useServer';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
+import { type SharedMacSync, useSharedMacSync } from '@/lib/hooks/useSharedMacFallback';
 import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
 import { cn } from '@/lib/utils/cn';
 import { serverStats } from '@/lib/utils/serverStats';
@@ -24,6 +25,7 @@ export function StatusBar() {
   const { settings } = useCaptureSettings();
   const { devices } = useNativeInputDevices(isTauri);
   const { data: style } = useWritingStyle();
+  const sync = useSharedMacSync();
 
   const server = health.isSuccess ? 'online' : health.isError ? 'offline' : 'connecting';
   const micName =
@@ -48,6 +50,11 @@ export function StatusBar() {
           server {server}
         </span>
       </StatusItem>
+      {sync && (sync.away || sync.pending > 0) && (
+        <StatusItem title={syncDetails(sync)} onClick={() => navigate({ to: '/settings' })}>
+          <span className={cn(sync.away && 'text-accent')}>{syncLabel(sync)}</span>
+        </StatusItem>
+      )}
       {isTauri && (
         <StatusItem
           title={`Microphone: ${micName}. Click to choose another.`}
@@ -142,4 +149,33 @@ function serverDetails(health: HealthResponse): string {
     ...serverStats(health).map((stat) => `${stat.label}: ${stat.value}`),
     'Click for server settings.',
   ].join('\n');
+}
+
+/** The other Mac's name, like studio.local, from its server URL. */
+function macName(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+function changes(count: number): string {
+  return `${count} ${count === 1 ? 'change' : 'changes'}`;
+}
+
+/** "on this Mac · 3 to sync" while the other Mac is away, "syncing 3" once it's back. */
+function syncLabel(sync: SharedMacSync): string {
+  if (!sync.away) return `syncing ${sync.pending}`;
+  return sync.pending > 0 ? `on this Mac · ${sync.pending} to sync` : 'on this Mac';
+}
+
+function syncDetails(sync: SharedMacSync): string {
+  const mac = macName(sync.remote);
+  if (!sync.away) return `Sending ${changes(sync.pending)} made on this Mac to ${mac}.`;
+  const waiting =
+    sync.pending > 0
+      ? ` ${changes(sync.pending)} will sync when it's back.`
+      : ' What you dictate will sync when it’s back.';
+  return `Can't reach ${mac}, so Kass is dictating on this Mac.${waiting}`;
 }
