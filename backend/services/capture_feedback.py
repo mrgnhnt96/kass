@@ -70,7 +70,7 @@ def save_feedback(capture_id: str, request: CaptureFeedbackCreate, db: Session, 
     if replaced is not None:
         dictionary.delete_added_by(db, replaced.id)
     _learn_words(row, original, db)
-    _reports_changed(row.target, row.source, db, withdrawn=replaced is not None)
+    reports_changed(row.target, row.source, db, withdrawn=replaced is not None)
     return to_response(row)
 
 
@@ -133,7 +133,7 @@ def withdraw_feedback(capture_id: str, report_id: str, db: Session) -> bool:
         if inspect(newer).persistent:
             _learn_words(newer, original, db)
     for target, source in changed:
-        _reports_changed(target, source, db, withdrawn=True)
+        reports_changed(target, source, db, withdrawn=True)
     return True
 
 
@@ -151,13 +151,13 @@ def forget_capture(capture_id: str, db: Session) -> None:
         db.delete(row)
     db.commit()
     for target, source in changed:
-        _reports_changed(target, source, db, withdrawn=True)
+        reports_changed(target, source, db, withdrawn=True)
     dictionary.delete_added_by(db, capture_id)
     for row in rows:
         dictionary.delete_added_by(db, row.id)
 
 
-def _reports_changed(target: str, source: str, db: Session, withdrawn: bool = False) -> None:
+def reports_changed(target: str, source: str, db: Session, withdrawn: bool = False) -> None:
     # A withdrawn report may be in the cleanup adapter's training data too.
     correction_learning.request_run(retrain=withdrawn)
     if source not in CaptureFeedback.EXPLICIT_SOURCES:

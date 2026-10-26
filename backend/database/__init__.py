@@ -14,6 +14,7 @@ from .models import (
     DictionaryEntry,
     KnownName,
     RetiredCapture,
+    SyncChange,
     TakeReport,
     WritingStyle,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "KnownName",
     "RetiredCapture",
     "SessionLocal",
+    "SyncChange",
     "TakeReport",
     "WritingStyle",
     "_db_path",

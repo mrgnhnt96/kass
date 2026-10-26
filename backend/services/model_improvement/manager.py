@@ -274,6 +274,34 @@ def quarantine_adapter(message, path=None):
         _save()
 
 
+def in_use():
+    """The trained models in use, by kind, for a stand-in to copy (services/sync/mirror.py)."""
+    initialize()
+    with _lock:
+        return deepcopy(_active)
+
+
+def mirrored_root():
+    """Where a stand-in keeps the shared Kass's trained models."""
+    initialize()
+    return _root / "mirrored"
+
+
+def use_mirrored(active):
+    """Use a shared Kass's trained models, already copied under :func:`mirrored_root`.
+    One that fails its checks is left out, so dictation uses the base model."""
+    global _active
+    initialize()
+    checks = {"llm": _valid_adapter, "voice": _valid_voice}
+    kept = {kind: item for kind, item in active.items() if kind not in checks or checks[kind](item)}
+    with _lock:
+        if kept == _active:
+            return
+        _active = deepcopy(kept)
+        _state["active"] = deepcopy(kept)
+        _save()
+
+
 def _stop_process(process):
     if process is None or process.poll() is not None:
         return
