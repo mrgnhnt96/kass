@@ -11,7 +11,8 @@ models in use. What the user does on the stand-in is recorded (``changes``)
 and sent to the shared Kass once it's back (``push``), where it's applied
 as if it had been done there (``importer``), the later edit winning.
 
-The stand-in loads no models until the app falls back to it (``wake``), and
+The stand-in loads no models until the app falls back to it (``wake``),
+frees them once the shared Kass has been back a while (``sleep``), and
 never trains or relearns: the shared Kass learns from what it's sent.
 """
 

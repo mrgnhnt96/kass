@@ -3,8 +3,9 @@ The stand-in's side of sync: every few seconds, see whether the shared Kass
 is up; when it is, send it what changed here, then copy what it has.
 
 Also wakes the stand-in when the app falls back to it, loading the models it
-left unloaded, and fetches the models the shared Kass uses while it's up so
-falling back never waits on a download.
+left unloaded, puts it back to sleep once the shared Kass has been back a
+while, and fetches the models the shared Kass uses while it's up so falling
+back never waits on a download.
 """
 
 import asyncio
@@ -29,6 +30,9 @@ CHECK_SECONDS = 5
 # How often to copy from the shared Kass when nothing was sent to it.
 COPY_SECONDS = 60
 HEALTH_TIMEOUT = 2.0
+# How long the shared Kass must stay back before the stand-in frees its
+# models (~5 GB): long enough that a brief drop doesn't reload them each time.
+SLEEP_AFTER_SECONDS = 300
 # Changes per request: each capture brings its recording.
 BATCH = 20
 
@@ -40,6 +44,8 @@ _state = {
     "error": None,
 }
 _awake = False
+# When the shared Kass was last found back after being away, or None.
+_back_since: float | None = None
 _wake_lock = asyncio.Lock()
 _downloading: set[str] = set()
 _warmth: asyncio.Task | None = None
@@ -62,17 +68,53 @@ def status() -> dict:
 
 async def wake() -> None:
     """Load the models the stand-in left unloaded, once: the app is dictating here."""
-    global _awake, _warmth
+    global _awake, _warmth, _back_since
     async with _wake_lock:
         if _awake:
             return
         _awake = True
+        _back_since = None
         from ..model_startup import load_startup_models
         from ..model_warmth import periodic_job as warmth_job
 
         logger.info("The shared Kass is away; loading models to dictate on this Mac")
         await load_startup_models()
         _warmth = asyncio.create_task(warmth_job())
+
+
+async def sleep() -> None:
+    """Free the models :func:`wake` loaded: the app dictates on the shared Kass again."""
+    global _awake, _warmth
+    async with _wake_lock:
+        if not _awake:
+            return
+        _awake = False
+        if _warmth is not None:
+            _warmth.cancel()
+            _warmth = None
+        from .. import llm, transcribe
+
+        await transcribe.unload_whisper_model()
+        await llm.unload_llm_model()
+        logger.info("The shared Kass is back; freed the models loaded to dictate on this Mac")
+
+
+async def _sleep_when_back() -> None:
+    """Sleep once the shared Kass has stayed back a while and nothing is dictating here."""
+    global _back_since
+    if not _state["reachable"]:
+        _back_since = None
+        return
+    if not _awake:
+        return
+    now = time.monotonic()
+    if _back_since is None:
+        _back_since = now
+    from ..model_improvement import manager
+
+    # A take moved here while the shared Kass was away finishes here.
+    if now - _back_since >= SLEEP_AFTER_SECONDS and not manager.dictating():
+        await sleep()
 
 
 def _key(model: type, ref: str):
@@ -242,4 +284,8 @@ async def periodic_job() -> None:
                 _failed(f"Could not sync with the shared Kass at {url}: {error}")
             except Exception as error:
                 _failed(f"Syncing with the shared Kass failed: {error}", exc_info=True)
+            try:
+                await _sleep_when_back()
+            except Exception:
+                logger.exception("Could not free the stand-in's models")
             await asyncio.sleep(CHECK_SECONDS)

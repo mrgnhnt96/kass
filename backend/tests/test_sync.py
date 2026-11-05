@@ -379,3 +379,71 @@ def test_one_sync_sends_what_changed_then_copies_the_shared_kass(stand_in, share
         assert db.query(SyncChange).count() == 0
         assert [row.id for row in db.query(DictionaryEntry).all()] == ["theirs"]
     assert job._state["reachable"] is True
+
+
+@pytest.fixture
+def awake_stand_in(monkeypatch):
+    """A stand-in that fell back and loaded its models; records what was unloaded."""
+    import asyncio
+
+    from backend.services import llm, transcribe
+    from backend.services.model_improvement import manager
+
+    unloaded = []
+
+    async def unload_whisper():
+        unloaded.append("whisper")
+
+    async def unload_llm():
+        unloaded.append("llm")
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(transcribe, "unload_whisper_model", unload_whisper)
+    monkeypatch.setattr(llm, "unload_llm_model", unload_llm)
+    monkeypatch.setattr(manager, "dictating", lambda: False)
+    monkeypatch.setattr(job.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(job, "_awake", True)
+    monkeypatch.setattr(job, "_back_since", None)
+    monkeypatch.setattr(job, "_warmth", None)
+    monkeypatch.setattr(job, "_wake_lock", asyncio.Lock())
+    monkeypatch.setitem(job._state, "reachable", True)
+
+    def check(after: float, reachable: bool = True):
+        clock["now"] += after
+        job._state["reachable"] = reachable
+        asyncio.run(job._sleep_when_back())
+
+    return check, unloaded
+
+
+def test_the_stand_in_frees_its_models_once_the_shared_kass_stays_back(awake_stand_in):
+    check, unloaded = awake_stand_in
+    check(0)
+    check(job.SLEEP_AFTER_SECONDS - 1)
+    assert unloaded == []
+    check(1)
+    assert unloaded == ["whisper", "llm"]
+    assert job._awake is False
+
+
+def test_a_brief_return_keeps_the_stand_in_s_models(awake_stand_in):
+    check, unloaded = awake_stand_in
+    check(0)
+    check(job.SLEEP_AFTER_SECONDS - 1, reachable=False)
+    check(1)
+    check(job.SLEEP_AFTER_SECONDS - 1)
+    assert unloaded == []
+    assert job._awake is True
+
+
+def test_a_take_finishing_here_keeps_the_models_until_it_is_done(awake_stand_in, monkeypatch):
+    from backend.services.model_improvement import manager
+
+    check, unloaded = awake_stand_in
+    monkeypatch.setattr(manager, "dictating", lambda: True)
+    check(0)
+    check(job.SLEEP_AFTER_SECONDS)
+    assert unloaded == []
+    monkeypatch.setattr(manager, "dictating", lambda: False)
+    check(job.CHECK_SECONDS)
+    assert unloaded == ["whisper", "llm"]
