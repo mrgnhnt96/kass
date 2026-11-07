@@ -58,7 +58,7 @@
     if (off) window.amplitude?.setOptOut(true);
     else load();
     render();
-  });
+  }, true);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
   else render();
