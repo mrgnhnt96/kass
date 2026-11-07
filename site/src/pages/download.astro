@@ -1,28 +1,26 @@
 ---
 import '../styles/site.css';
-import Amplitude from '../components/Amplitude.astro';
+import { getImage } from 'astro:assets';
+import icon from '../assets/icon.png';
+import SiteHead from '../components/SiteHead.astro';
 import StarButton from '../components/StarButton.astro';
-import { NEW_ISSUE, RELEASES, REPO_API } from '../site';
+import { NEW_ISSUE, RELEASES, REPO_API, REQUIREMENTS } from '../site';
+
+const logo = await getImage({ src: icon, width: 208, format: 'webp' });
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Download Kass</title>
-    <meta name="description" content="Download Kass, private dictation for Apple Silicon Macs." />
-    <link rel="icon" href="/icon.png" />
-    <meta name="theme-color" content="#0c0d10" />
-    <Amplitude />
+    <SiteHead title="Download Kass for Mac" description="Download Kass, free private dictation for Apple Silicon Macs running macOS 15 or later." />
   </head>
   <body>
     <main class="wrap page" data-api={REPO_API} data-releases={RELEASES}>
-      <a class="home" href="/"><img src="/icon.png" alt="" width="28" height="28" /> Kass</a>
+      <a class="home" href="/"><img src={logo.src} alt="" width="28" height="28" /> Kass</a>
 
-      <img class="icon" src="/icon.png" alt="" width="104" height="104" />
+      <img class="icon" src={logo.src} alt="" width="104" height="104" />
 
-      <h1 data-title>Getting the latest Kass…</h1>
+      <h1>Download Kass for Mac</h1>
       <p class="lede" data-status>
         Your download starts in a moment.
         <noscript
@@ -30,18 +28,19 @@ import { NEW_ISSUE, RELEASES, REPO_API } from '../site';
           > instead.</noscript
         >
       </p>
+      <p class="needs">{REQUIREMENTS}</p>
       <p class="fallback" data-fallback hidden>
         Didn’t start? <a data-direct href={RELEASES}>Download it directly</a>.
       </p>
 
       <ol class="steps">
+        <li data-install><b>Open the DMG</b> from your Downloads folder.</li>
+        <li data-install><b>Drag Kass into Applications.</b> It needs to live there to keep its permissions.</li>
+        <li data-install><b>Open Kass</b> and follow setup.</li>
         <li class="star-step">
           <span><b>Star Kass on GitHub.</b> It’s free and open source, and a star helps other people find it.</span>
           <StarButton label="Star" size="sm" />
         </li>
-        <li data-install><b>Open the DMG</b> from your Downloads folder.</li>
-        <li data-install><b>Drag Kass into Applications.</b> It needs to live there to keep its permissions.</li>
-        <li data-install><b>Open Kass</b> and follow setup.</li>
       </ol>
 
       <p class="help">Stuck? The <a href="/docs/install/">install guide</a> walks through every step.</p>
@@ -98,6 +97,7 @@ import { NEW_ISSUE, RELEASES, REPO_API } from '../site';
     color: var(--green);
   }
 
+  .needs,
   .fallback {
     margin-top: 12px;
     color: var(--ink-faint);
@@ -166,8 +166,7 @@ import { NEW_ISSUE, RELEASES, REPO_API } from '../site';
   const $ = (name: string) => page.querySelector<HTMLElement>(`[data-${name}]`)!;
   const releases = page.dataset.releases!;
 
-  const fail = (title: string, status: string) => {
-    $('title').textContent = title;
+  const fail = (status: string) => {
     $('status').innerHTML = status;
     for (const step of page.querySelectorAll<HTMLElement>('[data-install]')) step.hidden = true;
   };
@@ -175,10 +174,7 @@ import { NEW_ISSUE, RELEASES, REPO_API } from '../site';
   fetch(`${page.dataset.api}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
     .then(async (response) => {
       if (response.status === 404) {
-        fail(
-          'Kass isn’t out yet',
-          'The first release is on its way. Star the repository to hear when it lands.',
-        );
+        fail('The first release is on its way. Star the repository to hear when it lands.');
         return;
       }
       if (!response.ok) throw new Error(String(response.status));
@@ -187,15 +183,13 @@ import { NEW_ISSUE, RELEASES, REPO_API } from '../site';
       if (!dmg) throw new Error('No DMG in the release');
 
       const version = release.tag_name.replace(/^v/, '');
-      $('title').textContent = `Downloading Kass ${version}`;
-      $('status').textContent = 'For Macs with Apple Silicon. Your download should start right away.';
+      $('status').textContent = `Downloading Kass ${version}. It should start right away.`;
       $('direct').setAttribute('href', dmg.browser_download_url);
       $('fallback').hidden = false;
       window.location.href = dmg.browser_download_url;
     })
     .catch(() => {
       fail(
-        'Download Kass',
         `We couldn’t reach GitHub to find the newest version. <a href="${releases}">Download it from the Releases page</a> instead.`,
       );
     });

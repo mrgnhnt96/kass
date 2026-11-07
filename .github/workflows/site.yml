@@ -8,6 +8,7 @@ on:
     paths:
       - "site/**"
       - "CHANGELOG.md"
+      - "docs/assets/readme/captures.png"
       - ".github/workflows/site.yml"
   workflow_dispatch:
 
@@ -24,7 +25,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # Full history: the sitemap's lastmod dates come from git.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

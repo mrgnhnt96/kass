@@ -1,11 +1,35 @@
 // @ts-check
 
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
+import { OG_IMAGE, OG_IMAGE_ALT, SITE } from './src/site.ts';
+
+const sourceOf = (pathname) => {
+  if (pathname === '/') return 'src/pages/index.astro';
+  if (pathname === '/changelog/') return '../CHANGELOG.md';
+  if (pathname === '/docs/') return 'src/content/docs/docs/index.md';
+  const page = pathname.slice(1, -1);
+  const candidates = page.startsWith('docs/')
+    ? [`src/content/docs/${page}.md`, `src/content/docs/${page}.mdx`]
+    : [`src/pages/${page}.astro`];
+  return candidates.find(existsSync);
+};
+
+const lastChanged = (file) =>
+  file && execFileSync('git', ['log', '-1', '--format=%cI', '--', file], { encoding: 'utf8' }).trim();
 
 export default defineConfig({
-  site: 'https://kass.mrgnhnt.com',
+  site: SITE,
   integrations: [
+    sitemap({
+      serialize(item) {
+        const lastmod = lastChanged(sourceOf(new URL(item.url).pathname));
+        return lastmod ? { ...item, lastmod } : item;
+      },
+    }),
     starlight({
       title: 'Kass',
       // The 404 page is src/pages/404.astro.
@@ -15,16 +39,13 @@ export default defineConfig({
       favicon: '/favicon.svg',
       head: [
         { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
-        // Amplitude Browser SDK — Analytics autocapture. Public ingestion-scoped project API key.
-        {
-          tag: 'script',
-          attrs: { src: 'https://cdn.amplitude.com/script/15288b16e4a64d54978fa9d86adddad1.js' },
-        },
-        {
-          tag: 'script',
-          content:
-            "window.amplitude.init('15288b16e4a64d54978fa9d86adddad1', { serverZone: 'US', autocapture: true });",
-        },
+        { tag: 'link', attrs: { rel: 'icon', href: '/favicon-96.png', sizes: '96x96', type: 'image/png' } },
+        { tag: 'meta', attrs: { property: 'og:image', content: OG_IMAGE } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: OG_IMAGE_ALT } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: OG_IMAGE } },
+        { tag: 'script', attrs: { src: '/site-stats.js', async: true } },
         // Docs search-term tracking. Pagefind creates its search input lazily when the
         // search modal opens, so we delegate from the document and match the Pagefind
         // UI input (class `pagefind-ui__search-input`). Each settled query (debounced
