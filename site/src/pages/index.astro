@@ -1,13 +1,47 @@
 ---
+import { getImage, Image } from 'astro:assets';
 import '../styles/site.css';
-import Amplitude from '../components/Amplitude.astro';
+import captures from '../../../docs/assets/readme/captures.png';
+import icon from '../assets/icon.png';
 import DictationDemo from '../components/DictationDemo.astro';
+import SiteHead from '../components/SiteHead.astro';
 import StarButton from '../components/StarButton.astro';
-import { DOWNLOAD, ISSUES, NEW_ISSUE, REPO } from '../site';
+import { DOWNLOAD, NEW_ISSUE, OG_IMAGE, REPO, SITE } from '../site';
+
+const logo = await getImage({ src: icon, width: 192, format: 'webp' });
 
 const title = 'Kass — Private dictation for your Mac';
 const description =
-  'Hold a key, speak, and let go. Kass turns what you said into clean, ready-to-send text in any app. Everything runs on your Mac.';
+  'Hold a key, speak, and let go. Kass turns what you said into clean, ready-to-send text in any app. Your voice and your words stay on your Mac.';
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE}/#website`,
+      name: 'Kass',
+      url: `${SITE}/`,
+      description,
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${SITE}/#app`,
+      name: 'Kass',
+      url: `${SITE}/`,
+      description,
+      image: OG_IMAGE,
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'macOS 15 or later',
+      processorRequirements: 'Apple Silicon',
+      downloadUrl: `${SITE}${DOWNLOAD}`,
+      license: `${REPO}/blob/main/LICENSE`,
+      isAccessibleForFree: true,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      sameAs: REPO,
+    },
+  ],
+};
 
 const examples = [
   {
@@ -45,7 +79,7 @@ const examples = [
 const features = [
   {
     title: 'A style for every app',
-    body: 'Slack can be casual while Mail stays polished. Each app gets a writing style, and each style learns on its own. Say “use formal mode” to switch mid-thought.',
+    body: 'Slack can be casual while Mail stays polished. Each app gets a writing style, and each style learns on its own. Start with “use formal mode” to change the style for that dictation.',
     tag: 'Writing styles',
     href: '/docs/writing-styles/',
   },
@@ -75,7 +109,7 @@ const features = [
   },
   {
     title: 'See how much you’ve said',
-    body: 'Insights tracks words dictated, your speaking pace, time saved and the apps you talk to most. The numbers stay on your Mac.',
+    body: 'Insights tracks words dictated, your speaking pace, time saved and the apps you talk to most.',
     tag: 'Insights',
     href: '/docs/captures/',
   },
@@ -84,7 +118,7 @@ const features = [
 const faqs = [
   {
     q: 'Does anything I say leave my Mac?',
-    a: 'No. Recording, transcription, cleanup and learning all run locally. Your audio and text never leave your Mac. Kass only goes online to download its speech and language models from Hugging Face, to check GitHub for new versions, and once a day to send anonymous usage counts like how many words you dictated, which you can turn off.',
+    a: 'No. Recording, transcription, cleanup and learning all run locally, and your audio and text never leave your Mac. Kass does go online to get models and their details from Hugging Face, to check GitHub for new versions, and to download practice sounds from openslr.org and zenodo.org if you train it on your voice. Once a day it also sends anonymous usage counts, like how many words you dictated, which you can turn off.',
   },
   {
     q: 'How is this different from macOS dictation?',
@@ -96,7 +130,7 @@ const faqs = [
   },
   {
     q: 'Which Macs does it run on?',
-    a: 'Macs with Apple Silicon (M1 or later). Whisper and the cleanup model run on Apple’s MLX framework on the GPU, which is what keeps it fast without the cloud.',
+    a: 'Macs with Apple Silicon (M1 or later) on macOS 15 or later, with about 2.5 GB of free disk space. Whisper and the cleanup model run on Apple’s MLX framework on the GPU, which is what keeps it fast without the cloud.',
   },
   {
     q: 'Does it work in every app?',
@@ -116,23 +150,14 @@ const faqs = [
 <!doctype html>
 <html lang="en">
 	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>{title}</title>
-		<meta name="description" content={description} />
-		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-		<meta property="og:title" content={title} />
-		<meta property="og:description" content={description} />
-		<meta property="og:image" content="https://kass.mrgnhnt.com/icon.png" />
-		<meta name="theme-color" content="#0c0d10" />
-		<Amplitude />
+		<SiteHead title={title} description={description} />
+		<script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 	</head>
 	<body>
 		<header class="nav">
 			<div class="wrap nav-inner">
 				<a class="brand" href="/">
-					<img src="/icon.png" alt="" width="30" height="30" />
+					<img src={logo.src} alt="" width="30" height="30" />
 					<span>Kass</span>
 				</a>
 				<nav class="links">
@@ -170,15 +195,24 @@ const faqs = [
 							</a>
 							<a class="btn btn-ghost" href="/docs/">Read the docs</a>
 						</div>
-						<p class="fineprint">Free and open source · Apple Silicon · No account</p>
+						<p class="fineprint">Free and open source · Apple Silicon, macOS 15 or later · About 2.5 GB of disk space</p>
 					</div>
 					<DictationDemo />
 				</div>
+				<figure class="wrap shot">
+					<Image
+						src={captures}
+						alt="The Kass Captures window. A list of example dictations from Mail, Slack, Notes and Xcode sits on the left. On the right, the selected one shows its cleaned-up text above what Kass heard."
+						widths={[640, 960, 1280, 1800]}
+						sizes="(max-width: 1160px) calc(100vw - 32px), 1112px"
+						format="webp"
+					/>
+					<figcaption>The real app with example data, in a screenshot from version 0.6.1.</figcaption>
+				</figure>
 			</section>
 
 			<section id="how" class="how">
 				<div class="wrap">
-					<p class="eyebrow">How it works</p>
 					<h2>Hold. Speak. Let go.</h2>
 					<ol class="steps">
 						<li>
@@ -207,7 +241,6 @@ const faqs = [
 
 			<section class="examples">
 				<div class="wrap">
-					<p class="eyebrow">What you say → what you get</p>
 					<h2>It knows what you meant.</h2>
 					<p class="lede section-lede">
 						Speech is faster than typing, but it comes out full of detours. Kass cleans them up without
@@ -230,7 +263,6 @@ const faqs = [
 			<section id="privacy" class="privacy">
 				<div class="wrap privacy-grid">
 					<div>
-						<p class="eyebrow">Private by design</p>
 						<h2>Your voice never leaves the room.</h2>
 						<p class="lede">
 							There is no Kass server to send your audio to. Speech recognition, cleanup and everything learned
@@ -243,6 +275,7 @@ const faqs = [
 							<li>Recordings and history stay on disk, and you choose how long to keep them</li>
 							<li>Open source, so you can check every line</li>
 						</ul>
+						<p class="privacy-more"><a href="/docs/privacy/">Read exactly what the app and this website send</a></p>
 					</div>
 					<div class="mac" aria-label="Diagram: every step of dictation happens inside your Mac" role="img">
 						<div class="mac-label">Your Mac</div>
@@ -255,14 +288,13 @@ const faqs = [
 							<div class="arrow"></div>
 							<div class="node node-green"><b>Your app</b><span>text lands where you were typing</span></div>
 						</div>
-						<div class="cloud"><span>☁︎</span> Internet: only for model downloads and update checks</div>
+						<div class="cloud"><span>☁︎</span> Internet: model downloads, update checks and anonymous usage counts you can turn off</div>
 					</div>
 				</div>
 			</section>
 
 			<section id="features" class="features">
 				<div class="wrap">
-					<p class="eyebrow">Features</p>
 					<h2>Gets better the more you use it.</h2>
 					<div class="feat-grid">
 						{
@@ -279,57 +311,9 @@ const faqs = [
 				</div>
 			</section>
 
-			<section class="native">
-				<div class="wrap native-grid">
-					<div class="stat">
-						<b>Native</b>
-						<span>Built with Tauri and Rust, not Electron. The hotkey, microphone and paste run in native code.</span>
-					</div>
-					<div class="stat">
-						<b>Streaming</b>
-						<span>Recognition and cleanup start while you speak, a sentence at a time.</span>
-					</div>
-					<div class="stat">
-						<b>On-device</b>
-						<span>Whisper and Qwen3 run on the Apple Silicon GPU through MLX.</span>
-					</div>
-				</div>
-			</section>
-
-			<section class="open">
-				<div class="wrap open-inner">
-					<div>
-						<p class="eyebrow">Open source</p>
-						<h2>Built in the open.</h2>
-						<p class="lede">
-							Kass is free, MIT licensed and developed on GitHub. Star the repository to follow along, and
-							tell us when something doesn’t work the way you expect. Every report makes dictation better.
-						</p>
-					</div>
-					<div class="open-cards">
-						<a class="open-card" href={REPO}>
-							<span class="open-icon">★</span>
-							<b>Star on GitHub</b>
-							<span>Follow releases and help other people find Kass.</span>
-						</a>
-						<a class="open-card" href={NEW_ISSUE}>
-							<span class="open-icon">!</span>
-							<b>Report an issue</b>
-							<span>Something broke, or text came out wrong? Tell us what you said and what you got.</span>
-						</a>
-						<a class="open-card" href={ISSUES}>
-							<span class="open-icon">→</span>
-							<b>Browse issues</b>
-							<span>See what’s known, what’s being worked on, and add your vote.</span>
-						</a>
-					</div>
-				</div>
-			</section>
-
 			<section class="faq">
 				<div class="wrap faq-grid">
 					<div>
-						<p class="eyebrow">Questions</p>
 						<h2>Good to know.</h2>
 						<p class="faq-more">More in the <a href="/docs/">docs</a>.</p>
 					</div>
@@ -348,7 +332,7 @@ const faqs = [
 
 			<section class="final">
 				<div class="wrap final-inner">
-					<img src="/icon.png" alt="" width="96" height="96" />
+					<img src={logo.src} alt="" width="96" height="96" />
 					<h2>Stop typing everything.</h2>
 					<p class="lede">Free, with no account to make, and every word stays on your Mac.</p>
 					<div class="ctas">
@@ -362,7 +346,7 @@ const faqs = [
 		<footer class="foot">
 			<div class="wrap foot-inner">
 				<div class="brand">
-					<img src="/icon.png" alt="" width="24" height="24" />
+					<img src={logo.src} alt="" width="24" height="24" />
 					<span>Kass</span>
 				</div>
 				<nav>
@@ -499,6 +483,24 @@ const faqs = [
 		gap: 12px;
 		margin-top: 34px;
 		flex-wrap: wrap;
+	}
+
+	.shot {
+		margin-top: 72px;
+	}
+
+	.shot img {
+		width: 100%;
+		height: auto;
+		border-radius: var(--radius);
+		border: 1px solid var(--line);
+	}
+
+	.shot figcaption {
+		margin-top: 14px;
+		font-size: 0.85rem;
+		color: var(--ink-faint);
+		text-align: center;
 	}
 
 	.fineprint {
@@ -760,6 +762,14 @@ const faqs = [
 		background: linear-gradient(var(--green-deep), var(--green));
 	}
 
+	.privacy-more {
+		margin-top: 24px;
+	}
+
+	.privacy-more a {
+		color: var(--green);
+	}
+
 	.cloud {
 		margin-top: 24px;
 		padding-top: 16px;
@@ -840,118 +850,6 @@ const faqs = [
 	@media (max-width: 580px) {
 		.feat-grid {
 			grid-template-columns: 1fr;
-		}
-	}
-
-	/* Native */
-	.native {
-		padding: 0 0 120px;
-	}
-
-	.native-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		border-top: 1px solid var(--line);
-		border-bottom: 1px solid var(--line);
-	}
-
-	.stat {
-		padding: 40px 28px;
-		display: grid;
-		gap: 10px;
-	}
-
-	.stat + .stat {
-		border-left: 1px solid var(--line);
-	}
-
-	.stat b {
-		font-family: var(--font-display);
-		font-size: 2rem;
-		letter-spacing: -0.03em;
-		color: var(--green);
-	}
-
-	.stat span {
-		color: var(--ink-soft);
-		font-size: 0.95rem;
-	}
-
-	@media (max-width: 760px) {
-		.native {
-			padding-bottom: 80px;
-		}
-		.native-grid {
-			grid-template-columns: 1fr;
-		}
-		.stat + .stat {
-			border-left: 0;
-			border-top: 1px solid var(--line);
-		}
-	}
-
-	/* Open source */
-	.open {
-		border-top: 1px solid var(--line);
-	}
-
-	.open-inner {
-		display: grid;
-		grid-template-columns: 1fr 1.2fr;
-		gap: 64px;
-		align-items: center;
-	}
-
-	.open .lede {
-		margin-top: 22px;
-	}
-
-	.open-cards {
-		display: grid;
-		gap: 12px;
-	}
-
-	.open-card {
-		display: grid;
-		grid-template-columns: 40px 1fr;
-		column-gap: 16px;
-		row-gap: 4px;
-		padding: 20px 22px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		background: var(--bg-raised);
-		text-decoration: none;
-		transition:
-			border-color 0.2s ease,
-			transform 0.2s ease;
-	}
-
-	.open-card:hover {
-		border-color: var(--green-deep);
-		transform: translateY(-2px);
-	}
-
-	.open-icon {
-		grid-row: span 2;
-		width: 40px;
-		height: 40px;
-		display: grid;
-		place-items: center;
-		border-radius: 12px;
-		background: var(--green-glow);
-		color: var(--green);
-		font-weight: 700;
-	}
-
-	.open-card span:last-child {
-		color: var(--ink-soft);
-		font-size: 0.93rem;
-	}
-
-	@media (max-width: 860px) {
-		.open-inner {
-			grid-template-columns: 1fr;
-			gap: 36px;
 		}
 	}
 
@@ -1067,7 +965,8 @@ const faqs = [
 
 	.foot nav {
 		display: flex;
-		gap: 20px;
+		flex-wrap: wrap;
+		gap: 8px 20px;
 	}
 
 	.foot a {
@@ -1077,6 +976,10 @@ const faqs = [
 
 	.foot a:hover {
 		color: var(--ink);
+	}
+
+	.foot p a {
+		text-decoration: underline;
 	}
 
 	.foot p {

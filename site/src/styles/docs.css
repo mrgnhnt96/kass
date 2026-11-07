@@ -57,3 +57,18 @@ h1#_top {
   background: var(--sl-color-gray-6);
   white-space: nowrap;
 }
+
+.analytics-toggle {
+  margin-inline-end: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--sl-color-accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sl-color-white);
+  font: inherit;
+  cursor: pointer;
+}
+
+.analytics-toggle:hover {
+  background: var(--sl-color-accent-low);
+}

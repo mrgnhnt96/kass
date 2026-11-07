@@ -6,6 +6,7 @@ description: Download Kass, move it to Applications and give it the permissions 
 ## Requirements
 
 - A Mac with Apple Silicon (M1 or later). Intel Macs aren't supported, because the models run on Apple's MLX framework.
+- macOS 15 (Sequoia) or later.
 - About 2.5 GB of free disk space for the default models. Kass checks for the model sizes plus 500 MB of headroom before it downloads.
 - An internet connection for the first model download. After that, Kass works offline.
 

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kass.mrgnhnt.com/sitemap-index.xml

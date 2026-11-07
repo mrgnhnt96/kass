@@ -1,15 +1,1 @@
----
-// Amplitude Browser SDK — Analytics autocapture (page views, clicks, sessions).
-//
-// The key below is the PUBLIC, ingestion-scoped project API key. It is meant to
-// ship in the client bundle (Amplitude documents it as public and rotatable), so
-// it lives in page source by design — there is nothing to hide behind a proxy.
-//
-// Session Replay is intentionally NOT enabled here, to stay within the free tier.
-// To enable it later, add the sessionReplay plugin per Amplitude's docs.
----
-
-<script is:inline src="https://cdn.amplitude.com/script/15288b16e4a64d54978fa9d86adddad1.js"></script>
-<script is:inline>
-  window.amplitude.init('15288b16e4a64d54978fa9d86adddad1', { serverZone: 'US', autocapture: true });
-</script>
+<script is:inline async src="/site-stats.js"></script>

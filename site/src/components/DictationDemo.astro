@@ -27,7 +27,7 @@ const takes = [
 ];
 ---
 
-<div class="demo" data-takes={JSON.stringify(takes)} aria-label="Animated example of Kass turning speech into clean text" role="img">
+<div class="demo" data-takes={JSON.stringify(takes)} aria-label="Animated illustration of Kass turning speech into clean text" role="img">
 	<div class="window">
 		<div class="titlebar">
 			<span class="dots"><i></i><i></i><i></i></span>
@@ -36,13 +36,13 @@ const takes = [
 		</div>
 		<div class="to" data-to>To: Sam</div>
 		<div class="field">
-			<span class="out" data-out></span><span class="caret"></span>
+			<span class="out" data-out>{takes[0].clean}</span><span class="caret"></span>
 		</div>
 	</div>
 
 	<div class="said">
 		<span class="said-label">You said</span>
-		<p class="said-text" data-said></p>
+		<p class="said-text" data-said>{takes[0].said.replaceAll('~', '')}</p>
 	</div>
 
 	<div class="controls">
@@ -58,6 +58,8 @@ const takes = [
 			<span class="pill-label" data-pill-label>Listening</span>
 		</div>
 	</div>
+
+	<p class="note">Illustration. The real app is below.</p>
 </div>
 
 <style>
@@ -66,6 +68,13 @@ const takes = [
 		width: 100%;
 		max-width: 520px;
 		margin-left: auto;
+	}
+
+	.note {
+		margin-top: 14px;
+		font-size: 0.85rem;
+		color: var(--ink-faint);
+		text-align: center;
 	}
 
 	.window {
@@ -188,7 +197,6 @@ const takes = [
 		color: var(--strike);
 		text-decoration: line-through;
 		text-decoration-thickness: 2px;
-		opacity: 0.55;
 	}
 
 	.controls {
