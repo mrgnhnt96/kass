@@ -1,0 +1,32 @@
+### Kass UI strings, section "palette" (converted from i18next).
+
+palette-label = Command palette
+palette-placeholder = Search captures or run a command
+palette-captures = CAPTURES · { $count }
+palette-commands = COMMANDS
+palette-empty = Nothing matches.
+palette-hints-move = ↑↓ move
+palette-hints-open = ⏎ open
+palette-hints-copy = ⌘⏎ copy text
+palette-hints-commands-only = > commands only
+palette-cmd-captures = Go to Captures
+palette-cmd-models = Go to Models
+palette-cmd-settings-general = Settings: General
+palette-cmd-settings-dictation = Settings: Dictation
+palette-cmd-settings-transcription = Settings: Transcription
+palette-cmd-settings-writing-style = Settings: Writing style
+palette-cmd-settings-logs = Settings: Logs
+palette-cmd-reports = Create a report for support
+palette-cmd-setup = Open onboarding
+palette-cmd-calibrate = Run style calibration…
+palette-cmd-theme-light = Switch to light theme
+palette-cmd-theme-dark = Switch to dark theme
+palette-cmd-theme-system = Match system theme
+palette-cmd-settings-command-mode = Settings: Command Mode
+palette-cmd-transform = Transform selection: { $name }
+palette-cmd-settings-features = Settings: Features
+palette-keys-go = go
+palette-keys-settings = settings
+palette-keys-theme = theme
+palette-keys-style = style
+palette-keys-transform = transform
