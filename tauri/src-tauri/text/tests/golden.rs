@@ -10,7 +10,7 @@ use kass_text::lexicon::{self, WordData};
 use kass_text::phrase_seams::{self, Names};
 use kass_text::spoken_punctuation::{self as punctuation, Example, Learned};
 use kass_text::content_check::{self, Verdict};
-use kass_text::{laughter, sentence_tail, spoken_case, spoken_cleanup, spoken_corrections, text_merge, voice_commands};
+use kass_text::{dictation_edits, laughter, sentence_tail, spoken_case, spoken_cleanup, spoken_corrections, text_merge, voice_commands};
 use serde_json::{json, Map, Value};
 
 fn text<'a>(args: &'a Value, name: &str) -> &'a str {
@@ -88,6 +88,14 @@ fn call(function: &str, args: &Value, examples: &[Value]) -> Option<Value> {
                 json!({"outcome": summary.outcome, "added": summary.added, "missing": summary.missing, "reasons": summary.reasons})
             })
         }
+
+        "dictation_edits.apply_dictation_edits" => json!(dictation_edits::apply_dictation_edits(
+            text(args, "text"),
+            args["formatting"].as_bool().unwrap_or(false),
+            args["corrections"].as_bool().unwrap_or(false)
+        )),
+        "dictation_edits.apply_line_breaks" => json!(dictation_edits::apply_line_breaks(text(args, "text"))),
+        "dictation_edits.apply_spoken_marks" => json!(dictation_edits::apply_spoken_marks(text(args, "text"))),
 
         "laughter.is_laughter" => json!(laughter::is_laughter(text(args, "text"))),
         "laughter.join_laughter" => json!(laughter::join_laughter(text(args, "text"))),

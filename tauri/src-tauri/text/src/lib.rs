@@ -17,3 +17,4 @@ pub mod voice_commands;
 pub mod content_check;
 pub mod sentence_tail;
 pub mod text_merge;
+pub mod dictation_edits;
