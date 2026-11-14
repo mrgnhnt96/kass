@@ -6,9 +6,12 @@
 //! lists its paths; a ported route swaps `proxy::to_worker()` for a handler
 //! of its own.
 
+mod cors;
 pub mod db;
+pub mod dictionary;
 pub mod proxy;
 pub mod routes;
+mod worker;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -27,6 +30,10 @@ pub struct Config {
     pub worker: SocketAddr,
     /// `kass.db`, which the worker creates and migrates.
     pub database: PathBuf,
+    /// The shared Kass this Mac stands in for (beta network), or None when
+    /// this Mac's Kass is the one in use. While standing in, every change
+    /// is recorded to send to the shared Kass (`sync_changes`).
+    pub shared_server: Option<String>,
 }
 
 /// What every route handler can reach.
@@ -34,6 +41,7 @@ pub struct Config {
 pub struct AppState {
     pub proxy: proxy::Proxy,
     pub db: db::Db,
+    pub sync: dictionary::store::Sync,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -59,6 +67,11 @@ pub async fn start(config: Config) -> Result<Running, String> {
     let state = AppState {
         proxy: proxy::Proxy::new(config.worker),
         db: db::Db::new(config.database),
+        sync: dictionary::store::Sync {
+            standing_in: config
+                .shared_server
+                .is_some_and(|url| !url.trim().trim_end_matches('/').is_empty()),
+        },
     };
     let listener = TcpListener::bind(config.listen)
         .await
