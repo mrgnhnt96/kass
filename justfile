@@ -38,11 +38,13 @@ dev: _ensure-venv _ensure-sidecar
     set -euo pipefail
 
     backend_pid=""
-    if curl -sf http://127.0.0.1:17493/health > /dev/null 2>&1; then
-        echo "Backend already running on http://localhost:17493"
+    # The app serves 17493 itself and passes requests on to the Python
+    # model worker on 17494.
+    if curl -sf http://127.0.0.1:17494/health > /dev/null 2>&1; then
+        echo "Model worker already running on http://localhost:17494"
     else
-        echo "Starting backend on http://localhost:17493 ..."
-        {{ venv_bin }}/uvicorn backend.main:app --reload --port 17493 &
+        echo "Starting model worker on http://localhost:17494 ..."
+        {{ venv_bin }}/uvicorn backend.main:app --reload --port 17494 &
         backend_pid=$!
         sleep 2
     fi
@@ -52,9 +54,9 @@ dev: _ensure-venv _ensure-sidecar
     echo "Starting Tauri desktop app..."
     cd {{ tauri_dir }} && bun run tauri dev
 
-# Start backend only
+# Start the Python model worker only, on the port the app passes requests to
 dev-backend: _ensure-venv
-    {{ venv_bin }}/uvicorn backend.main:app --reload --port 17493
+    {{ venv_bin }}/uvicorn backend.main:app --reload --port 17494
 
 # Start Tauri desktop app only (backend must be running separately)
 dev-frontend: _ensure-sidecar
@@ -104,8 +106,8 @@ check-js:
 
 # Rust: format check (rustfmt) and lint (clippy, warnings fail)
 check-rust:
-    cd {{ tauri_dir }}/src-tauri && cargo fmt --check
-    cd {{ tauri_dir }}/src-tauri && cargo clippy --all-targets --quiet -- -D warnings
+    cd {{ tauri_dir }}/src-tauri && cargo fmt --all --check
+    cd {{ tauri_dir }}/src-tauri && cargo clippy --workspace --all-targets --quiet -- -D warnings
 
 # Python: lint + format check (ruff)
 check-python: _ensure-venv
@@ -144,7 +146,7 @@ fix-python: _ensure-venv
 # Run Python tests
 test: _ensure-venv
     {{ venv_bin }}/python -m pytest {{ backend_dir }}/tests -v
-    cd {{ tauri_dir }}/src-tauri && cargo test --quiet
+    cd {{ tauri_dir }}/src-tauri && cargo test --workspace --quiet
 
 # ─── Database ─────────────────────────────────────────────────────────
 
@@ -162,7 +164,7 @@ db-reset:
 
 # Open API docs in browser
 docs:
-    open http://localhost:17493/docs
+    open http://localhost:17494/docs
 
 # Tail backend logs
 logs:
