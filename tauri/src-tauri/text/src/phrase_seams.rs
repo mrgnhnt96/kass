@@ -20,16 +20,137 @@ use crate::py::{self, Groups, Re};
 use crate::re;
 
 const SENTENCE_OPENERS: &[&str] = &[
-    "a", "an", "the", "this", "that", "these", "those", "there", "here", "it", "its", "i", "we", "you", "he", "she",
-    "they", "my", "our", "your", "his", "her", "their", "and", "but", "so", "or", "yet", "also", "then", "now",
-    "well", "okay", "ok", "yeah", "yes", "no", "oh", "anyway", "plus", "still", "though", "although", "because",
-    "since", "if", "when", "while", "after", "before", "once", "until", "unless", "as", "maybe", "perhaps",
-    "actually", "honestly", "basically", "hopefully", "apparently", "otherwise", "meanwhile", "instead", "besides",
-    "however", "what", "why", "how", "who", "whom", "whose", "where", "which", "is", "are", "was", "were", "am",
-    "be", "been", "do", "does", "did", "don", "doesn", "didn", "have", "has", "had", "haven", "hasn", "can",
-    "can't", "cannot", "could", "couldn", "will", "won", "would", "wouldn", "should", "shouldn", "shall", "may",
-    "might", "must", "let", "let's", "not", "just", "only", "even", "please", "thanks", "thank", "sure", "all",
-    "some", "any", "every", "each", "both", "either", "neither", "one", "two", "first", "next", "last", "lastly",
+    "a",
+    "an",
+    "the",
+    "this",
+    "that",
+    "these",
+    "those",
+    "there",
+    "here",
+    "it",
+    "its",
+    "i",
+    "we",
+    "you",
+    "he",
+    "she",
+    "they",
+    "my",
+    "our",
+    "your",
+    "his",
+    "her",
+    "their",
+    "and",
+    "but",
+    "so",
+    "or",
+    "yet",
+    "also",
+    "then",
+    "now",
+    "well",
+    "okay",
+    "ok",
+    "yeah",
+    "yes",
+    "no",
+    "oh",
+    "anyway",
+    "plus",
+    "still",
+    "though",
+    "although",
+    "because",
+    "since",
+    "if",
+    "when",
+    "while",
+    "after",
+    "before",
+    "once",
+    "until",
+    "unless",
+    "as",
+    "maybe",
+    "perhaps",
+    "actually",
+    "honestly",
+    "basically",
+    "hopefully",
+    "apparently",
+    "otherwise",
+    "meanwhile",
+    "instead",
+    "besides",
+    "however",
+    "what",
+    "why",
+    "how",
+    "who",
+    "whom",
+    "whose",
+    "where",
+    "which",
+    "is",
+    "are",
+    "was",
+    "were",
+    "am",
+    "be",
+    "been",
+    "do",
+    "does",
+    "did",
+    "don",
+    "doesn",
+    "didn",
+    "have",
+    "has",
+    "had",
+    "haven",
+    "hasn",
+    "can",
+    "can't",
+    "cannot",
+    "could",
+    "couldn",
+    "will",
+    "won",
+    "would",
+    "wouldn",
+    "should",
+    "shouldn",
+    "shall",
+    "may",
+    "might",
+    "must",
+    "let",
+    "let's",
+    "not",
+    "just",
+    "only",
+    "even",
+    "please",
+    "thanks",
+    "thank",
+    "sure",
+    "all",
+    "some",
+    "any",
+    "every",
+    "each",
+    "both",
+    "either",
+    "neither",
+    "one",
+    "two",
+    "first",
+    "next",
+    "last",
+    "lastly",
     "finally",
 ];
 
@@ -39,7 +160,8 @@ const TERMINAL: &str = ".?!:;";
 pub type Names = BTreeSet<String>;
 
 fn opener(key: &str) -> bool {
-    SENTENCE_OPENERS.contains(&key) || SENTENCE_OPENERS.contains(&key.split('\'').next().unwrap_or(""))
+    SENTENCE_OPENERS.contains(&key)
+        || SENTENCE_OPENERS.contains(&key.split('\'').next().unwrap_or(""))
 }
 
 fn key(word: &str) -> String {
@@ -55,7 +177,9 @@ fn starts_lower(word: &str) -> bool {
 }
 
 pub(crate) fn first_word(text: &str) -> &str {
-    re!(r"\W*([^\W\d_][\w']*)").match_(text).map_or("", |found| found.g(1))
+    re!(r"\W*([^\W\d_][\w']*)")
+        .match_(text)
+        .map_or("", |found| found.g(1))
 }
 
 fn starts_sentence(raw: &str) -> bool {
@@ -71,7 +195,9 @@ fn keeps_capital(word: &str) -> bool {
     word == "I"
         || word.starts_with("I'")
         || word.starts_with("I\u{2019}")
-        || py::tail_from(word, 1).chars().any(|c| py::isupper(&c.to_string()))
+        || py::tail_from(word, 1)
+            .chars()
+            .any(|c| py::isupper(&c.to_string()))
 }
 
 pub(crate) fn lower_first(text: &str) -> String {
@@ -81,7 +207,12 @@ pub(crate) fn lower_first(text: &str) -> String {
     }
     let index = text.find(word).unwrap();
     let first = py::first(word).unwrap();
-    format!("{}{}{}", &text[..index], py::lower(&first.to_string()), &text[index + first.len_utf8()..])
+    format!(
+        "{}{}{}",
+        &text[..index],
+        py::lower(&first.to_string()),
+        &text[index + first.len_utf8()..]
+    )
 }
 
 /// Drop end punctuation the phrase got only because the audio paused.
@@ -150,7 +281,9 @@ pub fn continue_phrase(phrase: &str, earlier: &str, names: &Names) -> String {
     if !starts_upper(word) {
         return phrase.to_string();
     }
-    if names.contains(word) || mid_sentence_capitals(earlier).contains(word) || mid_sentence_capitals(phrase).contains(word)
+    if names.contains(word)
+        || mid_sentence_capitals(earlier).contains(word)
+        || mid_sentence_capitals(phrase).contains(word)
     {
         return phrase.to_string();
     }
@@ -168,7 +301,9 @@ pub fn continue_phrase(phrase: &str, earlier: &str, names: &Names) -> String {
 pub fn continues_sentence(before: &str) -> bool {
     let trailing = &before[py::rstrip(before).len()..];
     let text = py::rstrip_chars(py::rstrip(before), "\"'\u{201d}\u{2019})]");
-    let Some(last) = py::final_char(text) else { return false };
+    let Some(last) = py::final_char(text) else {
+        return false;
+    };
     if trailing.contains('\n') {
         return false;
     }
@@ -187,7 +322,11 @@ pub fn match_raw_start(text: &str, raw: &str) -> String {
     }
     for heard in re!(r"[^\W\d_][\w'’]*").findall(raw).into_iter().take(4) {
         if py::casefold(heard) == py::casefold(word) {
-            return if starts_lower(heard) { lower_first(text) } else { text.to_string() };
+            return if starts_lower(heard) {
+                lower_first(text)
+            } else {
+                text.to_string()
+            };
         }
     }
     text.to_string()
@@ -203,7 +342,12 @@ pub fn match_raw_start(text: &str, raw: &str) -> String {
 /// which cleanup drops when the words run on. A word that is always
 /// capitalized ("I", a name) can't be that hint, so there the mark stays.
 /// Without such a mark the phrase continues as [`continue_phrase`] decides.
-pub fn continue_after_seam(before: &str, phrase: &str, earlier: &str, names: &Names) -> (String, String) {
+pub fn continue_after_seam(
+    before: &str,
+    phrase: &str,
+    earlier: &str,
+    names: &Names,
+) -> (String, String) {
     if !re!(r#"[\w)"'”][?!]$"#).is_match(before) {
         return (before.to_string(), continue_phrase(phrase, earlier, names));
     }
@@ -215,7 +359,9 @@ pub fn continue_after_seam(before: &str, phrase: &str, earlier: &str, names: &Na
 }
 
 /// A period after these ends an abbreviation, not a sentence.
-const ABBREVIATIONS: &[&str] = &["mr", "mrs", "ms", "dr", "st", "vs", "etc", "jr", "sr", "prof", "inc", "ltd", "approx"];
+const ABBREVIATIONS: &[&str] = &[
+    "mr", "mrs", "ms", "dr", "st", "vs", "etc", "jr", "sr", "prof", "inc", "ltd", "approx",
+];
 
 /// "I" and its contractions, as a whole word: not "i.e." or "i18n".
 fn lower_i() -> &'static Re {
@@ -254,12 +400,21 @@ pub fn keep_raw_capitals(text: &str, raw: &str, names: &Names) -> String {
         text = lower_i().replace(&text, "I");
     }
     for name in mid_sentence_capitals(raw) {
-        if name != "I" && !name.starts_with("I'") && !name.starts_with("I\u{2019}") && is_name(&name, names) {
+        if name != "I"
+            && !name.starts_with("I'")
+            && !name.starts_with("I\u{2019}")
+            && is_name(&name, names)
+        {
             let lower = py::escape(&py::lower(&name));
-            text = Re::new(&format!(r"(?<![\w'’.@/-]){lower}(?![\w-])(?!\.\w)")).replace(&text, &name);
+            text =
+                Re::new(&format!(r"(?<![\w'’.@/-]){lower}(?![\w-])(?!\.\w)")).replace(&text, &name);
         }
     }
-    let mut parts: Vec<String> = re!(r"(\s+)").split(&text).into_iter().map(String::from).collect();
+    let mut parts: Vec<String> = re!(r"(\s+)")
+        .split(&text)
+        .into_iter()
+        .map(String::from)
+        .collect();
     for index in (2..parts.len()).step_by(2) {
         let token = parts[index].clone();
         let word = first_word(&token);
@@ -282,7 +437,14 @@ pub fn close_phrase(text: &str) -> String {
     let stripped = py::rstrip(text);
     if re!(r#"[\w)"'”]$"#).is_match(stripped) {
         let trailing = &text[stripped.len()..];
-        return format!("{stripped}.{}", if trailing.contains('\n') { trailing } else { "" });
+        return format!(
+            "{stripped}.{}",
+            if trailing.contains('\n') {
+                trailing
+            } else {
+                ""
+            }
+        );
     }
     text.to_string()
 }
@@ -301,7 +463,11 @@ pub fn join_phrases(previous: &str, phrase: &str, raw_phrase: &str, style: &str)
     }
     // Spoken formatting may end a phrase with a line or paragraph break.
     let trailing = &previous[before.len()..];
-    let whitespace = if trailing.contains('\n') { trailing } else { " " };
+    let whitespace = if trailing.contains('\n') {
+        trailing
+    } else {
+        " "
+    };
     if phrase.starts_with('\n') {
         // The phrase starts with a spoken line break: it is the whole seam.
         return format!("{before}{}{phrase}", py::strip_chars(whitespace, " "));
@@ -320,14 +486,22 @@ pub fn join_phrases(previous: &str, phrase: &str, raw_phrase: &str, style: &str)
         return format!("{before} {phrase}");
     }
     if last == ',' {
-        let phrase = if casual || !new_sentence { lower_first(phrase) } else { phrase.to_string() };
+        let phrase = if casual || !new_sentence {
+            lower_first(phrase)
+        } else {
+            phrase.to_string()
+        };
         return format!("{before} {phrase}");
     }
     if !re!(r#"[\w)"'”]$"#).is_match(before) {
         return format!("{before} {phrase}");
     }
     if !new_sentence {
-        let phrase = if starts_lower(first_word(raw_phrase)) { lower_first(phrase) } else { phrase.to_string() };
+        let phrase = if starts_lower(first_word(raw_phrase)) {
+            lower_first(phrase)
+        } else {
+            phrase.to_string()
+        };
         return format!("{before} {phrase}");
     }
     if casual {
@@ -348,7 +522,13 @@ mod tests {
         assert_eq!(close_phrase("done\n"), "done.\n");
         assert!(continues_sentence("so I said,"));
         assert!(!continues_sentence("Done."));
-        assert_eq!(join_phrases("I went home", "Then I slept", "Then I slept", "standard"), "I went home. Then I slept");
-        assert_eq!(join_phrases("I went home.", "Then I slept", "Then I slept", "casual"), "I went home, then I slept");
+        assert_eq!(
+            join_phrases("I went home", "Then I slept", "Then I slept", "standard"),
+            "I went home. Then I slept"
+        );
+        assert_eq!(
+            join_phrases("I went home.", "Then I slept", "Then I slept", "casual"),
+            "I went home, then I slept"
+        );
     }
 }

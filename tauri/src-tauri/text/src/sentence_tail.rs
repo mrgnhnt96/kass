@@ -56,7 +56,9 @@ pub fn settle(raw: &str, cleaned: &str) -> Option<Settled> {
     let ending = re!(r#"[^\W\d_]["')\]”’]*[.?!]["')\]”’]*$"#);
     let mut boundary = None;
     for gap in re!(r"\s+").finditer(cleaned) {
-        if gap.end() < cleaned.len() && (gap.text().contains('\n') || ending.is_match(&cleaned[..gap.start()])) {
+        if gap.end() < cleaned.len()
+            && (gap.text().contains('\n') || ending.is_match(&cleaned[..gap.start()]))
+        {
             boundary = Some((gap.start(), gap.end()));
         }
     }
@@ -75,7 +77,8 @@ pub fn settle(raw: &str, cleaned: &str) -> Option<Settled> {
     // Python raises here when no word follows the boundary; nothing settles.
     let first_open = written.iter().position(|(_, start)| *start >= gap_end)?;
     let last_committed = first_open.checked_sub(1)?;
-    let (Some(&before), Some(&after)) = (aligned.get(&last_committed), aligned.get(&first_open)) else {
+    let (Some(&before), Some(&after)) = (aligned.get(&last_committed), aligned.get(&first_open))
+    else {
         return None;
     };
     let start = before + 1;
@@ -97,7 +100,11 @@ mod tests {
 
     #[test]
     fn settles_the_finished_sentences() {
-        let settled = settle("so I went home and then I slept", "So I went home. And then I slept").unwrap();
+        let settled = settle(
+            "so I went home and then I slept",
+            "So I went home. And then I slept",
+        )
+        .unwrap();
         assert_eq!(settled.committed, "So I went home.");
         assert_eq!(settled.open_cleaned, "And then I slept");
         assert_eq!(settled.open_raw, "and then I slept");

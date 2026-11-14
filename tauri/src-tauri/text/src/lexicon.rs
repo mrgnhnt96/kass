@@ -42,7 +42,11 @@ impl WordData {
         let entries = py::split(word_list);
         WordData {
             vocabulary,
-            lower: entries.iter().filter(|w| py::islower(w)).map(|w| w.to_string()).collect(),
+            lower: entries
+                .iter()
+                .filter(|w| py::islower(w))
+                .map(|w| w.to_string())
+                .collect(),
             capitalized: entries
                 .iter()
                 .filter(|w| py::first(w).is_some_and(|c| py::isupper(&c.to_string())))
@@ -65,7 +69,11 @@ impl WordData {
     /// lowercase token at all. A word with neither is looked up in the word
     /// list (and "tests" as "test"), which lists names capitalized.
     pub fn common_word(&self, word: &str) -> bool {
-        let capital = format!("{SPACE}{}{}", py::upper(py::head(word, 1)), py::lower(py::tail_from(word, 1)));
+        let capital = format!(
+            "{SPACE}{}{}",
+            py::upper(py::head(word, 1)),
+            py::lower(py::tail_from(word, 1))
+        );
         let lower = self.vocabulary.get(&format!("{SPACE}{}", py::lower(word)));
         let capital = self.vocabulary.get(&capital);
         if lower.is_some() || capital.is_some() {
@@ -80,11 +88,17 @@ impl WordData {
         for suffix in SUFFIXES {
             if let Some(stem) = key.strip_suffix(suffix) {
                 if py::len(&key) > py::len(suffix) + 2 {
-                    stems.push(if *suffix == "ies" { format!("{stem}y") } else { stem.to_string() });
+                    stems.push(if *suffix == "ies" {
+                        format!("{stem}y")
+                    } else {
+                        stem.to_string()
+                    });
                 }
             }
         }
-        stems.iter().any(|stem| self.lower.contains(stem) && !self.capitalized.contains(stem))
+        stems
+            .iter()
+            .any(|stem| self.lower.contains(stem) && !self.capitalized.contains(stem))
     }
 }
 
@@ -100,12 +114,20 @@ fn hub_cache() -> Option<PathBuf> {
 }
 
 fn load_vocabulary() -> HashMap<String, i64> {
-    let Some(cache) = hub_cache() else { return HashMap::new() };
+    let Some(cache) = hub_cache() else {
+        return HashMap::new();
+    };
     for repo in WHISPER_REPOS {
         let model = cache.join(format!("models--{}", repo.replace('/', "--")));
-        let revision = std::fs::read_to_string(model.join("refs/main")).unwrap_or_else(|_| "main".into());
-        let path = model.join("snapshots").join(revision.trim()).join("vocab.json");
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let revision =
+            std::fs::read_to_string(model.join("refs/main")).unwrap_or_else(|_| "main".into());
+        let path = model
+            .join("snapshots")
+            .join(revision.trim())
+            .join("vocab.json");
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         if let Ok(vocabulary) = serde_json::from_str(&text) {
             return vocabulary;
         }
@@ -115,10 +137,10 @@ fn load_vocabulary() -> HashMap<String, i64> {
 
 static WORD_DATA: OnceLock<WordData> = OnceLock::new();
 
-/// Use `data` instead of reading the vocabulary and word list. Fails when
-/// they were already read.
-pub fn install(data: WordData) -> Result<(), WordData> {
-    WORD_DATA.set(data)
+/// Use `data` instead of reading the vocabulary and word list. Returns
+/// false when they were already read.
+pub fn install(data: WordData) -> bool {
+    WORD_DATA.set(data).is_ok()
 }
 
 /// Read the vocabulary and word list now, so the first dictation doesn't wait.
@@ -137,7 +159,10 @@ mod tests {
 
     #[test]
     fn decides_by_vocabulary_then_word_list() {
-        let vocabulary = HashMap::from([("\u{0120}move".to_string(), 5), ("\u{0120}Move".to_string(), 900)]);
+        let vocabulary = HashMap::from([
+            ("\u{0120}move".to_string(), 5),
+            ("\u{0120}Move".to_string(), 900),
+        ]);
         let data = WordData::new(vocabulary, "test\nSarah\nberry\n");
         assert!(data.common_word("Move"));
         assert!(data.common_word("Tests"));

@@ -33,13 +33,19 @@ fn replace_pronoun_value(clause: &str, revision: &str) -> Option<String> {
     }
     let copula = &copulas[0];
     let pronoun = py::split(&py::lower(restated.g(1)).replace('\u{2019}', "'")).join(" ");
-    let verb = PRONOUN_VERBS.iter().find(|(said, _)| *said == pronoun).map(|(_, verb)| *verb);
+    let verb = PRONOUN_VERBS
+        .iter()
+        .find(|(said, _)| *said == pronoun)
+        .map(|(_, verb)| *verb);
     if verb != Some(py::lower(copula.g(1)).as_str()) {
         return None;
     }
     let (head, previous) = (&clause[..copula.end()], &clause[copula.end()..]);
     let value = restated.g(2);
-    if previous.is_empty() || re!(r"(?:not|also)\b", I).match_(value).is_some() || re!(r"not\b", I).match_(previous).is_some() {
+    if previous.is_empty()
+        || re!(r"(?:not|also)\b", I).match_(value).is_some()
+        || re!(r"not\b", I).match_(previous).is_some()
+    {
         return None;
     }
     if re!(r"\b(?:said|says|asked|wrote|told|there)\b", I).is_match(head) {
@@ -62,7 +68,9 @@ fn words(text: &str) -> Vec<String> {
 /// copular value. Never search past an intervening sentence/clause. Quoted
 /// speech and ambiguous cues are left to ordinary refinement.
 pub fn apply_spoken_corrections(text: &str) -> Option<String> {
-    if ['"', '\u{201c}', '\u{201d}', '\u{2018}'].iter().any(|mark| text.contains(*mark))
+    if ['"', '\u{201c}', '\u{201d}', '\u{2018}']
+        .iter()
+        .any(|mark| text.contains(*mark))
         || re!(r"(?<!\w)['’](?=\w)").is_match(text)
     {
         return None;
@@ -72,7 +80,10 @@ pub fn apply_spoken_corrections(text: &str) -> Option<String> {
         I
     );
     // Split coordinated clauses, but not objects such as "mac and cheese".
-    let coordinate = re!(r"\b(?:and|but|or)\s+(?=(?:I|we|you|he|she|they|it|the)\b)", I);
+    let coordinate = re!(
+        r"\b(?:and|but|or)\s+(?=(?:I|we|you|he|she|they|it|the)\b)",
+        I
+    );
     let mut result = text.to_string();
     let mut changed = false;
     for _ in 0..20 {
@@ -87,7 +98,9 @@ pub fn apply_spoken_corrections(text: &str) -> Option<String> {
         if let Some(clause) = clauses.last() {
             start = clause.end();
         }
-        if let Some(intro) = re!(r"(?:alright|all right|okay|ok|well|so)\s*,\s*", I).match_at(&before, start) {
+        if let Some(intro) =
+            re!(r"(?:alright|all right|okay|ok|well|so)\s*,\s*", I).match_at(&before, start)
+        {
             start = intro.end();
         }
         let old_clause = &before[start..];
@@ -111,7 +124,11 @@ pub fn apply_spoken_corrections(text: &str) -> Option<String> {
             continue;
         }
         let (old_words, new_words) = (words(old_clause), words(&after));
-        let shared = old_words.iter().zip(&new_words).take_while(|(old, new)| old == new).count();
+        let shared = old_words
+            .iter()
+            .zip(&new_words)
+            .take_while(|(old, new)| old == new)
+            .count();
         if shared < 2 || shared >= old_words.len().min(new_words.len()) {
             return None;
         }
@@ -128,16 +145,21 @@ pub fn apply_spoken_corrections(text: &str) -> Option<String> {
 /// A bare replacement value ("Wednesday", "it's the blue one") is this short.
 const REPLACEMENT_WORDS: usize = 4;
 const FUNCTION_WORDS: &[&str] = &[
-    "a", "an", "the", "i", "i'm", "we", "you", "he", "she", "they", "it", "it's", "my", "our", "your", "their", "to",
-    "of", "in", "on", "at", "for", "with", "and", "or", "but", "so", "is", "are", "was", "were", "be", "do", "did",
-    "want", "need", "think", "that", "this", "there", "then", "just",
+    "a", "an", "the", "i", "i'm", "we", "you", "he", "she", "they", "it", "it's", "my", "our",
+    "your", "their", "to", "of", "in", "on", "at", "for", "with", "and", "or", "but", "so", "is",
+    "are", "was", "were", "be", "do", "did", "want", "need", "think", "that", "this", "there",
+    "then", "just",
 ];
 
 /// Whether `phrase` opens by repeating `anchor` or more earlier words, then
 /// says something else in their place.
 fn restates(phrase: &[String], earlier: &[String], anchor: usize) -> bool {
     let run = &phrase[..anchor.min(phrase.len())];
-    if run.len() < anchor || run.iter().all(|word| FUNCTION_WORDS.contains(&word.as_str())) {
+    if run.len() < anchor
+        || run
+            .iter()
+            .all(|word| FUNCTION_WORDS.contains(&word.as_str()))
+    {
         return false;
     }
     for start in 0..earlier.len().saturating_sub(anchor) {
@@ -145,7 +167,10 @@ fn restates(phrase: &[String], earlier: &[String], anchor: usize) -> bool {
             continue;
         }
         let mut shared = anchor;
-        while shared < phrase.len() && start + shared < earlier.len() && earlier[start + shared] == phrase[shared] {
+        while shared < phrase.len()
+            && start + shared < earlier.len()
+            && earlier[start + shared] == phrase[shared]
+        {
             shared += 1;
         }
         if shared < phrase.len() && start + shared < earlier.len() {
@@ -175,13 +200,20 @@ pub fn retracted_by(phrase: &str, earlier: &str) -> Option<String> {
     }
     let previous = words(earlier);
     // Cues that open a correction, and also an answer or a new thought.
-    let Some(cue) = re!(r"^(?:(?:no|nope|wait|sorry|oops|actually|I mean)\b[\s,.!-]*)+", I).match_(phrase) else {
+    let Some(cue) = re!(
+        r"^(?:(?:no|nope|wait|sorry|oops|actually|I mean)\b[\s,.!-]*)+",
+        I
+    )
+    .match_(phrase) else {
         return restates(&words(phrase), &previous, 3).then(|| earlier.to_string());
     };
     let rest = &phrase[cue.end()..];
     let said = words(rest);
     // After a cue, these continue the thought instead of replacing words.
-    let continues = re!(r"(?:unless|if|because|but|and|so|since|though|although|when|until|that['’]s)\b", I);
+    let continues = re!(
+        r"(?:unless|if|because|but|and|so|since|though|although|when|until|that['’]s)\b",
+        I
+    );
     if said.is_empty() || continues.match_(rest).is_some() {
         return None;
     }
@@ -201,6 +233,9 @@ mod tests {
             apply_spoken_corrections("the meeting is at noon, no, no, it's at one").as_deref(),
             Some("the meeting is at one")
         );
-        assert_eq!(retracted_by("scratch that", "buy milk").as_deref(), Some("buy milk scratch that"));
+        assert_eq!(
+            retracted_by("scratch that", "buy milk").as_deref(),
+            Some("buy milk scratch that")
+        );
     }
 }

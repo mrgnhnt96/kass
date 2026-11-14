@@ -33,15 +33,18 @@ pub(crate) const MARKS: &[(&str, &str)] = &[
 ];
 
 pub(crate) fn mark_named(name: &str) -> Option<&'static str> {
-    MARKS.iter().find(|(word, _)| *word == name).map(|(_, mark)| *mark)
+    MARKS
+        .iter()
+        .find(|(word, _)| *word == name)
+        .map(|(_, mark)| *mark)
 }
 
 const SENTENCE_END: &str = ".?!";
 /// Before a mark word, these make it something talked about: "a comma", "the
 /// period", "with an exclamation point".
 const NAMED: &[&str] = &[
-    "a", "an", "the", "this", "that", "these", "those", "each", "every", "another", "any", "some", "no", "our",
-    "my", "your", "his", "her", "its", "their", "one",
+    "a", "an", "the", "this", "that", "these", "those", "each", "every", "another", "any", "some",
+    "no", "our", "my", "your", "his", "her", "its", "their", "one",
 ];
 /// Whisper's pause marks around a said mark, never a line break.
 const PAUSE: &str = " \t,.;:!?";
@@ -92,7 +95,9 @@ fn words_pattern(words: Vec<String>) -> Arc<Re> {
     // Last, so a mark word said right wins: any word before "point" or
     // "mark", which `mark_for` keeps only when it sounds like a mark's name.
     alternatives.push_str(r"|[^\W\d_]{4,}[ \t-]+(?:point|mark)");
-    let pattern = Arc::new(Re::i(&format!(r"(?<![\w'’-])(?:{alternatives})(?![\w'’-])")));
+    let pattern = Arc::new(Re::i(&format!(
+        r"(?<![\w'’-])(?:{alternatives})(?![\w'’-])"
+    )));
     if cache.len() >= 8 {
         cache.clear();
     }
@@ -164,16 +169,23 @@ fn convert(text: &str, learned: &Learned) -> (String, Vec<usize>) {
         last += rest.len() - py::lstrip_chars(rest, PAUSE).len();
         let rest = &text[last..];
         // A space only before words: "http colon//" stays joined.
-        let Some(next) = py::first(rest) else { continue };
+        let Some(next) = py::first(rest) else {
+            continue;
+        };
         if !(py::is_alnum(next) || OPENERS.contains(next)) {
             continue;
         }
-        if mark == ":" && py::is_digit(next) && py::last(&out, 2).chars().next().is_some_and(py::is_digit) {
+        if mark == ":"
+            && py::is_digit(next)
+            && py::last(&out, 2).chars().next().is_some_and(py::is_digit)
+        {
             // "3 colon 30" is a time.
             continue;
         }
         out.push(' ');
-        if SENTENCE_END.contains(mark.as_str()) && py::first(py::lstrip(text)).is_some_and(|c| py::isupper(&c.to_string())) {
+        if SENTENCE_END.contains(mark.as_str())
+            && py::first(py::lstrip(text)).is_some_and(|c| py::isupper(&c.to_string()))
+        {
             out.push_str(&next.to_uppercase().to_string());
             last += next.len_utf8();
         }
@@ -221,7 +233,10 @@ fn anchors(said: &str, learned: &Learned) -> Vec<Anchor> {
 }
 
 fn after_re() -> &'static Re {
-    re!(format!(r"([,.;:!?]*)([{}]*)([,.;:!?]*)", py::escape(CLOSERS)))
+    re!(format!(
+        r"([,.;:!?]*)([{}]*)([,.;:!?]*)",
+        py::escape(CLOSERS)
+    ))
 }
 
 /// Put back each mark `said` asked for that `text` changed or dropped.
@@ -248,7 +263,9 @@ pub fn keep_spoken_punctuation(said: &str, text: &str, learned: Option<&Learned>
     let mut edits = Vec::new();
     for anchor in anchors {
         let ends = found.get(&anchor.word).map_or(&[][..], Vec::as_slice);
-        if ends.len() != said_counts.get(&anchor.word).copied().unwrap_or(0) || anchor.occurrence > ends.len() {
+        if ends.len() != said_counts.get(&anchor.word).copied().unwrap_or(0)
+            || anchor.occurrence > ends.len()
+        {
             continue;
         }
         let end = ends[anchor.occurrence - 1];
@@ -267,7 +284,13 @@ pub fn keep_spoken_punctuation(said: &str, text: &str, learned: Option<&Learned>
         } else {
             (after.end(), after.end())
         };
-        edits.push((start, stop, anchor.mark, text[start..stop].to_string(), anchor.said_next));
+        edits.push((
+            start,
+            stop,
+            anchor.mark,
+            text[start..stop].to_string(),
+            anchor.said_next,
+        ));
     }
     edits.sort_by(|a, b| b.cmp(a));
     let mut text = text.to_string();
@@ -282,12 +305,21 @@ pub fn keep_spoken_punctuation(said: &str, text: &str, learned: Option<&Learned>
             let ends = SENTENCE_END.contains(mark);
             if ends && !ended && capitals {
                 word = upper_first(&word);
-            } else if !ends && ended && said_next.as_deref().is_some_and(|next| key(&word) == key(next)) {
+            } else if !ends
+                && ended
+                && said_next
+                    .as_deref()
+                    .is_some_and(|next| key(&word) == key(next))
+            {
                 // Lowered back only when the speaker's word was lower case.
                 let next = said_next.unwrap();
                 word = format!("{}{}", py::head(&next, 1), py::tail_from(&word, 1));
             }
-            rest = format!("{}{word}{}", &rest[..following.start_of(1)], &rest[following.end_of(1)..]);
+            rest = format!(
+                "{}{word}{}",
+                &rest[..following.start_of(1)],
+                &rest[following.end_of(1)..]
+            );
         }
         text = format!("{}{mark}{rest}", &text[..start]);
     }
@@ -303,11 +335,16 @@ pub(crate) fn upper_first(word: &str) -> String {
 /// (see above). An ellipsis, "?" and "!" stay inside. An abbreviation keeps
 /// its own period too: (and so on, etc.).
 fn period_in_closers_re() -> &'static Re {
-    re!(format!(r"(\w+(?:\.\w+)*)\.([{}]+)\.?(?=\s|$)", py::escape(CLOSERS)))
+    re!(format!(
+        r"(\w+(?:\.\w+)*)\.([{}]+)\.?(?=\s|$)",
+        py::escape(CLOSERS)
+    ))
 }
 
 /// The writing style's abbreviations, which keep their own period.
-pub(crate) const STYLE_ABBREVIATIONS: &[&str] = &["mr", "mrs", "ms", "dr", "st", "vs", "etc", "e.g", "i.e", "approx"];
+pub(crate) const STYLE_ABBREVIATIONS: &[&str] = &[
+    "mr", "mrs", "ms", "dr", "st", "vs", "etc", "e.g", "i.e", "approx",
+];
 
 fn is_abbreviation(word: &str) -> bool {
     STYLE_ABBREVIATIONS.contains(&py::casefold(word).as_str())
@@ -337,7 +374,11 @@ pub struct Example {
 const MARK_CHARS: &str = ",.;:!?";
 
 fn tokens(text: &str) -> Vec<String> {
-    re!(r"[\w'’]+|[^\w\s]").findall(text).into_iter().map(key).collect()
+    re!(r"[\w'’]+|[^\w\s]")
+        .findall(text)
+        .into_iter()
+        .map(key)
+        .collect()
 }
 
 fn is_word(token: &str) -> bool {
@@ -349,8 +390,15 @@ fn is_mark(token: &str) -> bool {
 }
 
 enum Observation {
-    Alias { words: String, mark: String, anchor: String },
-    Keep { words: String, anchor: String },
+    Alias {
+        words: String,
+        mark: String,
+        anchor: String,
+    },
+    Keep {
+        words: String,
+        anchor: String,
+    },
 }
 
 /// What one correction says about said marks.
@@ -372,7 +420,9 @@ fn observations(original: &str, expected: &str) -> Vec<Observation> {
             && added_words.is_empty()
             && added_marks.len() == 1
             && removed.iter().filter(|t| !is_word(t)).all(|t| is_mark(t))
-            && !removed_words.iter().any(|word| word.chars().any(py::is_digit))
+            && !removed_words
+                .iter()
+                .any(|word| word.chars().any(py::is_digit))
         {
             found.push(Observation::Alias {
                 words: join(&removed_words),
@@ -384,14 +434,21 @@ fn observations(original: &str, expected: &str) -> Vec<Observation> {
             && removed_marks.len() == 1
             && mark_named(&join(&added_words)) == Some(removed_marks[0].as_str())
         {
-            found.push(Observation::Keep { words: join(&added_words), anchor });
+            found.push(Observation::Keep {
+                words: join(&added_words),
+                anchor,
+            });
         }
     }
     found
 }
 
 fn join(words: &[&String]) -> String {
-    words.iter().map(|w| w.as_str()).collect::<Vec<_>>().join(" ")
+    words
+        .iter()
+        .map(|w| w.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Learn the speaker's own words for marks, and where a mark word is a word.
@@ -410,18 +467,31 @@ pub fn learn(examples: &[Example]) -> Learned {
     for example in examples {
         for observation in observations(&example.original, &example.expected) {
             match observation {
-                Observation::Alias { words, mark, anchor } => {
+                Observation::Alias {
+                    words,
+                    mark,
+                    anchor,
+                } => {
                     if mark_named(&words).is_some() {
-                        converts.entry(format!("{anchor} {words}")).or_default().insert(&example.capture_id);
+                        converts
+                            .entry(format!("{anchor} {words}"))
+                            .or_default()
+                            .insert(&example.capture_id);
                         continue;
                     }
-                    taught.entry(words.clone()).or_default().insert(&example.capture_id);
+                    taught
+                        .entry(words.clone())
+                        .or_default()
+                        .insert(&example.capture_id);
                     marks.entry(words.clone()).or_default().insert(mark);
                     *explicit.entry(words).or_default() |= example.source != "redictation";
                 }
                 Observation::Keep { words, anchor } => {
                     if example.source != "redictation" {
-                        keeps.entry(format!("{anchor} {words}")).or_default().insert(&example.capture_id);
+                        keeps
+                            .entry(format!("{anchor} {words}"))
+                            .or_default()
+                            .insert(&example.capture_id);
                     }
                 }
             }
@@ -429,7 +499,10 @@ pub fn learn(examples: &[Example]) -> Learned {
     }
     let mut written: HashMap<&str, usize> = HashMap::new();
     for example in examples {
-        let words: Vec<String> = tokens(&example.expected).into_iter().filter(|t| is_word(t)).collect();
+        let words: Vec<String> = tokens(&example.expected)
+            .into_iter()
+            .filter(|t| is_word(t))
+            .collect();
         let text = format!(" {} ", words.join(" "));
         for words in taught.keys() {
             *written.entry(words).or_default() += usize::from(text.contains(&format!(" {words} ")));
@@ -447,7 +520,9 @@ pub fn learn(examples: &[Example]) -> Learned {
         .collect();
     let kept = keeps
         .into_iter()
-        .filter(|(context, captures)| captures.len() > converts.get(context).map_or(0, HashSet::len))
+        .filter(|(context, captures)| {
+            captures.len() > converts.get(context).map_or(0, HashSet::len)
+        })
         .map(|(context, _)| context)
         .collect();
     Learned { aliases, kept }
@@ -463,11 +538,17 @@ mod tests {
             apply_spoken_punctuation("I'm home comma see you soon period", None),
             "I'm home, see you soon."
         );
-        assert_eq!(apply_spoken_punctuation("a period of time", None), "a period of time");
+        assert_eq!(
+            apply_spoken_punctuation("a period of time", None),
+            "a period of time"
+        );
     }
 
     #[test]
     fn moves_a_period_after_closers() {
-        assert_eq!(period_after_closers("he said \"it's done.\" ok"), "he said \"it's done\". ok");
+        assert_eq!(
+            period_after_closers("he said \"it's done.\" ok"),
+            "he said \"it's done\". ok"
+        );
     }
 }

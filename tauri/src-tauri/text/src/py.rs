@@ -111,7 +111,9 @@ impl Re {
 
     /// `pattern.search(text, pos)`: the first match at or after `pos`.
     pub fn search_from<'t>(&self, text: &'t str, pos: usize) -> Option<Captures<'t>> {
-        self.search.captures_from_pos(text, pos).expect("regex failed")
+        self.search
+            .captures_from_pos(text, pos)
+            .expect("regex failed")
     }
 
     pub fn is_match(&self, text: &str) -> bool {
@@ -151,7 +153,9 @@ impl Re {
         let mut pos = pos;
         let mut last_empty: Option<usize> = None;
         while pos <= text.len() {
-            let Some(caps) = self.search_from(text, pos) else { break };
+            let Some(caps) = self.search_from(text, pos) else {
+                break;
+            };
             let whole = caps.get(0).unwrap();
             if whole.start() == whole.end() && last_empty == Some(whole.start()) {
                 match next_boundary(text, whole.start()) {
@@ -184,7 +188,12 @@ impl Re {
     }
 
     /// `re.sub(..., count=count)`; 0 replaces every match.
-    pub fn subn(&self, text: &str, count: usize, mut replace: impl FnMut(&Captures) -> String) -> String {
+    pub fn subn(
+        &self,
+        text: &str,
+        count: usize,
+        mut replace: impl FnMut(&Captures) -> String,
+    ) -> String {
         let mut out = String::with_capacity(text.len());
         let mut last = 0;
         for (index, caps) in self.finditer(text).into_iter().enumerate() {
@@ -300,7 +309,8 @@ impl<'t> Groups<'t> for Captures<'t> {
 #[macro_export]
 macro_rules! re {
     ($pattern:expr) => {{
-        static RE: std::sync::LazyLock<$crate::py::Re> = std::sync::LazyLock::new(|| $crate::py::Re::new(&$pattern));
+        static RE: std::sync::LazyLock<$crate::py::Re> =
+            std::sync::LazyLock::new(|| $crate::py::Re::new(&$pattern));
         &*RE
     }};
     ($pattern:expr, $flags:expr) => {{
@@ -400,7 +410,9 @@ pub fn title(text: &str) -> String {
 
 /// `str.split()`: runs of whitespace separate the words.
 pub fn split(text: &str) -> Vec<&str> {
-    text.split(is_space).filter(|part| !part.is_empty()).collect()
+    text.split(is_space)
+        .filter(|part| !part.is_empty())
+        .collect()
 }
 
 /// `str.strip()`.
@@ -437,7 +449,15 @@ pub fn splitlines(text: &str) -> Vec<&str> {
     while let Some((index, c)) = chars.next() {
         let breaks = matches!(
             c,
-            '\n' | '\r' | '\x0b' | '\x0c' | '\x1c' | '\x1d' | '\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}'
+            '\n' | '\r'
+                | '\x0b'
+                | '\x0c'
+                | '\x1c'
+                | '\x1d'
+                | '\x1e'
+                | '\u{85}'
+                | '\u{2028}'
+                | '\u{2029}'
         );
         if breaks {
             lines.push(&text[start..index]);
@@ -499,7 +519,9 @@ pub fn drop_last(text: &str, n: usize) -> &str {
 
 /// The byte offset of character `n` (the end when past it).
 pub fn byte_at(text: &str, n: usize) -> usize {
-    text.char_indices().nth(n).map_or(text.len(), |(index, _)| index)
+    text.char_indices()
+        .nth(n)
+        .map_or(text.len(), |(index, _)| index)
 }
 
 /// The first character, Python's `text[:1]`, as a `char`.
@@ -547,7 +569,10 @@ mod tests {
     fn empty_matches_follow_python() {
         let re = Re::new(r"x*");
         assert_eq!(re.replace("abxd", "-"), "-a-b--d-");
-        assert_eq!(Re::new(r"(\s+)").split("a b  c"), vec!["a", " ", "b", "  ", "c"]);
+        assert_eq!(
+            Re::new(r"(\s+)").split("a b  c"),
+            vec!["a", " ", "b", "  ", "c"]
+        );
     }
 
     #[test]

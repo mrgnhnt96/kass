@@ -12,7 +12,10 @@ const SYLLABLES: &str = r"(?:ha|he)+";
 /// Two or more laugh syllables (each may already be joined, "haha ha") with
 /// only spaces, commas, periods or dashes between them.
 fn laugh() -> &'static Re {
-    re!(format!(r"(?<![\w-]){SYLLABLES}(?:[ \t,.\-]+{SYLLABLES})+(?![\w-])"), I)
+    re!(
+        format!(r"(?<![\w-]){SYLLABLES}(?:[ \t,.\-]+{SYLLABLES})+(?![\w-])"),
+        I
+    )
 }
 
 /// Whether `text` is nothing but laugh syllables: "hahaha", "HeHe".
@@ -26,7 +29,10 @@ pub fn join_laughter(text: &str) -> String {
         let laugh = re!(r"[^a-zA-Z]").replace(found.text(), "");
         // "he" is also a word, and a restart repeats it ("he, he went home").
         // Only "he"s that run into another word must be three or more to be a laugh.
-        if !py::lower(&laugh).contains('a') && laugh.len() < 6 && re!(r"[ \t]*\w").match_at(text, found.end()).is_some() {
+        if !py::lower(&laugh).contains('a')
+            && laugh.len() < 6
+            && re!(r"[ \t]*\w").match_at(text, found.end()).is_some()
+        {
             return found.text().to_string();
         }
         if py::isupper(&laugh) {
@@ -42,7 +48,10 @@ mod tests {
 
     #[test]
     fn joins_a_laugh() {
-        assert_eq!(join_laughter("Ha, ha, ha. That's funny"), "Hahaha. That's funny");
+        assert_eq!(
+            join_laughter("Ha, ha, ha. That's funny"),
+            "Hahaha. That's funny"
+        );
         assert_eq!(join_laughter("he, he went home"), "he, he went home");
         assert!(is_laughter("HeHe"));
     }

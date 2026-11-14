@@ -19,7 +19,11 @@ pub fn mark_commands(text: &str) -> String {
     // Whisper spells the verb by its sound: "paste", "Pace", "pays", "paced".
     // Any short p- or b- word with an s sound before "from clipboard" is
     // taken as it: nothing else is said that way.
-    re!(r"\b[pb][aeiy]{1,2}[scz]\w*,?\s+from\s+(?:the\s+|my\s+)?clipboard\b", I).replace(text, CLIPBOARD)
+    re!(
+        r"\b[pb][aeiy]{1,2}[scz]\w*,?\s+from\s+(?:the\s+|my\s+)?clipboard\b",
+        I
+    )
+    .replace(text, CLIPBOARD)
 }
 
 pub fn count_commands(text: &str) -> usize {
@@ -41,7 +45,10 @@ mod tests {
 
     #[test]
     fn marks_paste_from_clipboard() {
-        assert_eq!(mark_commands("Pace from clipboard please"), "[clipboard] please");
+        assert_eq!(
+            mark_commands("Pace from clipboard please"),
+            "[clipboard] please"
+        );
         assert_eq!(commands_alone("[clipboard]."), Some("[clipboard]".into()));
     }
 }

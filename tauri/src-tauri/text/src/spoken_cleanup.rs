@@ -12,7 +12,8 @@ use crate::re;
 
 /// Words speakers stutter on. Content words and genuine doubles ("very,
 /// very", "no, no, no", "had had", "that that", "is is") are deliberately absent.
-const STUTTER: &str = "a an the this these those my your our their his her its some any to of in on at \
+const STUTTER: &str =
+    "a an the this these those my your our their his her its some any to of in on at \
     for with from by about into i you we they he she it me us them and but or \
     because if when was are were can will would should could do did have has i'm \
     it's we're they're you're there's i've we've i'll we'll";
@@ -23,7 +24,8 @@ const DANGLING: &str = "the my your our their his her its and but or because";
 const NEEDS_OBJECT: &str = "say ask tell mention add explain";
 const SUBORDINATORS: &str = "when if because while where since until once unless whether";
 const PRONOUNS: &str = "i you we they he she it";
-const AUX: &str = "am is are was were will would can could did does do has have had 's 're 'm 've 'll 'd";
+const AUX: &str =
+    "am is are was were will would can could did does do has have had 's 're 'm 've 'll 'd";
 const CLAUSE_OPENERS: &str = "because and but so that when if since while although though";
 const HEDGES: &str = "probably maybe";
 const DETERMINERS: &str = "the a an this these those my your our their his her its some any";
@@ -48,7 +50,11 @@ fn tokens(text: &str) -> Vec<Token<'_>> {
     re!(r"[\w$%]+(?:['’.:][\w%]+)*")
         .finditer(text)
         .iter()
-        .map(|found| Token { start: found.start(), end: found.end(), text: found.text() })
+        .map(|found| Token {
+            start: found.start(),
+            end: found.end(),
+            text: found.text(),
+        })
         .collect()
 }
 
@@ -93,7 +99,10 @@ fn immediate_repeat(text: &str, tokens: &[Token]) -> Option<String> {
         if tokens[i].text == "A" {
             continue; // a label or grade ("A, A, B"), not the article
         }
-        if has(STUTTER, &word) && ["", ","].contains(&gap(text, tokens, i)) && norm(tokens[i + 1].text) == word {
+        if has(STUTTER, &word)
+            && ["", ","].contains(&gap(text, tokens, i))
+            && norm(tokens[i + 1].text) == word
+        {
             return Some(drop(text, tokens[i].start, tokens[i + 1].start));
         }
     }
@@ -131,7 +140,9 @@ fn repeated_restart(text: &str, tokens: &[Token]) -> Option<String> {
             }
             let fragment = &before[j - start..];
             let abandoned = has(DANGLING, fragment.last().unwrap())
-                || (fragment.len() == 2 && has(SUBORDINATORS, &fragment[0]) && has(PRONOUNS, &fragment[1]));
+                || (fragment.len() == 2
+                    && has(SUBORDINATORS, &fragment[0])
+                    && has(PRONOUNS, &fragment[1]));
             if abandoned && fragment != prefix(&after, fragment.len()) {
                 return Some(drop(text, tokens[j].start, tokens[i + 1].start));
             }
@@ -153,7 +164,9 @@ fn repeated_restart(text: &str, tokens: &[Token]) -> Option<String> {
         }
         for j in down(ii - 2, si.max(ii - 6) - 1) {
             let fragment = &before[j - start..];
-            if prefix(fragment, shared) == prefix(&after, shared) && fragment != prefix(&after, fragment.len()) {
+            if prefix(fragment, shared) == prefix(&after, shared)
+                && fragment != prefix(&after, fragment.len())
+            {
                 return Some(drop(text, tokens[j].start, tokens[i + 1].start));
             }
         }
@@ -183,7 +196,8 @@ fn reworded_restart(text: &str, tokens: &[Token]) -> Option<String> {
         let after = &words[i + 1..=end];
         for j in down(i as isize - 2, (start as isize).max(i as isize - 6) - 1) {
             let fragment = &words[j..=i];
-            if prefix(fragment, 2) != prefix(after, 2) || fragment == prefix(after, fragment.len()) {
+            if prefix(fragment, 2) != prefix(after, 2) || fragment == prefix(after, fragment.len())
+            {
                 continue;
             }
             let upto = (after.len() as isize - 1).min(fragment.len() as isize + 2);
@@ -198,7 +212,9 @@ fn reworded_restart(text: &str, tokens: &[Token]) -> Option<String> {
 }
 
 fn plural(word: &str) -> bool {
-    py::len(word) > 3 && word.ends_with('s') && !(word.ends_with("ss") || word.ends_with("us") || word.ends_with("is"))
+    py::len(word) > 3
+        && word.ends_with('s')
+        && !(word.ends_with("ss") || word.ends_with("us") || word.ends_with("is"))
 }
 
 /// Drop a restart with no pause: "the tasks for tasks that" -> "the tasks that".
@@ -233,7 +249,11 @@ fn subject(token: &str) -> Option<(String, String)> {
     if !has(PRONOUNS, base) {
         return None;
     }
-    let clitic = if clitic.is_empty() { String::new() } else { format!("'{clitic}") };
+    let clitic = if clitic.is_empty() {
+        String::new()
+    } else {
+        format!("'{clitic}")
+    };
     Some((base.to_string(), clitic))
 }
 
@@ -276,7 +296,9 @@ fn stuttered_clause(text: &str, tokens: &[Token]) -> Option<String> {
             continue;
         }
         let end = clause_end(text, tokens, i + 1);
-        let Some(second) = subject_verb(&words, i + 1) else { continue };
+        let Some(second) = subject_verb(&words, i + 1) else {
+            continue;
+        };
         if second.1 >= end {
             continue;
         }
@@ -286,7 +308,9 @@ fn stuttered_clause(text: &str, tokens: &[Token]) -> Option<String> {
                 break;
             }
             let at = at as usize;
-            let Some(first) = subject_verb(&words, at) else { continue };
+            let Some(first) = subject_verb(&words, at) else {
+                continue;
+            };
             if first.1 != i || first.0 != second.0 {
                 continue;
             }
@@ -300,7 +324,11 @@ fn stuttered_clause(text: &str, tokens: &[Token]) -> Option<String> {
                 break;
             }
             if length(&words[at..=i]) < length(&words[i + 1..=second.1]) {
-                return Some(format!("{}{}", &text[..tokens[i].end], &text[tokens[second.1].end..]));
+                return Some(format!(
+                    "{}{}",
+                    &text[..tokens[i].end],
+                    &text[tokens[second.1].end..]
+                ));
             }
             return Some(drop(text, tokens[at].start, tokens[i + 1].start));
         }
@@ -311,7 +339,8 @@ fn stuttered_clause(text: &str, tokens: &[Token]) -> Option<String> {
 // --- Changed answers --------------------------------------------------------------
 
 pub(crate) const WEEKDAYS: &str = "monday|tuesday|wednesday|thursday|friday|saturday|sunday";
-pub(crate) const MONTHS: &str = "january|february|march|april|may|june|july|august|september|october|november|december";
+pub(crate) const MONTHS: &str =
+    "january|february|march|april|may|june|july|august|september|october|november|december";
 const NUMBER_WORDS: &str = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|\
     fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|\
     thousand|noon|midnight";
@@ -326,8 +355,20 @@ enum Kind {
 
 fn value_kinds() -> [(Kind, &'static Re); 4] {
     [
-        (Kind::Weekday, re!(format!(r"(?:{WEEKDAYS})(?:\s+(?:morning|afternoon|evening|night))?\b"), I)),
-        (Kind::Month, re!(format!(r"(?:{MONTHS})(?:\s+\d{{1,2}}(?:st|nd|rd|th)?)?\b"), I)),
+        (
+            Kind::Weekday,
+            re!(
+                format!(r"(?:{WEEKDAYS})(?:\s+(?:morning|afternoon|evening|night))?\b"),
+                I
+            ),
+        ),
+        (
+            Kind::Month,
+            re!(
+                format!(r"(?:{MONTHS})(?:\s+\d{{1,2}}(?:st|nd|rd|th)?)?\b"),
+                I
+            ),
+        ),
         (
             Kind::Number,
             re!(
@@ -342,7 +383,10 @@ fn value_kinds() -> [(Kind, &'static Re); 4] {
 }
 
 fn not_name(word: &str) -> bool {
-    word == "I" || format!("{WEEKDAYS}|{MONTHS}").split('|').any(|name| py::title(name) == word)
+    word == "I"
+        || format!("{WEEKDAYS}|{MONTHS}")
+            .split('|')
+            .any(|name| py::title(name) == word)
 }
 
 /// The cue may follow a sentence break too: speech-to-text often hears
@@ -350,7 +394,8 @@ fn not_name(word: &str) -> bool {
 /// speaker paused there, the mark is gone (`continue_after_seam`) and only
 /// the capital it gave the cue is left: "noon No, actually one".
 const PAUSED_CUE: &str = r"\s+(?=(?-i:(?:Or|No|Sorry|Actually)\b))";
-const AUX_AFTER: &str = r"\s+(?:is|are|was|were|has|have|had|will|would|can|could|should|does|did)\b";
+const AUX_AFTER: &str =
+    r"\s+(?:is|are|was|were|has|have|had|will|would|can|could|should|does|did)\b";
 
 fn value_at<'t>(text: &'t str, pos: usize) -> Option<(Kind, Captures<'t>)> {
     if let Some(previous) = py::final_char(&text[..pos]) {
@@ -386,19 +431,27 @@ fn changed_answer(text: &str) -> Option<String> {
     let verb_after_name = re!(format!(r"{AUX_AFTER}|\s+\w+(?:ed|s)\b"), I);
     let tail_re = re!(format!(r"(?:\s+[a-z]+){{0,3}}?(?=[,.?!]|{PAUSED_CUE})"));
     for (start, _) in text.char_indices() {
-        let Some((kind, value)) = value_at(text, start) else { continue };
+        let Some((kind, value)) = value_at(text, start) else {
+            continue;
+        };
         if kind == Kind::Name && (start == 0 || re!(r"[.!?]\s*$").is_match(&text[..start])) {
             continue; // capitalized because it starts a sentence
         }
-        let Some(tail) = tail_re.match_at(text, value.end()) else { continue };
+        let Some(tail) = tail_re.match_at(text, value.end()) else {
+            continue;
+        };
         let mut answers: Vec<Captures> = Vec::new();
         let mut pos = tail.end();
         while let Some(cue) = answer_cue.match_at(text, pos) {
-            let Some((answer_kind, answer)) = value_at(text, cue.end()) else { break };
+            let Some((answer_kind, answer)) = value_at(text, cue.end()) else {
+                break;
+            };
             if answer_kind != kind {
                 break;
             }
-            if py::lower(py::strip_chars(cue.text(), " ,.?!")) == "no" && py::lower(answer.text()).starts_with("one") {
+            if py::lower(py::strip_chars(cue.text(), " ,.?!")) == "no"
+                && py::lower(answer.text()).starts_with("one")
+            {
                 break; // "no one"
             }
             pos = answer.end();
@@ -424,11 +477,17 @@ fn changed_answer(text: &str) -> Option<String> {
 fn refined_answer(text: &str, tokens: &[Token]) -> Option<String> {
     let words = words_of(tokens);
     for i in 0..tokens.len().saturating_sub(2) {
-        if gap(text, tokens, i) != "," || words[i + 1] != "well" || !["", ","].contains(&gap(text, tokens, i + 1)) {
+        if gap(text, tokens, i) != ","
+            || words[i + 1] != "well"
+            || !["", ","].contains(&gap(text, tokens, i + 1))
+        {
             continue;
         }
         let mut after = i + 2;
-        if has(HEDGES, &words[after]) && after + 1 < tokens.len() && gap(text, tokens, after).is_empty() {
+        if has(HEDGES, &words[after])
+            && after + 1 < tokens.len()
+            && gap(text, tokens, after).is_empty()
+        {
             after += 1;
         }
         let start = clause_start(text, tokens, i);
@@ -440,9 +499,17 @@ fn refined_answer(text: &str, tokens: &[Token]) -> Option<String> {
             }
             let mut result = text.to_string();
             if has(HEDGES, &words[end]) && end > after + size {
-                result = format!("{}{}", &result[..tokens[end - 1].end], &result[tokens[end].end..]);
+                result = format!(
+                    "{}{}",
+                    &result[..tokens[end - 1].end],
+                    &result[tokens[end].end..]
+                );
             }
-            return Some(drop(&result, tokens[i + 1 - size].start, tokens[after].start));
+            return Some(drop(
+                &result,
+                tokens[i + 1 - size].start,
+                tokens[after].start,
+            ));
         }
     }
     None
@@ -482,9 +549,18 @@ mod tests {
 
     #[test]
     fn removes_the_shapes_of_speech() {
-        assert_eq!(apply_spoken_cleanup("look at the, the budget"), "look at the budget");
-        assert_eq!(apply_spoken_cleanup("I can, I can probably do it"), "I can probably do it");
-        assert_eq!(apply_spoken_cleanup("the tasks for tasks that matter"), "the tasks that matter");
+        assert_eq!(
+            apply_spoken_cleanup("look at the, the budget"),
+            "look at the budget"
+        );
+        assert_eq!(
+            apply_spoken_cleanup("I can, I can probably do it"),
+            "I can probably do it"
+        );
+        assert_eq!(
+            apply_spoken_cleanup("the tasks for tasks that matter"),
+            "the tasks that matter"
+        );
         assert_eq!(
             apply_spoken_cleanup("we said Wednesday, or was it Tuesday, no Wednesday"),
             "we said Wednesday"

@@ -30,7 +30,9 @@ fn merge<'t>(base: &[&'t str], ours: &[&'t str], theirs: &[&'t str]) -> Vec<&'t 
         .iter()
         .enumerate()
         .flat_map(|(which, (_, ops))| {
-            ops.iter().filter(|op| op.tag != Tag::Equal).map(move |op| (op.i1, op.i2, which))
+            ops.iter()
+                .filter(|op| op.tag != Tag::Equal)
+                .map(move |op| (op.i1, op.i2, which))
         })
         .collect();
     changes.sort();
@@ -48,7 +50,11 @@ fn merge<'t>(base: &[&'t str], ours: &[&'t str], theirs: &[&'t str]) -> Vec<&'t 
             k += 1;
         }
         out.extend_from_slice(&base[at..lo]);
-        let (side, ops) = if involved.contains(&0) { &sides[0] } else { &sides[1] };
+        let (side, ops) = if involved.contains(&0) {
+            &sides[0]
+        } else {
+            &sides[1]
+        };
         out.extend(slice(side, ops, lo, hi));
         at = hi;
     }
@@ -81,6 +87,9 @@ mod tests {
         let before = "Hi Megan, see you at five.";
         let removed = "Hi Morgan, see you at five.";
         let newer = "Hi Morgan, see you at six.";
-        assert_eq!(take_back(before, removed, newer), "Hi Megan, see you at six.");
+        assert_eq!(
+            take_back(before, removed, newer),
+            "Hi Megan, see you at six."
+        );
     }
 }

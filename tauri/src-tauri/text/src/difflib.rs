@@ -72,7 +72,11 @@ impl<'s, T: Hash + Eq> SequenceMatcher<'s, T> {
                     if j >= bhi {
                         break;
                     }
-                    let k = if j == 0 { 0 } else { j2len.get(&(j - 1)).copied().unwrap_or(0) } + 1;
+                    let k = if j == 0 {
+                        0
+                    } else {
+                        j2len.get(&(j - 1)).copied().unwrap_or(0)
+                    } + 1;
                     newj2len.insert(j, k);
                     if k > bestsize {
                         besti = i + 1 - k;
@@ -90,10 +94,17 @@ impl<'s, T: Hash + Eq> SequenceMatcher<'s, T> {
             bestj -= 1;
             bestsize += 1;
         }
-        while besti + bestsize < ahi && bestj + bestsize < bhi && a[besti + bestsize] == b[bestj + bestsize] {
+        while besti + bestsize < ahi
+            && bestj + bestsize < bhi
+            && a[besti + bestsize] == b[bestj + bestsize]
+        {
             bestsize += 1;
         }
-        Block { a: besti, b: bestj, size: bestsize }
+        Block {
+            a: besti,
+            b: bestj,
+            size: bestsize,
+        }
     }
 
     pub fn get_matching_blocks(&self) -> Vec<Block> {
@@ -116,20 +127,37 @@ impl<'s, T: Hash + Eq> SequenceMatcher<'s, T> {
         blocks.sort();
         let (mut i1, mut j1, mut k1) = (0, 0, 0);
         let mut joined = Vec::new();
-        for Block { a: i2, b: j2, size: k2 } in blocks {
+        for Block {
+            a: i2,
+            b: j2,
+            size: k2,
+        } in blocks
+        {
             if i1 + k1 == i2 && j1 + k1 == j2 {
                 k1 += k2;
             } else {
                 if k1 > 0 {
-                    joined.push(Block { a: i1, b: j1, size: k1 });
+                    joined.push(Block {
+                        a: i1,
+                        b: j1,
+                        size: k1,
+                    });
                 }
                 (i1, j1, k1) = (i2, j2, k2);
             }
         }
         if k1 > 0 {
-            joined.push(Block { a: i1, b: j1, size: k1 });
+            joined.push(Block {
+                a: i1,
+                b: j1,
+                size: k1,
+            });
         }
-        joined.push(Block { a: la, b: lb, size: 0 });
+        joined.push(Block {
+            a: la,
+            b: lb,
+            size: 0,
+        });
         joined
     }
 
@@ -147,18 +175,34 @@ impl<'s, T: Hash + Eq> SequenceMatcher<'s, T> {
                 None
             };
             if let Some(tag) = tag {
-                answer.push(Opcode { tag, i1: i, i2: ai, j1: j, j2: bj });
+                answer.push(Opcode {
+                    tag,
+                    i1: i,
+                    i2: ai,
+                    j1: j,
+                    j2: bj,
+                });
             }
             (i, j) = (ai + size, bj + size);
             if size > 0 {
-                answer.push(Opcode { tag: Tag::Equal, i1: ai, i2: i, j1: bj, j2: j });
+                answer.push(Opcode {
+                    tag: Tag::Equal,
+                    i1: ai,
+                    i2: i,
+                    j1: bj,
+                    j2: j,
+                });
             }
         }
         answer
     }
 
     pub fn ratio(&self) -> f64 {
-        let matches: usize = self.get_matching_blocks().iter().map(|block| block.size).sum();
+        let matches: usize = self
+            .get_matching_blocks()
+            .iter()
+            .map(|block| block.size)
+            .sum();
         let total = self.a.len() + self.b.len();
         if total == 0 {
             1.0
@@ -183,7 +227,10 @@ mod tests {
         let a: Vec<char> = "qabxcd".chars().collect();
         let b: Vec<char> = "abycdf".chars().collect();
         let codes = SequenceMatcher::new(&a, &b, false).get_opcodes();
-        let tags: Vec<_> = codes.iter().map(|c| (c.tag, c.i1, c.i2, c.j1, c.j2)).collect();
+        let tags: Vec<_> = codes
+            .iter()
+            .map(|c| (c.tag, c.i1, c.i2, c.j1, c.j2))
+            .collect();
         assert_eq!(
             tags,
             vec![

@@ -16,7 +16,8 @@ use crate::py::{self, Groups, I};
 use crate::re;
 
 const LETTER: &str = r"[^\W\d_]";
-const UPPER: &str = r"caps|capitals|capital letters|block capitals|block letters|upper[ -]?case(?: letters)?";
+const UPPER: &str =
+    r"caps|capitals|capital letters|block capitals|block letters|upper[ -]?case(?: letters)?";
 const LOWER: &str = r"lower[ -]?case(?: letters)?|small letters";
 /// Whisper's pause between the word and the ask: a comma, a dash, an
 /// ellipsis or the ask as its own sentence.
@@ -84,7 +85,8 @@ fn after(found: &Captures, text: &str) -> String {
     }
     let following = py::head(py::lstrip_chars(&text[found.end()..], " \t"), 1);
     // "Don't shout. In all caps, it reads as yelling." starts a new sentence.
-    if py::in_chars(py::final_char(pause), ".!?") && !["", ".", "!", "?", "\n"].contains(&following) {
+    if py::in_chars(py::final_char(pause), ".!?") && !["", ".", "!", "?", "\n"].contains(&following)
+    {
         return found.text().to_string();
     }
     cased(word, !found.n("upper").is_empty()) + &rest(found, text)
@@ -112,7 +114,10 @@ pub fn apply_spoken_case(text: &str) -> String {
         ),
         I
     );
-    let case_after = re!(format!(r"(?P<word>\b{})(?P<pause>{PAUSE}){}{END}", word(), ask()), I);
+    let case_after = re!(
+        format!(r"(?P<word>\b{})(?P<pause>{PAUSE}){}{END}", word(), ask()),
+        I
+    );
     // "all caps yelling end caps": everything between is written in capitals.
     // Whisper's commas around either command are pauses, not text.
     let case_span = re!(
@@ -121,7 +126,10 @@ pub fn apply_spoken_case(text: &str) -> String {
     );
     // "all caps love": the next word is written in capitals.
     let case_before = re!(
-        format!(r"\b(?P<ask>all[ \t]+caps|all[ \t]+capitals),?[ \t]+(?P<word>{})", word()),
+        format!(
+            r"\b(?P<ask>all[ \t]+caps|all[ \t]+capitals),?[ \t]+(?P<word>{})",
+            word()
+        ),
         I
     );
     let text = text.to_string();
@@ -139,7 +147,13 @@ mod tests {
     fn cases_the_word_asked_for() {
         assert_eq!(apply_spoken_case("I love, in all caps"), "I LOVE");
         assert_eq!(apply_spoken_case("I love, with a capital L"), "I Love");
-        assert_eq!(apply_spoken_case("I am all caps yelling end caps at you"), "I am YELLING at you");
-        assert_eq!(apply_spoken_case("I wrote it in all caps"), "I wrote it in all caps");
+        assert_eq!(
+            apply_spoken_case("I am all caps yelling end caps at you"),
+            "I am YELLING at you"
+        );
+        assert_eq!(
+            apply_spoken_case("I wrote it in all caps"),
+            "I wrote it in all caps"
+        );
     }
 }
