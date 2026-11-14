@@ -1,0 +1,281 @@
+{
+  "version": 1,
+  "voice": { "name": "Samantha", "rate": 165, "sample_rate": 16000, "lead_ms": 200 },
+  "settings": {
+    "stt_model": "turbo",
+    "language": "en",
+    "auto_refine": true,
+    "llm_model": "0.6B",
+    "smart_cleanup": true,
+    "self_correction": true,
+    "preserve_technical": true,
+    "punctuation_style": "standard",
+    "allow_auto_paste": true,
+    "live_text": false,
+    "voice_edits": true,
+    "expressive": true,
+    "discard_audio": false,
+    "share_usage": false,
+    "shared_adapters": true,
+    "history_retention_days": 0,
+    "onboarding_completed": true
+  },
+  "audio": {
+    "prose-short": {
+      "speech": ["Please move the planning meeting to Thursday afternoon. We need to review the project timeline before Friday."]
+    },
+    "prose-pauses": {
+      "speech": [
+        "I looked at the draft this morning.",
+        "The second section needs a clearer example.",
+        "Let's talk about it after lunch."
+      ],
+      "pause_ms": 1000
+    },
+    "prose-long": {
+      "speech": [
+        "Please move the planning meeting to Thursday afternoon. We need to review the project timeline and confirm the next release date. Add a reminder to check the documentation before sending the update to the team. During the review, compare the original transcript with the final output and make sure that every sentence is preserved. We should also test a longer recording and verify that the final words arrive promptly."
+      ]
+    },
+    "technical": {
+      "speech": ["Set the retry count to seven.", "Open package dot json before changing the port to eight thousand."],
+      "pause_ms": 1000
+    },
+    "spoken-punctuation": {
+      "speech": ["Dear Sam comma new line thanks for the update period can we meet tomorrow question mark"]
+    },
+    "self-correction": {
+      "speech": ["Let's meet at three, no wait, four o'clock on Tuesday."]
+    },
+    "fillers": {
+      "speech": ["So um I think we should uh probably ship the fix today."]
+    },
+    "numbers-dates": {
+      "speech": ["The workshop is on March third at two thirty PM and the ticket costs forty five dollars."]
+    },
+    "dictionary-term": {
+      "speech": ["Ask Priya to send the zylo fix report by Monday."]
+    },
+    "dictionary-app": {
+      "speech": ["Restart the kates cluster before the demo."]
+    },
+    "chat-reply": {
+      "speech": ["Sounds good. I will be there in five minutes."]
+    },
+    "spoken-style": {
+      "speech": ["Use chat mode. Sounds good, I will see you at the cafe."]
+    },
+    "mid-sentence": {
+      "speech": ["probably wait until the tests pass."]
+    },
+    "edit-base": {
+      "speech": ["The review is on Tuesday at noon."]
+    },
+    "edit-change": {
+      "speech": ["Fix that, change Tuesday to Thursday."]
+    },
+    "edit-spelled": {
+      "speech": ["Fix that, Meghan, M. E. G. H. A. N."]
+    },
+    "command-formal": {
+      "speech": ["Make this more formal."]
+    },
+    "command-polish": {
+      "speech": ["Polish."]
+    },
+    "correction-name": {
+      "speech": ["Ping Kara about the launch on Friday."]
+    },
+    "silence": {
+      "silence_ms": 2000
+    }
+  },
+  "cases": [
+    {
+      "id": "prose-short",
+      "about": "Short continuous prose, default style.",
+      "steps": [{ "take": { "audio": "prose-short" } }]
+    },
+    {
+      "id": "prose-pauses",
+      "about": "Sentences with one-second pauses, so phrases are cut and cleaned while speaking.",
+      "steps": [{ "take": { "audio": "prose-pauses" } }]
+    },
+    {
+      "id": "prose-long",
+      "about": "About 22 s of continuous speech, past Whisper's forced window.",
+      "steps": [{ "take": { "audio": "prose-long" } }]
+    },
+    {
+      "id": "technical",
+      "about": "Numbers, a file name and a port; preserve_technical on.",
+      "steps": [{ "take": { "audio": "technical" } }]
+    },
+    {
+      "id": "spoken-punctuation",
+      "about": "Spoken comma, new line, period and question mark.",
+      "steps": [{ "take": { "audio": "spoken-punctuation" } }]
+    },
+    {
+      "id": "self-correction",
+      "about": "\"three, no wait, four\" resolves to the correction.",
+      "steps": [{ "take": { "audio": "self-correction" } }]
+    },
+    {
+      "id": "fillers",
+      "about": "Filler words removed by cleanup.",
+      "steps": [{ "take": { "audio": "fillers" } }]
+    },
+    {
+      "id": "numbers-dates",
+      "about": "A date, a time and an amount.",
+      "steps": [{ "take": { "audio": "numbers-dates" } }]
+    },
+    {
+      "id": "no-cleanup",
+      "about": "Cleanup off: the raw transcript is the output.",
+      "settings": { "auto_refine": false },
+      "steps": [{ "take": { "audio": "prose-pauses" } }]
+    },
+    {
+      "id": "casual-punctuation",
+      "about": "The default style switched to casual punctuation.",
+      "steps": [
+        { "style_patch": { "style": "@default", "punctuation_style": "casual" } },
+        { "take": { "audio": "chat-reply" } }
+      ]
+    },
+    {
+      "id": "dictionary-global",
+      "about": "A global dictionary entry with a spoken form; the resolved dictionary is recorded.",
+      "steps": [
+        { "dictionary": { "written": "Zylofix", "spoken": "zylo fix", "places": [{ "scope": "global" }] } },
+        { "read": "/dictionary" },
+        { "read": "/dictionary/resolved" },
+        { "take": { "audio": "dictionary-term" } }
+      ]
+    },
+    {
+      "id": "dictionary-app",
+      "about": "An entry scoped to Terminal applies there and not in Notes.",
+      "steps": [
+        {
+          "dictionary": {
+            "written": "k8s",
+            "spoken": "kates",
+            "places": [{ "scope": "app", "scope_id": "com.apple.Terminal", "app_name": "Terminal" }]
+          }
+        },
+        { "read": "/dictionary/resolved?bundle_id=com.apple.Terminal" },
+        { "take": { "audio": "dictionary-app", "app": { "bundle_id": "com.apple.Terminal", "name": "Terminal" } } },
+        { "take": { "audio": "dictionary-app", "app": { "bundle_id": "com.apple.Notes", "name": "Notes" } } }
+      ]
+    },
+    {
+      "id": "style-per-app",
+      "about": "A new casual style assigned to Slack is used there; Notes keeps the default.",
+      "steps": [
+        { "style_create": { "name": "Chat", "punctuation_style": "casual", "description": "Short, friendly chat messages." } },
+        { "style_assign": { "bundle_id": "com.tinyspeck.slackmacgap", "app_name": "Slack", "style": "Chat" } },
+        { "read": "/writing-styles" },
+        { "take": { "audio": "chat-reply", "app": { "bundle_id": "com.tinyspeck.slackmacgap", "name": "Slack" } } },
+        { "take": { "audio": "chat-reply", "app": { "bundle_id": "com.apple.Notes", "name": "Notes" } } }
+      ]
+    },
+    {
+      "id": "spoken-style",
+      "about": "Saying a style's name at the start picks that style and is dropped from the text.",
+      "steps": [
+        { "style_create": { "name": "Chat", "punctuation_style": "casual" } },
+        { "take": { "audio": "spoken-style", "app": { "bundle_id": "com.apple.Notes", "name": "Notes" } } }
+      ]
+    },
+    {
+      "id": "mid-sentence",
+      "about": "The field already holds the start of the sentence; the take continues it.",
+      "steps": [{ "take": { "audio": "mid-sentence", "context": "I think we should " } }]
+    },
+    {
+      "id": "voice-edit",
+      "about": "A dictation, then a voice edit of it; the edit's report on the first capture is recorded.",
+      "steps": [
+        { "take": { "audio": "edit-base" } },
+        { "take": { "audio": "edit-change", "last_take": "@previous" } },
+        { "settle": 2 },
+        { "read": "/captures/@capture:0/feedback" }
+      ]
+    },
+    {
+      "id": "voice-edit-spelled",
+      "about": "A spelled fix of text Kass didn't write; the spelled word goes in the dictionary.",
+      "steps": [
+        { "take": { "audio": "edit-spelled", "last_take": { "text": "Thanks Megan, see you soon." } } },
+        { "settle": 2 },
+        { "read": "/dictionary" }
+      ]
+    },
+    {
+      "id": "voice-edit-nothing-to-edit",
+      "about": "An edit phrase with no text before the caret is written as a dictation.",
+      "steps": [{ "take": { "audio": "edit-change" } }]
+    },
+    {
+      "id": "command-spoken",
+      "about": "Command Mode: a spoken instruction rewrites the selection.",
+      "steps": [
+        {
+          "take": {
+            "audio": "command-formal",
+            "source": "command",
+            "selection": "hey can u send me the file asap, thx"
+          }
+        }
+      ]
+    },
+    {
+      "id": "command-transform",
+      "about": "Command Mode: saying a transform's name runs that transform.",
+      "steps": [
+        {
+          "take": {
+            "audio": "command-polish",
+            "source": "command",
+            "selection": "me and him was going to the store but it were closed so we goes home"
+          }
+        }
+      ]
+    },
+    {
+      "id": "command-run",
+      "about": "Command Mode without audio (POST /commands/run).",
+      "steps": [
+        {
+          "command": {
+            "selection": "milk, eggs, bread and two kinds of cheese",
+            "instruction": "Turn this into a bulleted list."
+          }
+        }
+      ]
+    },
+    {
+      "id": "correction-learned",
+      "about": "A correction of a misheard name (Whisper hears \"Pinkara\"), the dictionary entry it teaches, and the same audio dictated again.",
+      "steps": [
+        { "take": { "audio": "correction-name" } },
+        { "feedback": { "capture": "@capture:0", "target": "refined", "expected": "Ping Karra about the launch on Friday." } },
+        { "read": "/dictionary" },
+        { "take": { "audio": "correction-name" } }
+      ]
+    },
+    {
+      "id": "batch-upload",
+      "about": "The batch path: upload a recording, then clean it up.",
+      "steps": [{ "upload": { "audio": "prose-short", "refine": true } }]
+    },
+    {
+      "id": "silence",
+      "about": "A take with no speech.",
+      "steps": [{ "take": { "audio": "silence" } }]
+    }
+  ]
+}
