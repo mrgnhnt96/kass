@@ -1,0 +1,2590 @@
+{
+  "recorded_at": "2026-11-14T09:35:42-0700",
+  "server": "{python} -m backend.main --port {port} --data-dir {data_dir}",
+  "git_commit": "91710d083a826c65bc3e6037a7268ae1558c2e1b",
+  "machine": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "processor": "arm"
+  },
+  "rounds": 5,
+  "cases": {
+    "prose-short": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 6050,
+              "transcript_raw": "Please move the planning meeting to Thursday afternoon. We need to review the project timeline before Friday.",
+              "transcript_refined": "Please move the planning meeting to Thursday afternoon. We need to review the project timeline before Friday.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "prose-pauses": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 8064,
+              "transcript_raw": "I looked at the draft this morning the second section needs a clearer example let's talk about it after lunch.",
+              "transcript_refined": "I looked at the draft this morning. The second section needs a clearer example. Let's talk about it after lunch.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "prose-long": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 22675,
+              "transcript_raw": "Please move the planning meeting to Thursday afternoon. We need to review the project timeline and confirm the next release date. Add a reminder to check the documentation before sending the update to the team. During the review, compare the original transcript with the final output and make sure that every sentence is preserved. We should also test a longer recording and verify that the final words arrive promptly.",
+              "transcript_refined": "Please move the planning meeting to Thursday afternoon. We need to review the project timeline and confirm the next release date. Add a reminder to check the documentation before sending the update to the team. During the review, compare the original transcript with the final output and make sure that every sentence is preserved. We should also test a longer recording and verify that the final words arrive promptly.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": "Continuous speech exceeded the safe phrase window; final output uses full-audio recognition.",
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "technical": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 6688,
+              "transcript_raw": "set the retry count to 7 open package.json before changing the port to 8000",
+              "transcript_refined": "Set the retry count to 7 and open package.json before changing the port to 8000.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ],
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 6688,
+              "transcript_raw": "set the retry count to 7 open package.json before changing the port to 8000",
+              "transcript_refined": "set the retry count to 7 open package.json before changing the port to 8000.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [],
+                "missing": [
+                  "package.json"
+                ],
+                "reasons": [
+                  "technical"
+                ]
+              },
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "spoken-punctuation": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 4859,
+              "transcript_raw": "Dear Sam, new line, thanks for the update period, can we meet tomorrow?",
+              "transcript_refined": "Dear Sam.\nThanks for the update. Can we meet tomorrow?",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "self-correction": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 3722,
+              "transcript_raw": "Let's meet at 3, no wait, 4 o'clock on Tuesday.",
+              "transcript_refined": "Let's meet at 4 o'clock on Tuesday.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "fillers": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 3256,
+              "transcript_raw": "So um I think we should uh probably ship the fix today.",
+              "transcript_refined": "So I think we should probably ship the fix today.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "numbers-dates": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 4937,
+              "transcript_raw": "The workshop is on March 3rd at 2.30pm and the ticket costs $45.",
+              "transcript_refined": "The workshop is on March 3rd at 2.30pm and the ticket costs $45.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [
+                  "2",
+                  "30"
+                ],
+                "missing": [
+                  "2.30"
+                ],
+                "reasons": [
+                  "number"
+                ]
+              },
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "no-cleanup": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 8064,
+              "transcript_raw": "I looked at the draft this morning the second section needs a clearer example let's talk about it after lunch.",
+              "transcript_refined": null,
+              "stt_model": "turbo",
+              "llm_model": null,
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": false,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "casual-punctuation": [
+      [
+        {
+          "style_patch": {
+            "id": "@style:Personal",
+            "name": "Personal",
+            "position": 0,
+            "is_default": true,
+            "punctuation_style": "casual",
+            "preserve_technical": true,
+            "description": ""
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2629,
+              "transcript_raw": "Sounds good. I will be there in 5 minutes.",
+              "transcript_refined": "Sounds good. I will be there in 5 minutes.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "casual",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [],
+                "missing": [
+                  "5"
+                ],
+                "reasons": [
+                  "number"
+                ]
+              },
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "dictionary-global": [
+      [
+        {
+          "dictionary": {
+            "id": "<id>",
+            "written": "Zylofix",
+            "spoken": "zylo fix",
+            "places": [
+              {
+                "scope": "global",
+                "scope_id": null,
+                "app_name": null
+              }
+            ],
+            "match_sound": true,
+            "source": "user",
+            "phrase": false
+          }
+        },
+        {
+          "read": "/dictionary",
+          "response": {
+            "entries": [
+              {
+                "id": "<id>",
+                "written": "Zylofix",
+                "spoken": "zylo fix",
+                "places": [
+                  {
+                    "scope": "global",
+                    "scope_id": null,
+                    "app_name": null
+                  }
+                ],
+                "match_sound": true,
+                "source": "user",
+                "phrase": false
+              },
+              {
+                "id": "<id>",
+                "written": "Kass",
+                "spoken": null,
+                "places": [
+                  {
+                    "scope": "global",
+                    "scope_id": null,
+                    "app_name": null
+                  }
+                ],
+                "match_sound": true,
+                "source": "user",
+                "phrase": false
+              }
+            ]
+          }
+        },
+        {
+          "read": "/dictionary/resolved",
+          "response": {
+            "entries": [
+              {
+                "id": "<id>",
+                "scope": "global",
+                "scope_id": null,
+                "app_name": null,
+                "written": "Zylofix",
+                "spoken": "zylo fix",
+                "match_sound": true,
+                "phrase": false,
+                "overridden": false
+              },
+              {
+                "id": "<id>",
+                "scope": "global",
+                "scope_id": null,
+                "app_name": null,
+                "written": "Kass",
+                "spoken": null,
+                "match_sound": true,
+                "phrase": false,
+                "overridden": false
+              }
+            ],
+            "prompt_terms": [
+              "Kass",
+              "Zylofix"
+            ],
+            "dropped_terms": []
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 3111,
+              "transcript_raw": "Ask Priya to send the Zylofix report by Monday.",
+              "transcript_refined": "Ask Priya to send the Zylofix report by Monday.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "dictionary-app": [
+      [
+        {
+          "dictionary": {
+            "id": "<id>",
+            "written": "k8s",
+            "spoken": "kates",
+            "places": [
+              {
+                "scope": "app",
+                "scope_id": "com.apple.Terminal",
+                "app_name": "Terminal"
+              }
+            ],
+            "match_sound": true,
+            "source": "user",
+            "phrase": false
+          }
+        },
+        {
+          "read": "/dictionary/resolved?bundle_id=com.apple.Terminal",
+          "response": {
+            "entries": [
+              {
+                "id": "<id>",
+                "scope": "app",
+                "scope_id": "com.apple.Terminal",
+                "app_name": "Terminal",
+                "written": "k8s",
+                "spoken": "kates",
+                "match_sound": true,
+                "phrase": false,
+                "overridden": false
+              },
+              {
+                "id": "<id>",
+                "scope": "global",
+                "scope_id": null,
+                "app_name": null,
+                "written": "Kass",
+                "spoken": null,
+                "match_sound": true,
+                "phrase": false,
+                "overridden": false
+              }
+            ],
+            "prompt_terms": [
+              "Kass",
+              "k8s"
+            ],
+            "dropped_terms": []
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2506,
+              "transcript_raw": "Restart the Kates cluster before the demo",
+              "transcript_refined": "Restart the k8s cluster before the demo.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": "com.apple.Terminal",
+              "app_name": "Terminal",
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:1",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2506,
+              "transcript_raw": "Restart the Kates cluster before the demo",
+              "transcript_refined": "Restart the Kates cluster before the demo.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": "com.apple.Notes",
+              "app_name": "Notes",
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "style-per-app": [
+      [
+        {
+          "style_create": {
+            "id": "@style:Chat",
+            "name": "Chat",
+            "position": 1,
+            "is_default": false,
+            "punctuation_style": "casual",
+            "preserve_technical": true,
+            "description": "Short, friendly chat messages."
+          }
+        },
+        {
+          "style_assign": [
+            {
+              "bundle_id": "com.tinyspeck.slackmacgap",
+              "name": "Slack",
+              "style_id": "@style:Chat",
+              "confirmed": true,
+              "count": 0,
+              "corrections": 0,
+              "suggested_style_id": null
+            }
+          ]
+        },
+        {
+          "read": "/writing-styles",
+          "response": {
+            "styles": [
+              {
+                "id": "@style:Personal",
+                "name": "Personal",
+                "position": 0,
+                "is_default": true,
+                "punctuation_style": "standard",
+                "preserve_technical": true,
+                "description": ""
+              },
+              {
+                "id": "@style:Chat",
+                "name": "Chat",
+                "position": 1,
+                "is_default": false,
+                "punctuation_style": "casual",
+                "preserve_technical": true,
+                "description": "Short, friendly chat messages."
+              }
+            ],
+            "apps": [
+              {
+                "bundle_id": "com.tinyspeck.slackmacgap",
+                "name": "Slack",
+                "style_id": "@style:Chat",
+                "confirmed": true,
+                "count": 0,
+                "corrections": 0,
+                "suggested_style_id": null
+              }
+            ],
+            "max_styles": 6
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2629,
+              "transcript_raw": "Sounds good. I will be there in 5 minutes.",
+              "transcript_refined": "Sounds good. I will be there in 5 minutes.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "casual",
+                "capitalize_first": true,
+                "style": "@style:Chat"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [],
+                "missing": [
+                  "5"
+                ],
+                "reasons": [
+                  "number"
+                ]
+              },
+              "app_bundle_id": "com.tinyspeck.slackmacgap",
+              "app_name": "Slack",
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Chat",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:1",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2629,
+              "transcript_raw": "Sounds good. I will be there in 5 minutes.",
+              "transcript_refined": "Sounds good. I will be there in 5 minutes.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [],
+                "missing": [
+                  "5"
+                ],
+                "reasons": [
+                  "number"
+                ]
+              },
+              "app_bundle_id": "com.apple.Notes",
+              "app_name": "Notes",
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ],
+      [
+        {
+          "style_create": {
+            "id": "@style:Chat",
+            "name": "Chat",
+            "position": 1,
+            "is_default": false,
+            "punctuation_style": "casual",
+            "preserve_technical": true,
+            "description": "Short, friendly chat messages."
+          }
+        },
+        {
+          "style_assign": [
+            {
+              "bundle_id": "com.tinyspeck.slackmacgap",
+              "name": "Slack",
+              "style_id": "@style:Chat",
+              "confirmed": true,
+              "count": 0,
+              "corrections": 0,
+              "suggested_style_id": null
+            }
+          ]
+        },
+        {
+          "read": "/writing-styles",
+          "response": {
+            "styles": [
+              {
+                "id": "@style:Personal",
+                "name": "Personal",
+                "position": 0,
+                "is_default": true,
+                "punctuation_style": "standard",
+                "preserve_technical": true,
+                "description": ""
+              },
+              {
+                "id": "@style:Chat",
+                "name": "Chat",
+                "position": 1,
+                "is_default": false,
+                "punctuation_style": "casual",
+                "preserve_technical": true,
+                "description": "Short, friendly chat messages."
+              }
+            ],
+            "apps": [
+              {
+                "bundle_id": "com.tinyspeck.slackmacgap",
+                "name": "Slack",
+                "style_id": "@style:Chat",
+                "confirmed": true,
+                "count": 0,
+                "corrections": 0,
+                "suggested_style_id": null
+              }
+            ],
+            "max_styles": 6
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2629,
+              "transcript_raw": "Sounds good. I will be there in 5 minutes.",
+              "transcript_refined": "Sounds good. I will be there in 5 minutes.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "casual",
+                "capitalize_first": true,
+                "style": "@style:Chat"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [],
+                "missing": [
+                  "5"
+                ],
+                "reasons": [
+                  "number"
+                ]
+              },
+              "app_bundle_id": "com.tinyspeck.slackmacgap",
+              "app_name": "Slack",
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Chat",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:1",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2629,
+              "transcript_raw": "Sounds good. I will be there in 5 minutes.",
+              "transcript_refined": "Sounds good. I will be there in 5 minutes.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [],
+                "missing": [
+                  "good",
+                  "sounds"
+                ],
+                "reasons": [
+                  "dropped"
+                ]
+              },
+              "app_bundle_id": "com.apple.Notes",
+              "app_name": "Notes",
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "spoken-style": [
+      [
+        {
+          "style_create": {
+            "id": "@style:Chat",
+            "name": "Chat",
+            "position": 1,
+            "is_default": false,
+            "punctuation_style": "casual",
+            "preserve_technical": true,
+            "description": ""
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 3768,
+              "transcript_raw": "Sounds good. I will see you at the cafe.",
+              "transcript_refined": "Sounds good. I will see you at the cafe.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "casual",
+                "capitalize_first": true,
+                "style": "@style:Chat"
+              },
+              "refinement_review": null,
+              "app_bundle_id": "com.apple.Notes",
+              "app_name": "Notes",
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Chat",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": [
+              "Chat"
+            ]
+          }
+        }
+      ]
+    ],
+    "mid-sentence": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2253,
+              "transcript_raw": "probably wait until the tests pass",
+              "transcript_refined": "probably wait until the tests pass.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "voice-edit": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 1965,
+              "transcript_raw": "The review is on Tuesday at noon.",
+              "transcript_refined": "The review is on Tuesday at noon.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:1",
+              "source": "command",
+              "language": "en",
+              "duration_ms": 2663,
+              "transcript_raw": "Fix that. Change Tuesday to Thursday.",
+              "transcript_refined": "The review is on Thursday at noon.",
+              "stt_model": "turbo",
+              "llm_model": null,
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": "The review is on Tuesday at noon.",
+              "command_instruction": "“Tuesday” → “Thursday”",
+              "command_transform": "Voice edit",
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": [],
+            "edit": {
+              "before": "The review is on Tuesday at noon.",
+              "after": "The review is on Thursday at noon."
+            }
+          }
+        },
+        {
+          "settle": 2
+        },
+        {
+          "read": "/captures/@capture:0/feedback",
+          "response": [
+            {
+              "id": "<id>",
+              "capture_id": "@capture:0",
+              "target": "refined",
+              "expected_text": "The review is on Thursday at noon.",
+              "notes": "“Tuesday” → “Thursday”",
+              "snapshot": {
+                "id": "@capture:0",
+                "source": "dictation",
+                "language": "en",
+                "duration_ms": 1965,
+                "transcript_raw": "The review is on Tuesday at noon.",
+                "transcript_refined": "The review is on Tuesday at noon.",
+                "stt_model": "turbo",
+                "llm_model": "0.6B",
+                "refinement_flags": {
+                  "smart_cleanup": true,
+                  "self_correction": true,
+                  "preserve_technical": true,
+                  "punctuation_style": "standard",
+                  "capitalize_first": true,
+                  "style": "@style:Personal"
+                },
+                "refinement_review": null,
+                "app_bundle_id": null,
+                "app_name": null,
+                "command_selection": null,
+                "command_instruction": null,
+                "command_transform": null,
+                "style_id": "@style:Personal",
+                "audio_deleted": false
+              },
+              "source": "voice_fix"
+            }
+          ]
+        }
+      ]
+    ],
+    "voice-edit-spelled": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "command",
+              "language": "en",
+              "duration_ms": 2976,
+              "transcript_raw": "Fix that. Megan. MEGHAN.",
+              "transcript_refined": "Thanks Meghan, see you soon.",
+              "stt_model": "turbo",
+              "llm_model": null,
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": "Thanks Megan, see you soon.",
+              "command_instruction": "“Megan” → “Meghan”",
+              "command_transform": "Voice edit",
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": [],
+            "edit": {
+              "before": "Thanks Megan, see you soon.",
+              "after": "Thanks Meghan, see you soon."
+            }
+          }
+        },
+        {
+          "settle": 2
+        },
+        {
+          "read": "/dictionary",
+          "response": {
+            "entries": [
+              {
+                "id": "<id>",
+                "written": "Meghan",
+                "spoken": null,
+                "places": [
+                  {
+                    "scope": "global",
+                    "scope_id": null,
+                    "app_name": null
+                  }
+                ],
+                "match_sound": false,
+                "source": "spoken_fix",
+                "phrase": false
+              },
+              {
+                "id": "<id>",
+                "written": "Kass",
+                "spoken": null,
+                "places": [
+                  {
+                    "scope": "global",
+                    "scope_id": null,
+                    "app_name": null
+                  }
+                ],
+                "match_sound": true,
+                "source": "user",
+                "phrase": false
+              }
+            ]
+          }
+        }
+      ]
+    ],
+    "voice-edit-nothing-to-edit": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "command",
+              "language": "en",
+              "duration_ms": 2663,
+              "transcript_raw": "Fix that. Change Tuesday to Thursday.",
+              "transcript_refined": null,
+              "stt_model": "turbo",
+              "llm_model": null,
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": "Nothing to fix: Kass can't read the text before the cursor here",
+              "command_transform": "Voice edit",
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": [],
+            "edit": {
+              "declined": "Nothing to fix: Kass can't read the text before the cursor here"
+            }
+          }
+        }
+      ]
+    ],
+    "command-spoken": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "command",
+              "language": "en",
+              "duration_ms": 1388,
+              "transcript_raw": "Make this more formal.",
+              "transcript_refined": "Hello, could you send me the file ASAP, thank you.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": "hey can u send me the file asap, thx",
+              "command_instruction": "Make this more formal.",
+              "command_transform": null,
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ],
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "command",
+              "language": "en",
+              "duration_ms": 1388,
+              "transcript_raw": "Make this more formal.",
+              "transcript_refined": "Hello, could you please send me the file ASAP, thank you.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": "hey can u send me the file asap, thx",
+              "command_instruction": "Make this more formal.",
+              "command_transform": null,
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "command-transform": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "command",
+              "language": "en",
+              "duration_ms": 720,
+              "transcript_raw": "Polish.",
+              "transcript_refined": "me and him went to the store. It was closed, so we went home.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": "me and him was going to the store but it were closed so we goes home",
+              "command_instruction": "Fix grammar, spelling and punctuation, and smooth out awkward phrasing so it reads well. Keep my words, tone and meaning, and don't add anything new.",
+              "command_transform": "Polish",
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ],
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "command",
+              "language": "en",
+              "duration_ms": 720,
+              "transcript_raw": "Polish.",
+              "transcript_refined": "Me and him went to the store. It was closed, so we went home.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": null,
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": "me and him was going to the store but it were closed so we goes home",
+              "command_instruction": "Fix grammar, spelling and punctuation, and smooth out awkward phrasing so it reads well. Keep my words, tone and meaning, and don't add anything new.",
+              "command_transform": "Polish",
+              "style_id": null,
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "command-run": [
+      [
+        {
+          "command": {
+            "id": "@capture:0",
+            "source": "command",
+            "language": null,
+            "duration_ms": null,
+            "transcript_raw": "Turn this into a bulleted list.",
+            "transcript_refined": "- Milk\n- Eggs\n- Bread\n- Two kinds of cheese",
+            "stt_model": null,
+            "llm_model": "0.6B",
+            "refinement_flags": null,
+            "refinement_review": null,
+            "app_bundle_id": null,
+            "app_name": null,
+            "command_selection": "milk, eggs, bread and two kinds of cheese",
+            "command_instruction": "Turn this into a bulleted list.",
+            "command_transform": null,
+            "style_id": null,
+            "audio_deleted": false
+          }
+        }
+      ]
+    ],
+    "correction-learned": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2217,
+              "transcript_raw": "Pinkara about the launch on Friday.",
+              "transcript_refined": "Pinkara about the launch on Friday.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        },
+        {
+          "feedback": {
+            "id": "<id>",
+            "capture_id": "@capture:0",
+            "target": "refined",
+            "expected_text": "Ping Karra about the launch on Friday.",
+            "notes": "",
+            "snapshot": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2217,
+              "transcript_raw": "Pinkara about the launch on Friday.",
+              "transcript_refined": "Pinkara about the launch on Friday.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false
+            },
+            "source": "manual"
+          }
+        },
+        {
+          "read": "/dictionary",
+          "response": {
+            "entries": [
+              {
+                "id": "<id>",
+                "written": "Ping Karra",
+                "spoken": null,
+                "places": [
+                  {
+                    "scope": "global",
+                    "scope_id": null,
+                    "app_name": null
+                  }
+                ],
+                "match_sound": true,
+                "source": "correction",
+                "phrase": false
+              },
+              {
+                "id": "<id>",
+                "written": "Kass",
+                "spoken": null,
+                "places": [
+                  {
+                    "scope": "global",
+                    "scope_id": null,
+                    "app_name": null
+                  }
+                ],
+                "match_sound": true,
+                "source": "user",
+                "phrase": false
+              }
+            ]
+          }
+        },
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:1",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2217,
+              "transcript_raw": "Ping Karra about the launch on Friday.",
+              "transcript_refined": "Ping Karra about the launch on Friday.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": {
+                "outcome": "reject",
+                "added": [],
+                "missing": [
+                  "karra"
+                ],
+                "reasons": [
+                  "name"
+                ]
+              },
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ],
+    "batch-upload": [
+      [
+        {
+          "upload": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 6050,
+              "transcript_raw": "Please move the planning meeting to Thursday afternoon. We need to review the project timeline before Friday.",
+              "transcript_refined": "Please move the planning meeting to Thursday afternoon. We need to review the project timeline before Friday.",
+              "stt_model": "turbo",
+              "llm_model": "0.6B",
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false
+            }
+          }
+        }
+      ]
+    ],
+    "silence": [
+      [
+        {
+          "take": {
+            "capture": {
+              "id": "@capture:0",
+              "source": "dictation",
+              "language": "en",
+              "duration_ms": 2000,
+              "transcript_raw": "",
+              "transcript_refined": "",
+              "stt_model": "turbo",
+              "llm_model": null,
+              "refinement_flags": {
+                "smart_cleanup": true,
+                "self_correction": true,
+                "preserve_technical": true,
+                "punctuation_style": "standard",
+                "capitalize_first": true,
+                "style": "@style:Personal"
+              },
+              "refinement_review": null,
+              "app_bundle_id": null,
+              "app_name": null,
+              "command_selection": null,
+              "command_instruction": null,
+              "command_transform": null,
+              "style_id": "@style:Personal",
+              "audio_deleted": false,
+              "auto_refine": true,
+              "allow_auto_paste": true
+            },
+            "refinement_complete": true,
+            "refinement_error": null,
+            "degraded_reason": null,
+            "edit_announced": false,
+            "styles_announced": []
+          }
+        }
+      ]
+    ]
+  },
+  "timings": {
+    "release_to_final": {
+      "command": {
+        "takes": 10,
+        "p50": 0.5156632920261472,
+        "p95": 0.6165175103116779,
+        "max": 0.6896607910748571
+      },
+      "dictation": {
+        "takes": 120,
+        "p50": 0.44189010350964963,
+        "p95": 0.6459180707694031,
+        "max": 0.7463942081667483
+      }
+    },
+    "warmup_seconds": [
+      0.4467652919702232,
+      0.48338366602547467,
+      0.46380625013262033,
+      0.47750508319586515,
+      0.4625259160529822
+    ],
+    "takes": [
+      {
+        "case": "prose-short",
+        "source": "dictation",
+        "seconds": 0.42014516703784466,
+        "round": 0
+      },
+      {
+        "case": "prose-pauses",
+        "source": "dictation",
+        "seconds": 0.39828120917081833,
+        "round": 0
+      },
+      {
+        "case": "prose-long",
+        "source": "dictation",
+        "seconds": 0.7463942081667483,
+        "round": 0
+      },
+      {
+        "case": "technical",
+        "source": "dictation",
+        "seconds": 0.4481558750849217,
+        "round": 0
+      },
+      {
+        "case": "spoken-punctuation",
+        "source": "dictation",
+        "seconds": 0.4744641249999404,
+        "round": 0
+      },
+      {
+        "case": "self-correction",
+        "source": "dictation",
+        "seconds": 0.42207283386960626,
+        "round": 0
+      },
+      {
+        "case": "fillers",
+        "source": "dictation",
+        "seconds": 0.44109170814044774,
+        "round": 0
+      },
+      {
+        "case": "numbers-dates",
+        "source": "dictation",
+        "seconds": 0.506422207923606,
+        "round": 0
+      },
+      {
+        "case": "no-cleanup",
+        "source": "dictation",
+        "seconds": 0.3411540410015732,
+        "round": 0
+      },
+      {
+        "case": "casual-punctuation",
+        "source": "dictation",
+        "seconds": 0.5876815421506763,
+        "round": 0
+      },
+      {
+        "case": "dictionary-global",
+        "source": "dictation",
+        "seconds": 0.5602227500639856,
+        "round": 0
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.4039341250900179,
+        "round": 0
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.4005768329370767,
+        "round": 0
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.4481632919050753,
+        "round": 0
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.420815542107448,
+        "round": 0
+      },
+      {
+        "case": "spoken-style",
+        "source": "dictation",
+        "seconds": 0.44486962514929473,
+        "round": 0
+      },
+      {
+        "case": "mid-sentence",
+        "source": "dictation",
+        "seconds": 0.4136971668340266,
+        "round": 0
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.3763905840460211,
+        "round": 0
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.33967237500473857,
+        "round": 0
+      },
+      {
+        "case": "voice-edit-spelled",
+        "source": "dictation",
+        "seconds": 0.48988054203800857,
+        "round": 0
+      },
+      {
+        "case": "voice-edit-nothing-to-edit",
+        "source": "dictation",
+        "seconds": 0.33625587495043874,
+        "round": 0
+      },
+      {
+        "case": "command-spoken",
+        "source": "command",
+        "seconds": 0.43641062499955297,
+        "round": 0
+      },
+      {
+        "case": "command-transform",
+        "source": "command",
+        "seconds": 0.5227524158544838,
+        "round": 0
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.41230879188515246,
+        "round": 0
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.6167376670055091,
+        "round": 0
+      },
+      {
+        "case": "silence",
+        "source": "dictation",
+        "seconds": 0.0038200838025659323,
+        "round": 0
+      },
+      {
+        "case": "prose-short",
+        "source": "dictation",
+        "seconds": 0.45998795819468796,
+        "round": 1
+      },
+      {
+        "case": "prose-pauses",
+        "source": "dictation",
+        "seconds": 0.40037745889276266,
+        "round": 1
+      },
+      {
+        "case": "prose-long",
+        "source": "dictation",
+        "seconds": 0.6639209578279406,
+        "round": 1
+      },
+      {
+        "case": "technical",
+        "source": "dictation",
+        "seconds": 0.41677191597409546,
+        "round": 1
+      },
+      {
+        "case": "spoken-punctuation",
+        "source": "dictation",
+        "seconds": 0.4377229171805084,
+        "round": 1
+      },
+      {
+        "case": "self-correction",
+        "source": "dictation",
+        "seconds": 0.4245400419458747,
+        "round": 1
+      },
+      {
+        "case": "fillers",
+        "source": "dictation",
+        "seconds": 0.44200758286751807,
+        "round": 1
+      },
+      {
+        "case": "numbers-dates",
+        "source": "dictation",
+        "seconds": 0.5014217079151422,
+        "round": 1
+      },
+      {
+        "case": "no-cleanup",
+        "source": "dictation",
+        "seconds": 0.32742512482218444,
+        "round": 1
+      },
+      {
+        "case": "casual-punctuation",
+        "source": "dictation",
+        "seconds": 0.6157583328895271,
+        "round": 1
+      },
+      {
+        "case": "dictionary-global",
+        "source": "dictation",
+        "seconds": 0.6085856249555945,
+        "round": 1
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.4169514998793602,
+        "round": 1
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.4651033750269562,
+        "round": 1
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.45054699992761016,
+        "round": 1
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.41398204187862575,
+        "round": 1
+      },
+      {
+        "case": "spoken-style",
+        "source": "dictation",
+        "seconds": 0.4554361659102142,
+        "round": 1
+      },
+      {
+        "case": "mid-sentence",
+        "source": "dictation",
+        "seconds": 0.41761595918796957,
+        "round": 1
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.3778994169551879,
+        "round": 1
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.3322800421155989,
+        "round": 1
+      },
+      {
+        "case": "voice-edit-spelled",
+        "source": "dictation",
+        "seconds": 0.47971945791505277,
+        "round": 1
+      },
+      {
+        "case": "voice-edit-nothing-to-edit",
+        "source": "dictation",
+        "seconds": 0.3387981669511646,
+        "round": 1
+      },
+      {
+        "case": "command-spoken",
+        "source": "command",
+        "seconds": 0.4378182499203831,
+        "round": 1
+      },
+      {
+        "case": "command-transform",
+        "source": "command",
+        "seconds": 0.526115040993318,
+        "round": 1
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.4508881669025868,
+        "round": 1
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.6153214999940246,
+        "round": 1
+      },
+      {
+        "case": "silence",
+        "source": "dictation",
+        "seconds": 0.003601416014134884,
+        "round": 1
+      },
+      {
+        "case": "prose-short",
+        "source": "dictation",
+        "seconds": 0.4279622081667185,
+        "round": 2
+      },
+      {
+        "case": "prose-pauses",
+        "source": "dictation",
+        "seconds": 0.4211573749780655,
+        "round": 2
+      },
+      {
+        "case": "prose-long",
+        "source": "dictation",
+        "seconds": 0.6895824591629207,
+        "round": 2
+      },
+      {
+        "case": "technical",
+        "source": "dictation",
+        "seconds": 0.44581462489441037,
+        "round": 2
+      },
+      {
+        "case": "spoken-punctuation",
+        "source": "dictation",
+        "seconds": 0.45049587497487664,
+        "round": 2
+      },
+      {
+        "case": "self-correction",
+        "source": "dictation",
+        "seconds": 0.4040050420444459,
+        "round": 2
+      },
+      {
+        "case": "fillers",
+        "source": "dictation",
+        "seconds": 0.4301761251408607,
+        "round": 2
+      },
+      {
+        "case": "numbers-dates",
+        "source": "dictation",
+        "seconds": 0.5078756250441074,
+        "round": 2
+      },
+      {
+        "case": "no-cleanup",
+        "source": "dictation",
+        "seconds": 0.320515250088647,
+        "round": 2
+      },
+      {
+        "case": "casual-punctuation",
+        "source": "dictation",
+        "seconds": 0.5770784169435501,
+        "round": 2
+      },
+      {
+        "case": "dictionary-global",
+        "source": "dictation",
+        "seconds": 0.5918756250757724,
+        "round": 2
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.37842962495051324,
+        "round": 2
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.38839800003916025,
+        "round": 2
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.44702358404174447,
+        "round": 2
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.42198612494394183,
+        "round": 2
+      },
+      {
+        "case": "spoken-style",
+        "source": "dictation",
+        "seconds": 0.43374354112893343,
+        "round": 2
+      },
+      {
+        "case": "mid-sentence",
+        "source": "dictation",
+        "seconds": 0.42090837517753243,
+        "round": 2
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.40141783305443823,
+        "round": 2
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.35236487491056323,
+        "round": 2
+      },
+      {
+        "case": "voice-edit-spelled",
+        "source": "dictation",
+        "seconds": 0.5154824999626726,
+        "round": 2
+      },
+      {
+        "case": "voice-edit-nothing-to-edit",
+        "source": "dictation",
+        "seconds": 0.3324902909807861,
+        "round": 2
+      },
+      {
+        "case": "command-spoken",
+        "source": "command",
+        "seconds": 0.45089366706088185,
+        "round": 2
+      },
+      {
+        "case": "command-transform",
+        "source": "command",
+        "seconds": 0.5223146670032293,
+        "round": 2
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.47828333312645555,
+        "round": 2
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.6218536249361932,
+        "round": 2
+      },
+      {
+        "case": "silence",
+        "source": "dictation",
+        "seconds": 0.0043444999027997255,
+        "round": 2
+      },
+      {
+        "case": "prose-short",
+        "source": "dictation",
+        "seconds": 0.4417812910396606,
+        "round": 3
+      },
+      {
+        "case": "prose-pauses",
+        "source": "dictation",
+        "seconds": 0.40979399997740984,
+        "round": 3
+      },
+      {
+        "case": "prose-long",
+        "source": "dictation",
+        "seconds": 0.6634281249716878,
+        "round": 3
+      },
+      {
+        "case": "technical",
+        "source": "dictation",
+        "seconds": 0.4532265409361571,
+        "round": 3
+      },
+      {
+        "case": "spoken-punctuation",
+        "source": "dictation",
+        "seconds": 0.46025129104964435,
+        "round": 3
+      },
+      {
+        "case": "self-correction",
+        "source": "dictation",
+        "seconds": 0.4298805419821292,
+        "round": 3
+      },
+      {
+        "case": "fillers",
+        "source": "dictation",
+        "seconds": 0.4510935409925878,
+        "round": 3
+      },
+      {
+        "case": "numbers-dates",
+        "source": "dictation",
+        "seconds": 0.5127381249330938,
+        "round": 3
+      },
+      {
+        "case": "no-cleanup",
+        "source": "dictation",
+        "seconds": 0.35140354093164206,
+        "round": 3
+      },
+      {
+        "case": "casual-punctuation",
+        "source": "dictation",
+        "seconds": 0.6151486251037568,
+        "round": 3
+      },
+      {
+        "case": "dictionary-global",
+        "source": "dictation",
+        "seconds": 0.6074376250617206,
+        "round": 3
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.4308678328525275,
+        "round": 3
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.4167948749382049,
+        "round": 3
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.4710083750542253,
+        "round": 3
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.4450292498804629,
+        "round": 3
+      },
+      {
+        "case": "spoken-style",
+        "source": "dictation",
+        "seconds": 0.45191479101777077,
+        "round": 3
+      },
+      {
+        "case": "mid-sentence",
+        "source": "dictation",
+        "seconds": 0.44705983297899365,
+        "round": 3
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.39150725002400577,
+        "round": 3
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.39356883289292455,
+        "round": 3
+      },
+      {
+        "case": "voice-edit-spelled",
+        "source": "dictation",
+        "seconds": 0.49843016592785716,
+        "round": 3
+      },
+      {
+        "case": "voice-edit-nothing-to-edit",
+        "source": "dictation",
+        "seconds": 0.33263662504032254,
+        "round": 3
+      },
+      {
+        "case": "command-spoken",
+        "source": "command",
+        "seconds": 0.4567679997999221,
+        "round": 3
+      },
+      {
+        "case": "command-transform",
+        "source": "command",
+        "seconds": 0.5271201671566814,
+        "round": 3
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.44863024982623756,
+        "round": 3
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.6458168749231845,
+        "round": 3
+      },
+      {
+        "case": "silence",
+        "source": "dictation",
+        "seconds": 0.0035750409588217735,
+        "round": 3
+      },
+      {
+        "case": "prose-short",
+        "source": "dictation",
+        "seconds": 0.42028750013560057,
+        "round": 4
+      },
+      {
+        "case": "prose-pauses",
+        "source": "dictation",
+        "seconds": 0.4116133339703083,
+        "round": 4
+      },
+      {
+        "case": "prose-long",
+        "source": "dictation",
+        "seconds": 0.6478407918475568,
+        "round": 4
+      },
+      {
+        "case": "technical",
+        "source": "dictation",
+        "seconds": 0.44820087496191263,
+        "round": 4
+      },
+      {
+        "case": "spoken-punctuation",
+        "source": "dictation",
+        "seconds": 0.4525892080273479,
+        "round": 4
+      },
+      {
+        "case": "self-correction",
+        "source": "dictation",
+        "seconds": 0.4151964159682393,
+        "round": 4
+      },
+      {
+        "case": "fillers",
+        "source": "dictation",
+        "seconds": 0.48204916692338884,
+        "round": 4
+      },
+      {
+        "case": "numbers-dates",
+        "source": "dictation",
+        "seconds": 0.5364994169212878,
+        "round": 4
+      },
+      {
+        "case": "no-cleanup",
+        "source": "dictation",
+        "seconds": 0.3312397920526564,
+        "round": 4
+      },
+      {
+        "case": "casual-punctuation",
+        "source": "dictation",
+        "seconds": 0.6146919170860201,
+        "round": 4
+      },
+      {
+        "case": "dictionary-global",
+        "source": "dictation",
+        "seconds": 0.6072798750828952,
+        "round": 4
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.40731445886194706,
+        "round": 4
+      },
+      {
+        "case": "dictionary-app",
+        "source": "dictation",
+        "seconds": 0.4624536249320954,
+        "round": 4
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.4909755000844598,
+        "round": 4
+      },
+      {
+        "case": "style-per-app",
+        "source": "dictation",
+        "seconds": 0.4094571250025183,
+        "round": 4
+      },
+      {
+        "case": "spoken-style",
+        "source": "dictation",
+        "seconds": 0.4419989159796387,
+        "round": 4
+      },
+      {
+        "case": "mid-sentence",
+        "source": "dictation",
+        "seconds": 0.4942579581402242,
+        "round": 4
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.42696000006981194,
+        "round": 4
+      },
+      {
+        "case": "voice-edit",
+        "source": "dictation",
+        "seconds": 0.41846729116514325,
+        "round": 4
+      },
+      {
+        "case": "voice-edit-spelled",
+        "source": "dictation",
+        "seconds": 0.4967477498576045,
+        "round": 4
+      },
+      {
+        "case": "voice-edit-nothing-to-edit",
+        "source": "dictation",
+        "seconds": 0.3421604160685092,
+        "round": 4
+      },
+      {
+        "case": "command-spoken",
+        "source": "command",
+        "seconds": 0.5090119170490652,
+        "round": 4
+      },
+      {
+        "case": "command-transform",
+        "source": "command",
+        "seconds": 0.6896607910748571,
+        "round": 4
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.5266766250133514,
+        "round": 4
+      },
+      {
+        "case": "correction-learned",
+        "source": "dictation",
+        "seconds": 0.7039588331244886,
+        "round": 4
+      },
+      {
+        "case": "silence",
+        "source": "dictation",
+        "seconds": 0.00405329093337059,
+        "round": 4
+      }
+    ]
+  }
+}
