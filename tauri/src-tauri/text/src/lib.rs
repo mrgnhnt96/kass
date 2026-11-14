@@ -4,17 +4,19 @@
 //! original call for call: `tests/golden.rs` replays calls recorded from the
 //! Python functions and compares the results.
 
-pub mod py;
+pub mod content_check;
+pub mod dictation_edits;
 pub mod difflib;
 pub mod laughter;
 pub mod lexicon;
 pub mod phrase_seams;
+pub mod py;
+pub mod sentence_tail;
+pub mod spelling;
 pub mod spoken_case;
 pub mod spoken_cleanup;
 pub mod spoken_corrections;
 pub mod spoken_punctuation;
-pub mod voice_commands;
-pub mod content_check;
-pub mod sentence_tail;
 pub mod text_merge;
-pub mod dictation_edits;
+pub mod voice_commands;
+pub mod voice_edits;
