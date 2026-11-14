@@ -114,7 +114,7 @@ pub fn spawn_for(
 ) -> (UnboundedSender<Action>, UnboundedReceiver<Incoming>) {
     let (out_tx, mut out_rx) = unbounded_channel::<Action>();
     let (in_tx, in_rx) = unbounded_channel::<Incoming>();
-    tauri::async_runtime::spawn(async move {
+    crate::host::async_runtime::spawn(async move {
         // Another Mac on the network answers in milliseconds; don't make a
         // take wait the full timeout when there's a server standing by.
         let timeout = if server.can_fall_back() {

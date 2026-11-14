@@ -3,13 +3,12 @@ mod app_hide;
 mod app_icon;
 mod app_location;
 mod clipboard;
+mod commands;
 mod deep_link;
-#[cfg(desktop)]
 mod dictation;
-#[cfg(desktop)]
 mod dictation_handshake;
 mod focus_capture;
-#[cfg(desktop)]
+mod host;
 mod hotkey_monitor;
 mod identifier_move;
 mod input_monitoring;
@@ -17,7 +16,6 @@ mod input_monitoring;
 mod insert_bench;
 mod insert_chain;
 mod join;
-#[cfg(desktop)]
 mod key_codes;
 mod keyboard_layout;
 mod keystroke_insert;
@@ -26,6 +24,7 @@ mod overlap;
 mod report;
 mod server_process;
 mod server_version;
+mod sidecar;
 mod sound_cues;
 mod synthetic_keys;
 mod text_insert;
@@ -33,18 +32,25 @@ mod this_mac;
 mod updater;
 
 use std::sync::Mutex;
-use tauri::{
-    command, Emitter, Listener, Manager, PhysicalPosition, RunEvent, State, WebviewUrl,
-    WebviewWindowBuilder, WindowEvent,
+
+use gpui_kit::{
+    point, px, size, App, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
+    WindowKind, WindowOptions,
 };
-use tauri_plugin_opener::OpenerExt;
-use tauri_plugin_shell::ShellExt;
+use host::webview::{self, OnClose, Spec};
+use host::{AppHandle, Emitter, Listener, Manager, State};
+use objc2::runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel};
+use objc2::{msg_send, sel, MainThreadMarker};
+use objc2_app_kit::{NSScreen, NSWindow};
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 pub const DICTATE_WINDOW_LABEL: &str = "dictate";
 const MAIN_WINDOW_LABEL: &str = "main";
 pub const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
-const ONBOARDING_WINDOW_WIDTH: f64 = 880.0;
-const ONBOARDING_WINDOW_HEIGHT: f64 = 600.0;
+const MAIN_WINDOW_WIDTH: f32 = 1200.0;
+const MAIN_WINDOW_HEIGHT: f32 = 800.0;
+const ONBOARDING_WINDOW_WIDTH: f32 = 880.0;
+const ONBOARDING_WINDOW_HEIGHT: f32 = 600.0;
 const DICTATE_WINDOW_WIDTH: f64 = 420.0;
 const DICTATE_WINDOW_HEIGHT: f64 = 64.0;
 const DICTATE_BOTTOM_PADDING: f64 = 24.0;
@@ -53,84 +59,125 @@ const DICTATE_BOTTOM_PADDING: f64 = 24.0;
 /// over it, so the rest of the time it stays the pill's size.
 const DICTATE_CHIP_SPACE: f64 = 40.0;
 
-/// Create the floating dictate webview hidden. The HotkeyMonitor shows it on
-/// chord-start; the frontend hides it when the capture pipeline finishes.
-/// Building it at setup avoids a race where the first chord event fires
-/// before the webview subscribes to the `dictate:*` events.
-#[cfg(desktop)]
-fn build_dictate_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
-    let window = WebviewWindowBuilder::new(
-        app,
-        DICTATE_WINDOW_LABEL,
-        WebviewUrl::App("?view=dictate".into()),
-    )
-    .title("Kass Dictate")
-    .inner_size(DICTATE_WINDOW_WIDTH, DICTATE_WINDOW_HEIGHT)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    // Follow the user across macOS Spaces / virtual desktops instead of
-    // being pinned to the Space where the window was first created.
-    .visible_on_all_workspaces(true)
-    .skip_taskbar(true)
-    .resizable(false)
-    .shadow(false)
-    // The pill never becomes key (see `pill_panel_can_become_key`), so every
-    // click on it is a first click; without this WebKit would swallow it.
-    .accept_first_mouse(true)
-    .visible(false)
-    .build()?;
+/// A title bar drawn over the page, with no title, as Tauri's `Overlay`.
+fn overlay_titlebar() -> Option<TitlebarOptions> {
+    Some(TitlebarOptions {
+        title: Some("Kass".into()),
+        appears_transparent: true,
+        traffic_light_position: None,
+    })
+}
 
-    position_dictate_window(&window)?;
+/// The main window. It starts hidden so a login launch stays out of the way
+/// until the Dock icon is clicked; its page still runs while hidden (no
+/// background throttling): it starts the server and arms the global keys.
+fn main_window_spec(cx: &App) -> Spec {
+    Spec {
+        label: MAIN_WINDOW_LABEL,
+        query: "",
+        options: WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                None,
+                size(px(MAIN_WINDOW_WIDTH), px(MAIN_WINDOW_HEIGHT)),
+                cx,
+            ))),
+            titlebar: overlay_titlebar(),
+            show: false,
+            focus: false,
+            window_min_size: Some(size(px(800.0), px(600.0))),
+            ..Default::default()
+        },
+        transparent: false,
+        prepare: |_| {},
+        // Closing it hides it: Kass keeps running for dictation, and the
+        // Dock icon brings it back. The server stops when Kass quits.
+        on_close: OnClose::Hide,
+    }
+}
 
-    // Make the pill able to float over other apps' native fullscreen Spaces.
-    apply_fullscreen_overlay_behavior(&window);
+/// The floating dictate pill, built hidden at startup so its page listens
+/// for the `dictate:*` events before the first chord. The HotkeyMonitor
+/// shows it on chord-start; the page hides it when the take finishes.
+fn dictate_window_spec() -> Spec {
+    Spec {
+        label: DICTATE_WINDOW_LABEL,
+        query: "?view=dictate",
+        options: WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds {
+                origin: point(px(-10_000.0), px(-10_000.0)),
+                size: size(
+                    px(DICTATE_WINDOW_WIDTH as f32),
+                    px(DICTATE_WINDOW_HEIGHT as f32),
+                ),
+            })),
+            titlebar: None,
+            // A non-activating panel, so it can float over another app's
+            // fullscreen Space.
+            kind: WindowKind::PopUp,
+            focus: false,
+            show: false,
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            window_background: WindowBackgroundAppearance::Transparent,
+            ..Default::default()
+        },
+        transparent: true,
+        prepare: prepare_pill,
+        on_close: OnClose::Never,
+    }
+}
 
-    Ok(window)
+fn onboarding_window_spec(cx: &App) -> Spec {
+    Spec {
+        label: ONBOARDING_WINDOW_LABEL,
+        query: "?view=onboarding",
+        options: WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                None,
+                size(px(ONBOARDING_WINDOW_WIDTH), px(ONBOARDING_WINDOW_HEIGHT)),
+                cx,
+            ))),
+            titlebar: overlay_titlebar(),
+            is_resizable: false,
+            ..Default::default()
+        },
+        transparent: false,
+        prepare: |_| {},
+        // Its close button: the same as finish_onboarding(None).
+        on_close: OnClose::Close(|| {
+            let app = AppHandle;
+            release_onboarding(&app);
+            show_main_after_onboarding(&app, None);
+        }),
+    }
 }
 
 /// Show the first-run onboarding window (docs/plans/ONBOARDING.md), building
 /// it the first time, and hide the main window behind it.
-#[cfg(desktop)]
-#[command]
-fn open_onboarding(app: tauri::AppHandle) -> Result<(), String> {
-    let window = match app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
-        Some(window) => window,
-        None => build_onboarding_window(&app).map_err(|e| e.to_string())?,
-    };
-    let _ = window.show();
-    let _ = window.set_focus();
-    if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        let _ = main.hide();
-    }
+fn open_onboarding(app: AppHandle) -> Result<(), String> {
+    host::with_app(move |cx| {
+        let window = match webview::open(cx, onboarding_window_spec(cx)) {
+            Ok(window) => window,
+            Err(e) => {
+                eprintln!("Failed to open onboarding: {e}");
+                return;
+            }
+        };
+        let _ = window.show();
+        let _ = window.set_focus();
+        if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            let _ = main.hide();
+        }
+    });
     Ok(())
-}
-
-#[cfg(desktop)]
-fn build_onboarding_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
-    let builder = WebviewWindowBuilder::new(
-        app,
-        ONBOARDING_WINDOW_LABEL,
-        WebviewUrl::App("?view=onboarding".into()),
-    )
-    .title("Kass")
-    .inner_size(ONBOARDING_WINDOW_WIDTH, ONBOARDING_WINDOW_HEIGHT)
-    .resizable(false)
-    .center();
-    #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true);
-    builder.build()
 }
 
 /// Close the onboarding window and bring the main window back, telling it
 /// with `onboarding:finished { show }` (a route to open, or null).
-#[cfg(desktop)]
-#[command]
-fn finish_onboarding(app: tauri::AppHandle, show: Option<String>) {
+fn finish_onboarding(app: AppHandle, show: Option<String>) {
     if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
-        // Not `close()`: that would come back through CloseRequested.
+        // Not a close: that would come back through its close handler.
         let _ = window.destroy();
     }
     release_onboarding(&app);
@@ -141,8 +188,7 @@ fn finish_onboarding(app: tauri::AppHandle, show: Option<String>) {
 /// practice mode. Its React cleanup may never run, so this runs whenever the
 /// window goes away. The dictation gate is left to the main window, which
 /// sets it again after `onboarding:finished`.
-#[cfg(desktop)]
-fn release_onboarding(app: &tauri::AppHandle) {
+fn release_onboarding(app: &AppHandle) {
     dictation::mic::stop_preview(&app.state::<dictation::DictationState>());
     if let Some(mode) = app.try_state::<hotkey_monitor::ChordMode>() {
         mode.end_practice();
@@ -150,8 +196,7 @@ fn release_onboarding(app: &tauri::AppHandle) {
 }
 
 /// Show and focus the main window and send it `onboarding:finished`.
-#[cfg(desktop)]
-fn show_main_after_onboarding(app: &tauri::AppHandle, show: Option<String>) {
+fn show_main_after_onboarding(app: &AppHandle, show: Option<String>) {
     if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = main.show();
         let _ = main.set_focus();
@@ -163,106 +208,85 @@ fn show_main_after_onboarding(app: &tauri::AppHandle, show: Option<String>) {
 }
 
 /// Whether the onboarding window exists.
-#[command]
-fn onboarding_window_open(app: tauri::AppHandle) -> bool {
+fn onboarding_window_open(app: AppHandle) -> bool {
     app.get_webview_window(ONBOARDING_WINDOW_LABEL).is_some()
 }
 
 /// Center the pill above the usable screen edge of the display the user is
 /// working on, leaving room for the Dock.
-#[cfg(desktop)]
-pub(crate) fn position_dictate_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
-    let Some(monitor) = dictate_monitor(window)? else {
-        return Ok(());
-    };
-    // Work in points: tao reports each display in its own scale, so mixed-DPI
-    // setups have no single physical space to place the pill in.
-    let scale = monitor.scale_factor();
-    let area = monitor.work_area();
-    let size = window
-        .outer_size()?
-        .to_logical::<f64>(window.scale_factor()?);
-    let x = area.position.x as f64 / scale
-        + ((area.size.width as f64 / scale - size.width).max(0.0) / 2.0);
-    let y = area.position.y as f64 / scale
-        + (area.size.height as f64 / scale - size.height - DICTATE_BOTTOM_PADDING).max(0.0);
-    window.set_position(tauri::LogicalPosition::new(x, y))
-}
-
-/// Make room above the pill for the style chip, or give it back. The bottom
-/// edge stays put, so the pill (drawn at the window's bottom) doesn't move:
-/// AppKit frames grow up from their origin, and one `setFrame:` changes the
-/// height without a frame drawn in between.
-#[cfg(desktop)]
-fn set_dictate_chip_space(window: &tauri::WebviewWindow, show: bool) {
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    struct NSRect {
-        x: f64,
-        y: f64,
-        width: f64,
-        height: f64,
-    }
-    let height = DICTATE_WINDOW_HEIGHT + if show { DICTATE_CHIP_SPACE } else { 0.0 };
-    let w = window.clone();
-    let _ = window.run_on_main_thread(move || {
-        use objc::runtime::{Object, YES};
-        use objc::{msg_send, sel, sel_impl};
-        let Ok(ptr) = w.ns_window() else { return };
-        let ns_window = ptr as *mut Object;
-        if ns_window.is_null() {
-            return;
-        }
-        // SAFETY: a valid NSWindow owned by Tauri, on the main thread.
-        unsafe {
-            let mut frame: NSRect = msg_send![ns_window, frame];
-            if frame.height != height {
-                frame.height = height;
-                let _: () = msg_send![ns_window, setFrame: frame display: YES];
-            }
-        }
-    });
-}
-
-/// Called by the HUD around the style chip's animation.
-#[cfg(desktop)]
-#[command]
-fn dictate_chip_space(app: tauri::AppHandle, show: bool) {
-    if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
-        set_dictate_chip_space(&window, show);
-    }
-}
-
-/// The display with the focused window, else the one under the cursor, else
-/// the main display. Not `current_monitor()`: the hide path parks the pill
-/// off-screen, where it has no monitor.
-#[cfg(desktop)]
-fn dictate_monitor(window: &tauri::WebviewWindow) -> tauri::Result<Option<tauri::Monitor>> {
-    let monitors = window.available_monitors()?;
-    let bounds: Vec<_> = monitors
-        .iter()
-        .map(|m| {
-            let scale = m.scale_factor();
-            let position = m.position();
-            let size = m.size();
-            (
-                position.x as f64 / scale,
-                position.y as f64 / scale,
-                size.width as f64 / scale,
-                size.height as f64 / scale,
-            )
-        })
-        .collect();
+pub(crate) fn position_dictate_window(window: &host::WebviewWindow) -> host::Result<()> {
+    // Located here, off the main thread: the Accessibility lookup can be slow.
     let target = [
         focus_capture::focused_window_center,
         focus_capture::cursor_location,
     ]
     .iter()
     .filter_map(|locate| locate())
-    .find_map(|point| display_containing(&bounds, point));
-    match target {
-        Some(index) => Ok(monitors.into_iter().nth(index)),
-        None => window.primary_monitor(),
+    .collect::<Vec<_>>();
+    window.with_ns_window(move |ns_window| {
+        let Some(area) = dictate_work_area(&target) else {
+            return;
+        };
+        let mut frame = ns_window.frame();
+        // The pill's size, even if AppKit hasn't laid the panel out yet.
+        if frame.size.width < 1.0 {
+            frame.size = NSSize::new(DICTATE_WINDOW_WIDTH, DICTATE_WINDOW_HEIGHT);
+        }
+        frame.origin.x = area.origin.x + (area.size.width - frame.size.width).max(0.0) / 2.0;
+        // AppKit's y grows upward: the pill's bottom edge sits above the
+        // work area's bottom edge.
+        frame.origin.y = area.origin.y + DICTATE_BOTTOM_PADDING;
+        ns_window.setFrame_display(frame, true);
+    })
+}
+
+/// The work area (`visibleFrame`) of the display with the first of
+/// `points` (top-left global coordinates), else of the main display.
+fn dictate_work_area(points: &[(f64, f64)]) -> Option<NSRect> {
+    let mtm = MainThreadMarker::new()?;
+    let screens = NSScreen::screens(mtm);
+    // Screen frames are bottom-left based on the first screen; the points
+    // are top-left based, as CoreGraphics reports them.
+    let primary_height = screens.firstObject()?.frame().size.height;
+    let bounds: Vec<_> = screens
+        .iter()
+        .map(|screen| {
+            let f = screen.frame();
+            (
+                f.origin.x,
+                primary_height - f.origin.y - f.size.height,
+                f.size.width,
+                f.size.height,
+            )
+        })
+        .collect();
+    let screen = points
+        .iter()
+        .find_map(|&point| display_containing(&bounds, point))
+        .and_then(|index| screens.iter().nth(index))
+        .or_else(|| NSScreen::mainScreen(mtm))?;
+    Some(screen.visibleFrame())
+}
+
+/// Make room above the pill for the style chip, or give it back. The bottom
+/// edge stays put, so the pill (drawn at the window's bottom) doesn't move:
+/// AppKit frames grow up from their origin, and one `setFrame:` changes the
+/// height without a frame drawn in between.
+fn set_dictate_chip_space(window: &host::WebviewWindow, show: bool) {
+    let height = DICTATE_WINDOW_HEIGHT + if show { DICTATE_CHIP_SPACE } else { 0.0 };
+    let _ = window.with_ns_window(move |ns_window| {
+        let mut frame = ns_window.frame();
+        if frame.size.height != height {
+            frame.size.height = height;
+            ns_window.setFrame_display(frame, true);
+        }
+    });
+}
+
+/// Called by the HUD around the style chip's animation.
+fn dictate_chip_space(app: AppHandle, show: bool) {
+    if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
+        set_dictate_chip_space(&window, show);
     }
 }
 
@@ -274,138 +298,118 @@ fn display_containing(bounds: &[(f64, f64, f64, f64)], point: (f64, f64)) -> Opt
         .position(|&(x, y, w, h)| px >= x && px < x + w && py >= y && py < y + h)
 }
 
-// `object_setClass` — reclass a live object. Not re-exported by `objc`.
-extern "C" {
-    fn object_setClass(
-        obj: *mut objc::runtime::Object,
-        cls: *const objc::runtime::Class,
-    ) -> *const objc::runtime::Class;
+/// `canBecomeKeyWindow` and `canBecomeMainWindow` for the pill. The pill
+/// must never take keyboard focus: it floats over the app being dictated
+/// into, and while it is key that app's window looks focused but every
+/// keystroke (the Enter after a paste, say) lands in the pill instead. Audio
+/// capture is native, so nothing in the web view needs key status.
+extern "C-unwind" fn pill_never_key(_this: &AnyObject, _sel: Sel) -> Bool {
+    Bool::NO
 }
 
-/// `canBecomeKeyWindow` override for the pill panel. The pill must never take
-/// keyboard focus: it floats over the app being dictated into, and while it is
-/// key that app's window looks focused but every keystroke (the Enter after a
-/// paste, say) lands in the pill instead. Audio capture is native, so nothing
-/// in the webview needs key status.
-extern "C" fn pill_panel_can_become_key(
-    _this: &objc::runtime::Object,
-    _sel: objc::runtime::Sel,
-) -> objc::runtime::BOOL {
-    objc::runtime::NO
-}
-
-/// Lazily-registered NSPanel subclass for the dictate pill: never key (so it
-/// never takes keystrokes) while remaining a panel (for fullscreen-Space join).
-fn pill_panel_class() -> &'static objc::runtime::Class {
-    use objc::declare::ClassDecl;
-    use objc::runtime::{Class, Object, Sel, BOOL};
-    use objc::{class, sel, sel_impl};
-    static INIT: std::sync::Once = std::sync::Once::new();
-    INIT.call_once(|| {
-        let superclass = class!(NSPanel);
-        let mut decl = ClassDecl::new("KassPillPanel", superclass).expect("register KassPillPanel");
-        unsafe {
-            decl.add_method(
-                sel!(canBecomeKeyWindow),
-                pill_panel_can_become_key as extern "C" fn(&Object, Sel) -> BOOL,
-            );
-        }
-        decl.register();
-    });
-    Class::get("KassPillPanel").expect("KassPillPanel registered")
-}
-
-/// Convert the dictate pill's NSWindow into a never-key NSPanel and set the
-/// collection behavior + window level required to appear over another app's
-/// native macOS fullscreen Space.
-///
-/// A regular (Dock-icon) app's plain NSWindow is never admitted to a foreign
-/// fullscreen Space regardless of collection-behavior flags or window level;
-/// an NSPanel with the same flags is. NSPanel adds no instance variables over
-/// NSWindow, so re-classing the live object is safe (the tauri-nspanel plugin
-/// uses the same technique). Idempotent via an `isKindOfClass` guard. Runs on
-/// the main thread because AppKit window mutation is main-thread-only.
-pub fn apply_fullscreen_overlay_behavior(window: &tauri::WebviewWindow) {
-    let w = window.clone();
-    let dispatched = window.run_on_main_thread(move || {
-        use objc::runtime::{Object, NO, YES};
-        use objc::{class, msg_send, sel, sel_impl};
-
-        // NSWindowCollectionBehavior bit flags.
-        const CAN_JOIN_ALL_SPACES: u64 = 1 << 0;
-        const STATIONARY: u64 = 1 << 4;
-        const FULL_SCREEN_AUXILIARY: u64 = 1 << 8; // the flag stock Tauri never sets
-        const NONACTIVATING_PANEL: u64 = 1 << 7; // NSWindowStyleMaskNonactivatingPanel
-                                                 // NSScreenSaverWindowLevel — floats above fullscreen app content.
-        const OVERLAY_WINDOW_LEVEL: i64 = 1000;
-
-        let ns_window = match w.ns_window() {
-            Ok(ptr) => ptr as *mut Object,
-            Err(e) => {
-                eprintln!("apply_fullscreen_overlay_behavior: ns_window() failed: {e}");
+/// Swap the pill's class for a subclass of it that never becomes key. GPUI's
+/// pop-up is already a non-activating NSPanel (the only kind of window macOS
+/// lets into another app's fullscreen Space), but it can become key. Its
+/// subclass adds no instance variables, so swapping the live object's class
+/// is safe.
+fn make_never_key(window: &NSWindow) {
+    let current: &AnyClass = window.class();
+    let name = format!("KassPill_{}", current.name().to_string_lossy());
+    let Ok(name) = std::ffi::CString::new(name) else {
+        return;
+    };
+    let class = match AnyClass::get(&name) {
+        Some(class) => class,
+        None => {
+            let Some(mut builder) = ClassBuilder::new(&name, current) else {
                 return;
+            };
+            // SAFETY: both methods match the selectors' `BOOL (id, SEL)`.
+            unsafe {
+                builder.add_method(
+                    sel!(canBecomeKeyWindow),
+                    pill_never_key as extern "C-unwind" fn(_, _) -> _,
+                );
+                builder.add_method(
+                    sel!(canBecomeMainWindow),
+                    pill_never_key as extern "C-unwind" fn(_, _) -> _,
+                );
             }
-        };
-        if ns_window.is_null() {
-            return;
+            builder.register()
         }
-        // SAFETY: ns_window is a valid, non-null NSWindow* owned by Tauri for
-        // the lifetime of the webview window; all selectors are standard AppKit
-        // calls and we are on the main thread.
-        unsafe {
-            let is_panel: objc::runtime::BOOL =
-                msg_send![ns_window, isKindOfClass: class!(NSPanel)];
-            if is_panel == NO {
-                object_setClass(ns_window, pill_panel_class());
-                let style: u64 = msg_send![ns_window, styleMask];
-                let _: () = msg_send![ns_window, setStyleMask: style | NONACTIVATING_PANEL];
-                let _: () = msg_send![ns_window, setHidesOnDeactivate: NO];
-                let _: () = msg_send![ns_window, setBecomesKeyOnlyIfNeeded: YES];
-                let _: () = msg_send![ns_window, setFloatingPanel: YES];
-            }
-            // Preserve behavior bits installed by Tauri/Tao instead of
-            // replacing them wholesale when adding the fullscreen flags.
-            let current_behavior: u64 = msg_send![ns_window, collectionBehavior];
-            let behavior =
-                current_behavior | CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY | STATIONARY;
-            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-            let _: () = msg_send![ns_window, setLevel: OVERLAY_WINDOW_LEVEL];
-        }
-    });
-    if let Err(e) = dispatched {
-        eprintln!("apply_fullscreen_overlay_behavior: main-thread dispatch failed: {e}");
+    };
+    // SAFETY: `class` subclasses the window's own class and adds no ivars.
+    unsafe {
+        objc2::ffi::object_setClass(
+            window as *const NSWindow as *mut AnyObject,
+            class as *const AnyClass,
+        );
     }
+}
+
+/// Set the pill up as Tauri's build had it, before its web view attaches:
+/// never key, borderless, no shadow, over every Space and fullscreen app,
+/// and click-through until a take shows it.
+fn prepare_pill(window: &NSWindow) {
+    // NSWindowStyleMask: borderless | nonactivating panel.
+    const NONACTIVATING_PANEL: usize = 1 << 7;
+    // NSWindowCollectionBehavior: can join all spaces | stationary |
+    // fullscreen auxiliary.
+    const ON_EVERY_SPACE: usize = 1 | (1 << 4) | (1 << 8);
+    // NSScreenSaverWindowLevel: above fullscreen app content.
+    const OVERLAY_WINDOW_LEVEL: isize = 1000;
+
+    make_never_key(window);
+    // SAFETY: standard NSWindow/NSPanel setters, on the main thread.
+    unsafe {
+        let _: () = msg_send![window, setStyleMask: NONACTIVATING_PANEL];
+        let _: () = msg_send![window, setHidesOnDeactivate: false];
+        let _: () = msg_send![window, setBecomesKeyOnlyIfNeeded: true];
+        let _: () = msg_send![window, setFloatingPanel: true];
+        let behavior: usize = msg_send![window, collectionBehavior];
+        let _: () = msg_send![window, setCollectionBehavior: behavior | ON_EVERY_SPACE];
+        let _: () = msg_send![window, setLevel: OVERLAY_WINDOW_LEVEL];
+        let _: () = msg_send![window, setHasShadow: false];
+        let _: () = msg_send![window, setIgnoresMouseEvents: true];
+    }
+    window.setFrame_display(
+        NSRect::new(
+            NSPoint::new(-10_000.0, -10_000.0),
+            NSSize::new(DICTATE_WINDOW_WIDTH, DICTATE_WINDOW_HEIGHT),
+        ),
+        false,
+    );
 }
 
 /// Show the pill over whatever Space is active without taking keyboard focus.
 /// This replaces `window.show()`, which calls `makeKeyAndOrderFront:`.
 /// `orderFrontRegardless` works even though the app is inactive (it always is
 /// mid-dictation — the user is typing in some other app).
-pub fn force_order_front(window: &tauri::WebviewWindow) {
-    let w = window.clone();
-    let _ = window.run_on_main_thread(move || {
-        use objc::runtime::Object;
-        use objc::{msg_send, sel, sel_impl};
-        if let Ok(ptr) = w.ns_window() {
-            let ns_window = ptr as *mut Object;
-            if !ns_window.is_null() {
-                unsafe {
-                    let _: () = msg_send![ns_window, orderFrontRegardless];
-                }
-            }
-        }
+pub fn force_order_front(window: &host::WebviewWindow) {
+    let _ = window.with_ns_window(|ns_window| ns_window.orderFrontRegardless());
+}
+
+/// Park the pill: off-screen, click-through and hidden. Hiding alone has
+/// been unreliable for transparent always-on-top windows on macOS: the
+/// window could linger as an invisible click target that steals focus to
+/// Kass when the user clicks where it used to be.
+fn park_dictate_window(window: &host::WebviewWindow) {
+    // A chip cut off by the end of the take gives its room back.
+    set_dictate_chip_space(window, false);
+    let _ = window.set_ignore_cursor_events(true);
+    let _ = window.with_ns_window(|ns_window| {
+        ns_window.setFrameOrigin(NSPoint::new(-10_000.0, -10_000.0));
+        ns_window.orderOut(None);
     });
 }
 
-/// Build the pill webview if it doesn't exist yet. Idempotent — called at
-/// setup so the pill's listeners are registered before the first chord.
-#[cfg(desktop)]
-pub fn ensure_dictate_window(app: &tauri::AppHandle) {
-    if app.get_webview_window(DICTATE_WINDOW_LABEL).is_none() {
-        if let Err(e) = build_dictate_window(app) {
+/// Build the pill if it doesn't exist yet. Idempotent.
+pub fn ensure_dictate_window() {
+    host::with_app(|cx| {
+        if let Err(e) = webview::open(cx, dictate_window_spec()) {
             eprintln!("ensure_dictate_window: failed to build pill: {e}");
         }
-    }
+    });
 }
 
 pub(crate) const SERVER_PORT: u16 = 17493;
@@ -442,7 +446,7 @@ fn check_health(port: u16) -> bool {
 }
 
 struct ServerState {
-    child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
+    child: Mutex<Option<sidecar::Child>>,
     server_pid: Mutex<Option<u32>>,
     models_dir: Mutex<Option<String>>,
     /// Beta `network`: listen for other Macs, not just this one.
@@ -470,13 +474,12 @@ impl Api {
 
 /// Whether the server should listen for other Macs on the network: asked
 /// for, and on the beta channel (app/src/lib/betaFeatures.ts `network`).
-fn shares_on_network(app: &tauri::AppHandle, state: &ServerState) -> bool {
+fn shares_on_network(app: &AppHandle, state: &ServerState) -> bool {
     *state.share_on_network.lock().unwrap() && updater::beta_features(app)
 }
 
 /// This Mac's address for other Macs on the network, like
 /// `http://Studio.local:17493`.
-#[command]
 fn network_address() -> Result<String, String> {
     let output = std::process::Command::new("scutil")
         .args(["--get", "LocalHostName"])
@@ -489,9 +492,8 @@ fn network_address() -> Result<String, String> {
     Ok(format!("http://{name}.local:{SERVER_PORT}"))
 }
 
-#[command]
 async fn start_server(
-    app: tauri::AppHandle,
+    app: AppHandle,
     state: State<'_, ServerState>,
     models_dir: Option<String>,
     share_on_network: Option<bool>,
@@ -523,7 +525,7 @@ async fn start_server(
 /// Start the Python model worker on `WORKER_PORT`, or reuse one already
 /// there, and return once it answers.
 async fn start_worker(
-    app: &tauri::AppHandle,
+    app: &AppHandle,
     state: &ServerState,
     models_dir: Option<String>,
 ) -> Result<(), String> {
@@ -637,7 +639,7 @@ async fn start_worker(
         .and_then(|dir| server_process::bundled_executable(&dir));
 
     let mut sidecar = match sidecar_result {
-        Ok(path) => app.shell().command(path),
+        Ok(path) => sidecar::Command::new(path),
         Err(e) => {
             eprintln!("Failed to get sidecar: {}", e);
 
@@ -800,7 +802,7 @@ async fn start_worker(
         match tokio::time::timeout(tokio::time::Duration::from_millis(100), rx.recv()).await {
             Ok(Some(event)) => {
                 match event {
-                    tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                    sidecar::CommandEvent::Stdout(line) => {
                         let line_str = String::from_utf8_lossy(&line);
                         println!("Server output: {}", line_str);
                         let _ = app.emit(
@@ -818,7 +820,7 @@ async fn start_worker(
                             break;
                         }
                     }
-                    tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                    sidecar::CommandEvent::Stderr(line) => {
                         let line_str = String::from_utf8_lossy(&line).to_string();
                         eprintln!("Server: {}", line_str);
                         let _ = app.emit(
@@ -845,7 +847,8 @@ async fn start_worker(
                             break;
                         }
                     }
-                    _ => {}
+                    // The channel closes right after; that ends the wait.
+                    sidecar::CommandEvent::Terminated => {}
                 }
             }
             Ok(None) => {
@@ -902,7 +905,7 @@ async fn start_worker(
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             match event {
-                tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                sidecar::CommandEvent::Stdout(line) => {
                     let line_str = String::from_utf8_lossy(&line);
                     println!("Server: {}", line_str);
                     let _ = app_handle.emit(
@@ -913,7 +916,7 @@ async fn start_worker(
                         }),
                     );
                 }
-                tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                sidecar::CommandEvent::Stderr(line) => {
                     let line_str = String::from_utf8_lossy(&line);
                     eprintln!("Server error: {}", line_str);
                     let _ = app_handle.emit(
@@ -926,13 +929,12 @@ async fn start_worker(
                 }
                 // The API goes with its worker, unless a restart has
                 // already put another worker in its place.
-                tauri_plugin_shell::process::CommandEvent::Terminated(_) => {
+                sidecar::CommandEvent::Terminated => {
                     let state = app_handle.state::<ServerState>();
                     if *state.server_pid.lock().unwrap() == Some(process_pid) {
                         state.api.lock().unwrap().take();
                     }
                 }
-                _ => {}
             }
         }
     });
@@ -995,7 +997,7 @@ async fn free_api_port() -> Result<(), String> {
 /// only, or to other Macs on the network too while `share` is on. One
 /// already listening for the right Macs, standing in for the same server,
 /// keeps running.
-async fn serve_api(app: &tauri::AppHandle, state: &ServerState, share: bool) -> Result<(), String> {
+async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<(), String> {
     let shared_server = state.shared_server.lock().unwrap().clone();
     let previous = {
         let mut api = state.api.lock().unwrap();
@@ -1050,7 +1052,6 @@ async fn serve_api(app: &tauri::AppHandle, state: &ServerState, share: bool) -> 
     }
 }
 
-#[command]
 async fn stop_server(state: State<'_, ServerState>) -> Result<(), String> {
     stop_managed_server(&state)
 }
@@ -1087,38 +1088,31 @@ async fn wait_for_port_free(port: u16) -> Result<(), String> {
     )
 }
 
-#[command]
-async fn restart_app(app: tauri::AppHandle, state: State<'_, ServerState>) -> Result<(), String> {
+async fn restart_app(state: State<'_, ServerState>) -> Result<(), String> {
     stop_server(state.clone()).await?;
     wait_for_server_exit().await?;
-    app.request_restart();
+    host::with_app(|cx| cx.restart());
     Ok(())
 }
 
 /// Where the app runs from, so the UI can ask to move it into Applications.
-#[command]
 fn app_location() -> app_location::AppLocation {
     app_location::location()
 }
 
 /// Move the app into `/Applications` and relaunch it from there. Stops the
 /// server first so the new copy can start its own on the same port.
-#[command]
-async fn move_to_applications(
-    app: tauri::AppHandle,
-    state: State<'_, ServerState>,
-) -> Result<(), String> {
+async fn move_to_applications(state: State<'_, ServerState>) -> Result<(), String> {
     let installed = app_location::copy_into_applications()?;
     stop_server(state.clone()).await?;
     wait_for_server_exit().await?;
     app_location::relaunch_after_exit(std::process::id(), &installed)?;
-    app.exit(0);
+    host::with_app(|cx| cx.quit());
     Ok(())
 }
 
-#[command]
 async fn restart_server(
-    app: tauri::AppHandle,
+    app: AppHandle,
     state: State<'_, ServerState>,
     models_dir: Option<String>,
     share_on_network: Option<bool>,
@@ -1163,7 +1157,6 @@ async fn restart_server(
 const KASS_BUNDLE_ID: &str = "com.mrgnhnt.kass";
 
 /// The icon of the app with `bundle_id` as a PNG data URL, for Captures.
-#[command]
 fn app_icon(bundle_id: String) -> Option<String> {
     app_icon::icon_data_url(&bundle_id)
 }
@@ -1171,7 +1164,6 @@ fn app_icon(bundle_id: String) -> Option<String> {
 /// Reports whether the process currently has macOS Accessibility trust.
 /// Used by the settings UI and the paste debug harness to decide whether
 /// synthetic key events will actually land.
-#[command]
 fn check_accessibility_permission() -> bool {
     accessibility::is_trusted()
 }
@@ -1179,7 +1171,6 @@ fn check_accessibility_permission() -> bool {
 /// Reports whether the process can observe global keyboard events. Read by
 /// the Captures settings UI to surface a "missing — open Settings" hint
 /// beside the hotkey toggle. No prompt side-effect.
-#[command]
 fn check_input_monitoring_permission() -> bool {
     input_monitoring::is_trusted()
 }
@@ -1193,13 +1184,11 @@ fn check_input_monitoring_permission() -> bool {
 /// keytap's event tap is released while Tauri still owns this `HotkeyState`
 /// for the rest of the process. A subsequent enable re-arms without
 /// re-prompting for the Input Monitoring permission.
-#[cfg(desktop)]
 #[derive(Default)]
 pub struct HotkeyState {
     monitor: Mutex<Option<hotkey_monitor::HotkeyMonitor>>,
 }
 
-#[cfg(desktop)]
 fn build_chord_bindings(
     push_to_talk: &[String],
     toggle_to_talk: &[String],
@@ -1243,10 +1232,8 @@ fn build_chord_bindings(
 /// On macOS this is the call that triggers the "Kass would like to receive
 /// keystrokes from any application" TCC prompt, since keytap's `Tap` creates
 /// the CGEventTap inside `HotkeyMonitor::spawn`.
-#[cfg(desktop)]
-#[command]
 fn enable_hotkey(
-    app: tauri::AppHandle,
+    app: AppHandle,
     state: State<'_, HotkeyState>,
     push_to_talk: Vec<String>,
     toggle_to_talk: Vec<String>,
@@ -1271,9 +1258,7 @@ fn enable_hotkey(
     // can subscribe to `dictate:start`. Build it here (idempotent — Tauri
     // returns the existing window when one with this label already exists).
     if app.get_webview_window(DICTATE_WINDOW_LABEL).is_none() {
-        if let Err(e) = build_dictate_window(&app) {
-            eprintln!("Failed to build dictate window: {}", e);
-        }
+        ensure_dictate_window();
     }
 
     let mut slot = state.monitor.lock().map_err(|e| e.to_string())?;
@@ -1290,8 +1275,6 @@ fn enable_hotkey(
 /// keytap's chord worker and closes the OS event tap) but keeps the
 /// `HotkeyMonitor` handle around so a subsequent `enable_hotkey` re-arms
 /// without re-prompting for Input Monitoring permission.
-#[cfg(desktop)]
-#[command]
 fn disable_hotkey(state: State<'_, HotkeyState>) -> Result<(), String> {
     let mut slot = state.monitor.lock().map_err(|e| e.to_string())?;
     if let Some(monitor) = slot.as_mut() {
@@ -1309,8 +1292,6 @@ fn disable_hotkey(state: State<'_, HotkeyState>) -> Result<(), String> {
 /// Returns an error when a key name doesn't map to a `keytap::Key`, so the
 /// picker UI can surface "this key isn't supported" instead of silently
 /// dropping it from the chord.
-#[cfg(desktop)]
-#[command]
 fn update_chord_bindings(
     state: State<'_, HotkeyState>,
     push_to_talk: Vec<String>,
@@ -1333,8 +1314,7 @@ fn update_chord_bindings(
 /// The first time, only asks: the request is what lists Kass in the pane,
 /// and macOS's prompt has its own button to open it. Opening the pane too
 /// covered the prompt and showed a list without Kass in it.
-#[command]
-fn open_accessibility_settings(app: tauri::AppHandle) -> Result<(), String> {
+fn open_accessibility_settings(app: AppHandle) -> Result<(), String> {
     if !accessibility::was_asked(&app) {
         accessibility::remember_asked(&app);
         if !accessibility::request() {
@@ -1342,9 +1322,7 @@ fn open_accessibility_settings(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
     let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|e| format!("Failed to open Accessibility settings: {e}"))?;
+    host::open_external(url).map_err(|e| format!("Failed to open Accessibility settings: {e}"))?;
     Ok(())
 }
 
@@ -1354,15 +1332,13 @@ fn open_accessibility_settings(app: tauri::AppHandle) -> Result<(), String> {
 ///
 /// When Kass isn't listed yet, only asks: the request is what lists it, and
 /// macOS's prompt has its own button to open the pane.
-#[command]
-fn open_input_monitoring_settings(app: tauri::AppHandle) -> Result<(), String> {
+fn open_input_monitoring_settings() -> Result<(), String> {
     if !input_monitoring::is_listed() {
         let _ = input_monitoring::request();
         return Ok(());
     }
     let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
-    app.opener()
-        .open_url(url, None::<&str>)
+    host::open_external(url)
         .map_err(|e| format!("Failed to open Input Monitoring settings: {e}"))?;
     Ok(())
 }
@@ -1378,7 +1354,6 @@ fn open_input_monitoring_settings(app: tauri::AppHandle) -> Result<(), String> {
 /// is Kass itself — native dictation inserts into our own webview
 /// through the DOM (`dictation::insert_in_app`). Errors when Accessibility
 /// is not trusted: every step needs it.
-#[command]
 async fn paste_final_text(
     text: String,
     focus: focus_capture::FocusSnapshot,
@@ -1620,7 +1595,6 @@ pub(crate) fn type_over_selection(
 /// Inspect the currently focused UI element. Returns the owning app's PID,
 /// bundle id, and AX role. Useful for sanity-checking the focus pipeline
 /// before committing to a paste.
-#[command]
 fn debug_capture_focus() -> Result<focus_capture::FocusSnapshot, String> {
     focus_capture::capture_focus()
 }
@@ -1630,7 +1604,6 @@ fn debug_capture_focus() -> Result<focus_capture::FocusSnapshot, String> {
 /// (proving we don't paste into whichever window is frontmost when the
 /// transcribe finishes), then activate the captured PID, stage `text`,
 /// fire ⌘V, and restore the clipboard.
-#[command]
 async fn debug_focus_roundtrip(
     text: String,
     drift_ms: u64,
@@ -1677,7 +1650,6 @@ async fn debug_focus_roundtrip(
 /// Short-circuits when Accessibility permission is missing — without it
 /// `CGEventPost` silently drops events, so running the full sequence
 /// would just clobber the clipboard with nothing to show for it.
-#[command]
 async fn debug_paste_text(
     text: String,
     pre_paste_delay_ms: u64,
@@ -1718,7 +1690,6 @@ async fn debug_paste_text(
 /// `hold_ms` so the caller can ⌘V into another app, then puts the original
 /// clipboard contents back. The return value reports the change-count deltas
 /// so the harness can verify no third party mutated the clipboard mid-paste.
-#[command]
 async fn debug_clipboard_roundtrip(
     text: String,
     hold_ms: u64,
@@ -1744,209 +1715,111 @@ async fn debug_clipboard_roundtrip(
     }))
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     app_location::carry_over_old_bundle();
     identifier_move::move_from_old_identifier(KASS_BUNDLE_ID);
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(updater::UpdaterState::default())
-        .manage(ServerState {
-            child: Mutex::new(None),
-            server_pid: Mutex::new(None),
-            models_dir: Mutex::new(None),
-            share_on_network: Mutex::new(false),
-            shared_server: Mutex::new(None),
-            api: Mutex::new(None),
+    let handle = AppHandle;
+    handle.manage(updater::UpdaterState::default());
+    handle.manage(ServerState {
+        child: Mutex::new(None),
+        server_pid: Mutex::new(None),
+        models_dir: Mutex::new(None),
+        share_on_network: Mutex::new(false),
+        shared_server: Mutex::new(None),
+        api: Mutex::new(None),
+    });
+    handle.manage(dictation::DictationState::default());
+    handle.manage(deep_link::DeepLinkState::default());
+    handle.manage(hotkey_monitor::ChordMode::default());
+    // HotkeyMonitor is spawned lazily via the `enable_hotkey` command — see
+    // HotkeyState.
+    handle.manage(HotkeyState::default());
+
+    let application = gpui_kit::application();
+    application.on_open_urls(|urls| {
+        for url in urls {
+            deep_link::open(&AppHandle, &url);
+        }
+    });
+    // A Dock click with no window showing brings Kass back. Onboarding
+    // stands in for the main window while it's open.
+    application.on_reopen(|_| {
+        let app = AppHandle;
+        let any_visible = app
+            .webview_windows()
+            .values()
+            .any(|window| window.is_visible().unwrap_or(false));
+        if any_visible {
+            return;
+        }
+        let window = app
+            .get_webview_window(ONBOARDING_WINDOW_LABEL)
+            .or_else(|| app.get_webview_window(MAIN_WINDOW_LABEL));
+        if let Some(window) = window {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    });
+    application.run(|cx| {
+        host::install(cx);
+        cx.on_app_quit(|_| {
+            let app = AppHandle;
+            let state = app.state::<ServerState>();
+            if let Err(error) = stop_managed_server(&state) {
+                eprintln!("Failed to stop local server on exit: {error}");
+            }
+            // A downloaded update goes in as Kass quits, with the server
+            // stopped, so the next launch is the new version.
+            if let Err(error) = updater::install_pending(&app) {
+                eprintln!("Failed to install the downloaded update: {error}");
+            }
+            webview::leak_all();
+            async {}
         })
-        .manage(dictation::DictationState::default())
-        .manage(deep_link::DeepLinkState::default())
-        .manage(hotkey_monitor::ChordMode::default())
-        .setup(|app| {
-            // The main window starts hidden (tauri.conf.json) so a login
-            // launch stays out of the way until the Dock icon is clicked.
-            // Its page still runs while hidden (`backgroundThrottling`
-            // disabled there): it starts the server and arms the global keys.
-            if !login_item::launched_at_login() {
-                if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                    let _ = window.show();
-                }
-            }
-            login_item::register_by_default(app.handle());
-            this_mac::init(app.handle());
-            dictation::restore(app.handle());
-            sound_cues::init(app.handle());
-            updater::start(app.handle().clone());
-            #[cfg(desktop)]
-            {
-                // Resolve the active keyboard layout's V keycode now, on
-                // the main thread, and register an observer for layout
-                // changes. The synthetic-paste hot path then only reads an
-                // atomic. See keyboard_layout.rs for why this matters
-                // (Cmd+V is matched by translated character, not keycode,
-                // so QWERTY keycode 9 produces Cmd+. on Dvorak).
-                keyboard_layout::init();
-                // ⌘H hides the windows, so the pill can show without them.
-                app_hide::init();
-                // Apps that show a text field when dictation starts
-                // (docs/DICTATION_HANDSHAKE.md) register and reply here.
-                dictation_handshake::listen();
+        .detach();
 
-                // HotkeyMonitor is spawned lazily via the `enable_hotkey`
-                // command — see HotkeyState. The hidden dictate webview is
-                // safe to build up front because it does not create the global
-                // keyboard tap or trigger the macOS Input Monitoring prompt.
-                app.manage(HotkeyState::default());
-
-                // The frontend emits `dictate:hide` whenever the pill cycle
-                // finishes (rest-fade → hidden). `hide()` alone has been
-                // unreliable for transparent always-on-top windows on macOS
-                // — the NSWindow lingers as an invisible click target that
-                // steals focus to the Kass app when the user clicks
-                // where it used to be. Park the window off-screen and mark
-                // it click-through as well, so even if `hide()` no-ops the
-                // user sees and interacts with nothing.
-                let handle_for_hide = app.handle().clone();
-                app.handle().listen("dictate:hide", move |_event| {
-                    if let Some(window) = handle_for_hide.get_webview_window(DICTATE_WINDOW_LABEL) {
-                        // A chip cut off by the end of the take gives its room back.
-                        set_dictate_chip_space(&window, false);
-                        let _ = window.set_ignore_cursor_events(true);
-                        let _ = window.set_position(PhysicalPosition::new(-10_000, -10_000));
-                        let _ = window.hide();
-                    }
-                });
-
-                ensure_dictate_window(app.handle());
+        match webview::open(cx, main_window_spec(cx)) {
+            // A login launch stays out of the way until the Dock icon is
+            // clicked.
+            Ok(main) if !login_item::launched_at_login() => {
+                let _ = main.show();
+                let _ = main.set_focus();
             }
+            Ok(_) => {}
+            Err(e) => eprintln!("Failed to open the main window: {e}"),
+        }
+        // Built hidden now, so its page listens before the first chord. It
+        // creates no keyboard tap and asks for no permission.
+        if let Err(e) = webview::open(cx, dictate_window_spec()) {
+            eprintln!("Failed to build the dictate pill: {e}");
+        }
 
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            dictate_chip_space,
-            start_server,
-            stop_server,
-            restart_server,
-            network_address,
-            this_mac::this_mac,
-            restart_app,
-            app_location,
-            move_to_applications,
-            debug_clipboard_roundtrip,
-            debug_paste_text,
-            debug_capture_focus,
-            debug_focus_roundtrip,
-            app_icon,
-            check_accessibility_permission,
-            check_input_monitoring_permission,
-            open_accessibility_settings,
-            open_input_monitoring_settings,
-            paste_final_text,
-            enable_hotkey,
-            disable_hotkey,
-            update_chord_bindings,
-            hotkey_monitor::set_chord_practice,
-            hotkey_monitor::set_dictation_gate,
-            open_onboarding,
-            finish_onboarding,
-            onboarding_window_open,
-            dictation::mic::microphone_permission,
-            dictation::mic::mic_preview_start,
-            dictation::mic::mic_preview_stop,
-            dictation::dictation_configure,
-            dictation::dictation_set_away,
-            dictation::dictation_start,
-            dictation::dictation_stop,
-            dictation::command_run,
-            dictation::corrections::apply_correction,
-            dictation::list_input_devices,
-            sound_cues::configure_sound_cues,
-            sound_cues::preview_sound_cue,
-            login_item::launch_at_login_status,
-            login_item::set_launch_at_login,
-            login_item::open_login_items_settings,
-            report::create_report,
-            report::reveal_report,
-            deep_link::take_deep_link,
-            updater::update_status,
-            updater::check_for_updates,
-            updater::update_channel,
-            updater::set_update_channel,
-            updater::restart_to_update
-        ])
-        .on_window_event(|window, event| {
-            if window.label() == ONBOARDING_WINDOW_LABEL {
-                match event {
-                    // Its close button: the same as finish_onboarding(None).
-                    WindowEvent::CloseRequested { .. } => {
-                        release_onboarding(window.app_handle());
-                        show_main_after_onboarding(window.app_handle(), None);
-                    }
-                    WindowEvent::Destroyed => release_onboarding(window.app_handle()),
-                    _ => {}
-                }
-                return;
-            }
-            // Closing the main window hides it: Kass keeps running for
-            // dictation, and the Dock icon brings it back through
-            // `RunEvent::Reopen`, which can only show a window that still
-            // exists. The server stops when Kass quits (`RunEvent::Exit`).
-            if window.label() == MAIN_WINDOW_LABEL {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
-            }
-        })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app, event| {
-            match &event {
-                RunEvent::Opened { urls } => {
-                    for url in urls {
-                        deep_link::open(app, url.as_str());
-                    }
-                }
-                RunEvent::Reopen {
-                    has_visible_windows: false,
-                    ..
-                } => {
-                    // Onboarding stands in for the main window while it's open.
-                    let window = app
-                        .get_webview_window(ONBOARDING_WINDOW_LABEL)
-                        .or_else(|| app.get_webview_window(MAIN_WINDOW_LABEL));
-                    if let Some(window) = window {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
-                }
-                RunEvent::Exit => {
-                    let state = app.state::<ServerState>();
-                    if let Err(error) = stop_managed_server(&state) {
-                        eprintln!("Failed to stop local server on exit: {error}");
-                    }
-                    // A downloaded update goes in as Kass quits, with the
-                    // server stopped, so the next launch is the new version.
-                    if let Err(error) = updater::install_pending(app) {
-                        eprintln!("Failed to install the downloaded update: {error}");
-                    }
-                }
-                RunEvent::ExitRequested { .. } => {
-                    // Stop descendants before the shell plugin's Exit handler
-                    // kills the launcher and reparents its PyInstaller worker.
-                    let state = app.state::<ServerState>();
-                    if let Err(error) = stop_managed_server(&state) {
-                        eprintln!("Failed to stop local server before exit: {error}");
-                    }
-                }
-                _ => {}
+        let app = AppHandle;
+        login_item::register_by_default(&app);
+        this_mac::init(&app);
+        dictation::restore(&app);
+        sound_cues::init(&app);
+        updater::start(app.clone());
+        // Resolve the active keyboard layout's V keycode now, on the main
+        // thread, and register an observer for layout changes. The
+        // synthetic-paste hot path then only reads an atomic. See
+        // keyboard_layout.rs for why this matters (Cmd+V is matched by
+        // translated character, not keycode, so QWERTY keycode 9 produces
+        // Cmd+. on Dvorak).
+        keyboard_layout::init();
+        // ⌘H hides the windows, so the pill can show without them.
+        app_hide::init();
+        // Apps that show a text field when dictation starts
+        // (docs/DICTATION_HANDSHAKE.md) register and reply here.
+        dictation_handshake::listen();
+        // The page emits `dictate:hide` whenever the pill cycle finishes
+        // (rest-fade → hidden).
+        app.listen("dictate:hide", move |_event| {
+            if let Some(window) = AppHandle.get_webview_window(DICTATE_WINDOW_LABEL) {
+                park_dictate_window(&window);
             }
         });
+    });
 }
 
 fn main() {

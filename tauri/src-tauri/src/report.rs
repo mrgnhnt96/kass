@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use tauri::{command, AppHandle, Manager};
+use crate::host::{AppHandle, Manager};
 
 const SCRIPT: &str = "kass-report.sh";
 
@@ -51,7 +51,6 @@ fn run(script: &Path, data_dir: &Path) -> Result<PathBuf, String> {
 }
 
 /// Show `path` selected in a Finder window.
-#[command]
 pub fn reveal_report(path: String) -> Result<(), String> {
     let status = Command::new("/usr/bin/open")
         .args(["-R", &path])
@@ -65,11 +64,10 @@ pub fn reveal_report(path: String) -> Result<(), String> {
 }
 
 /// Make a report zip in Downloads, show it in Finder, and return its path.
-#[command]
 pub async fn create_report(app: AppHandle) -> Result<String, String> {
     let script = script_path(app.path().resource_dir().ok())?;
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let zip = tauri::async_runtime::spawn_blocking(move || run(&script, &data_dir))
+    let zip = crate::host::async_runtime::spawn_blocking(move || run(&script, &data_dir))
         .await
         .map_err(|e| e.to_string())??;
     let path = zip.to_string_lossy().into_owned();

@@ -7,7 +7,7 @@
 
 use std::time::Instant;
 
-use tauri::{AppHandle, Emitter, Manager};
+use crate::host::{AppHandle, Emitter, Manager};
 
 use super::capture::{self, CaptureHooks};
 use super::stream::AudioMsg;
@@ -15,7 +15,6 @@ use super::DictationState;
 
 /// The microphone permission: `granted`, `denied`, `restricted` or
 /// `undetermined` (macOS hasn't asked yet).
-#[tauri::command]
 pub fn microphone_permission() -> &'static str {
     permission_name(authorization_status())
 }
@@ -56,7 +55,6 @@ fn authorization_status() -> i64 {
 /// every 50 ms, or `mic:error { message }` when it can't be opened. On
 /// macOS this is what asks for the permission when it is undetermined.
 /// Replaces a preview already running; refused while a take records.
-#[tauri::command]
 pub fn mic_preview_start(app: AppHandle, device_id: Option<String>) -> Result<(), String> {
     let state = app.state::<DictationState>();
     let active = state.active.lock().map_err(|e| e.to_string())?;
@@ -88,7 +86,6 @@ pub fn mic_preview_start(app: AppHandle, device_id: Option<String>) -> Result<()
 }
 
 /// Close the microphone the preview opened. Nothing to do when none runs.
-#[tauri::command]
 pub fn mic_preview_stop(app: AppHandle) {
     stop_preview(&app.state::<DictationState>());
 }

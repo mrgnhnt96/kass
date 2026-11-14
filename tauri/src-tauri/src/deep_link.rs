@@ -9,7 +9,7 @@
 
 use std::sync::Mutex;
 
-use tauri::{command, AppHandle, Emitter, Manager, State};
+use crate::host::{AppHandle, Emitter, Manager, State};
 
 /// `herga` is Kass's old name; links made before the rename still open.
 const SCHEMES: [&str; 2] = ["kass", "herga"];
@@ -45,7 +45,6 @@ pub fn open(app: &AppHandle, url: &str) {
 }
 
 /// The route of a link that arrived before the frontend listened, once.
-#[command]
 pub fn take_deep_link(state: State<'_, DeepLinkState>) -> Option<String> {
     state.pending.lock().unwrap().take()
 }

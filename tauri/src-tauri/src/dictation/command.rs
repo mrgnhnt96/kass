@@ -9,8 +9,8 @@
 
 use std::time::{Duration, Instant};
 
+use crate::host::{AppHandle, Emitter, Manager};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, Manager};
 
 use super::take::PillEvent;
 use super::{http, DictationState};
@@ -104,9 +104,10 @@ pub async fn run_from_kass(app: &AppHandle, instruction: String) -> Result<(), S
     emit(PillEvent::Refining);
 
     let reading = focus.clone();
-    let selection = tauri::async_runtime::spawn_blocking(move || read_selection(&reading, false))
-        .await
-        .map_err(|e| e.to_string())?;
+    let selection =
+        crate::host::async_runtime::spawn_blocking(move || read_selection(&reading, false))
+            .await
+            .map_err(|e| e.to_string())?;
     let selection = match selection {
         Ok(selection) => selection,
         Err(message) => {

@@ -12,16 +12,23 @@ edition = "2021"
 [workspace]
 members = ["server", "text"]
 
-[build-dependencies]
-tauri-build = { version = "2.0", features = [] }
-
 [dependencies]
-tauri = { version = "2.0", features = ["macos-private-api"] }
-tauri-plugin-dialog = "2.0"
-tauri-plugin-fs = "2.0"
-tauri-plugin-shell = "2.0"
-tauri-plugin-opener = "2"
-tauri-plugin-notification = "=2.3.3"
+# The app loop, windows and menus. Screens not yet ported to GPUI still run
+# in web views (wry) hosted in GPUI windows; see src/host.
+gpui-kit = { version = "0.7", default-features = false }
+wry = { version = "0.53", default-features = false, features = ["protocol", "os-webview", "transparent", "devtools"] }
+raw-window-handle = "0.6"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+notify-rust = "4"
+# The updater: the same latest.json, minisign signature and public key the
+# Tauri updater used.
+minisign-verify = "0.2"
+flate2 = "1"
+tar = "0.4"
+semver = "1"
+base64 = "0.22"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
@@ -38,9 +45,10 @@ rtrb = "0.4"
 # synthetic paste and the dictate pill panel.
 objc = "0.2"
 core-foundation-sys = "0.8"
-tauri-plugin-updater = "2"
 # Kass's HTTP API on port 17493, in front of the Python model worker.
 kass-server = { path = "server" }
+# Release builds carry the built screens (tauri/dist) inside the binary.
+include_dir = { version = "0.7", optional = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 # Observe-only global keyboard tap with left/right modifier fidelity,
@@ -53,8 +61,9 @@ kass-server = { path = "server" }
 keytap = "0.4"
 
 [features]
-# This feature is used for production builds or when `devPath` points to the filesystem
-custom-protocol = ["tauri/custom-protocol"]
+# Release builds: serve the screens from the bundled dist instead of the
+# Vite dev server.
+custom-protocol = ["dep:include_dir"]
 
 [lints.rust]
 # objc 0.2's msg_send!/class! test a `cargo-clippy` feature, which newer Rust

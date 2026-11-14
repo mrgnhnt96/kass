@@ -17,10 +17,10 @@
 //! A login launch keeps the main window hidden (`launched_at_login`); the
 //! Dock icon brings it back through `RunEvent::Reopen`.
 
+use crate::host::{AppHandle, Manager};
 use objc::runtime::{Class, Object, BOOL, YES};
 use objc::{class, msg_send, sel, sel_impl};
 use serde::Serialize;
-use tauri::{command, AppHandle, Manager};
 
 use crate::app_location::is_installed;
 use crate::focus_capture::{ns_string_to_rust, AutoreleasePool};
@@ -161,19 +161,16 @@ pub fn register_by_default(app: &AppHandle) {
     });
 }
 
-#[command]
 pub fn launch_at_login_status() -> Status {
     status()
 }
 
-#[command]
 pub fn set_launch_at_login(enabled: bool) -> Result<Status, String> {
     set_enabled(enabled)
 }
 
 /// Open System Settings › General › Login Items, where the user approves
 /// Kass after turning it off there.
-#[command]
 pub fn open_login_items_settings() -> Result<(), String> {
     unsafe {
         let _pool = AutoreleasePool::new();
