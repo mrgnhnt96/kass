@@ -9,7 +9,8 @@ use std::path::Path;
 use kass_text::lexicon::{self, WordData};
 use kass_text::phrase_seams::{self, Names};
 use kass_text::spoken_punctuation::{self as punctuation, Example, Learned};
-use kass_text::{laughter, spoken_case, spoken_cleanup, spoken_corrections, voice_commands};
+use kass_text::content_check::{self, Verdict};
+use kass_text::{laughter, sentence_tail, spoken_case, spoken_cleanup, spoken_corrections, text_merge, voice_commands};
 use serde_json::{json, Map, Value};
 
 fn text<'a>(args: &'a Value, name: &str) -> &'a str {
@@ -41,13 +42,53 @@ fn learned(args: &Value) -> Option<Learned> {
     Some(Learned { aliases, kept })
 }
 
+fn strings(value: &Value) -> Vec<String> {
+    value.as_array().unwrap().iter().map(|item| item.as_str().unwrap().to_string()).collect()
+}
+
+fn verdict_value(verdict: &Verdict) -> Value {
+    json!({"outcome": verdict.outcome, "added": verdict.added, "missing": verdict.missing, "reason": verdict.reason})
+}
+
 fn learned_value(learned: &Learned) -> Value {
     json!({"aliases": learned.aliases, "kept": learned.kept})
 }
 
 /// The Rust result for one recorded call, or `None` for a function not ported.
-fn call(function: &str, args: &Value, _examples: &[Value]) -> Option<Value> {
+fn call(function: &str, args: &Value, examples: &[Value]) -> Option<Value> {
     let value = match function {
+        "content_check._copied_example" => {
+            let shown: Vec<(String, String)> = examples[args["examples"].as_u64().unwrap() as usize]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|pair| (pair[0].as_str().unwrap().to_string(), pair[1].as_str().unwrap().to_string()))
+                .collect();
+            json!(content_check::copied_example(text(args, "said"), text(args, "cleaned"), &shown))
+        }
+        "content_check.check" => verdict_value(&content_check::check(
+            text(args, "said"),
+            text(args, "cleaned"),
+            args["allow_retractions"].as_bool().unwrap_or(false),
+            opt_text(args, "retractable").unwrap_or(""),
+        )),
+        "content_check.summarize_reviews" => {
+            let verdicts: Vec<Verdict> = args["verdicts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|verdict| Verdict {
+                    outcome: text(verdict, "outcome").to_string(),
+                    added: strings(&verdict["added"]),
+                    missing: strings(&verdict["missing"]),
+                    reason: opt_text(verdict, "reason").map(String::from),
+                })
+                .collect();
+            content_check::summarize_reviews(&verdicts).map_or(Value::Null, |summary| {
+                json!({"outcome": summary.outcome, "added": summary.added, "missing": summary.missing, "reasons": summary.reasons})
+            })
+        }
+
         "laughter.is_laughter" => json!(laughter::is_laughter(text(args, "text"))),
         "laughter.join_laughter" => json!(laughter::join_laughter(text(args, "text"))),
 
@@ -114,6 +155,22 @@ fn call(function: &str, args: &Value, _examples: &[Value]) -> Option<Value> {
             learned_value(&punctuation::learn(&examples))
         }
         "spoken_punctuation.period_after_closers" => json!(punctuation::period_after_closers(text(args, "text"))),
+
+        "sentence_tail.settle" => {
+            sentence_tail::settle(text(args, "raw"), text(args, "cleaned")).map_or(Value::Null, |settled| {
+                json!({
+                    "type": "Settled",
+                    "committed": settled.committed,
+                    "gap": settled.gap,
+                    "open_cleaned": settled.open_cleaned,
+                    "open_raw": settled.open_raw,
+                    "committed_raw": settled.committed_raw,
+                })
+            })
+        }
+        "text_merge.take_back" => {
+            json!(text_merge::take_back(text(args, "before"), text(args, "removed"), text(args, "newer")))
+        }
 
         "voice_commands.commands_alone" => json!(voice_commands::commands_alone(text(args, "text"))),
         "voice_commands.count_commands" => json!(voice_commands::count_commands(text(args, "text"))),

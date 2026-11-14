@@ -14,3 +14,6 @@ pub mod spoken_cleanup;
 pub mod spoken_corrections;
 pub mod spoken_punctuation;
 pub mod voice_commands;
+pub mod content_check;
+pub mod sentence_tail;
+pub mod text_merge;
