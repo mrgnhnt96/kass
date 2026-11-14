@@ -7,10 +7,10 @@
     "tauri"
   ],
   "scripts": {
-    "dev": "bun run setup:dev && cd tauri && bun run tauri dev",
+    "dev": "bun run setup:dev && ./scripts/dev-app.sh",
     "dev:server": "uvicorn backend.main:app --reload --port 17494",
     "setup:dev": "bun run scripts/setup-dev-sidecar.js",
-    "build": "./scripts/build-server.sh && cd tauri && bun run tauri build",
+    "build": "./scripts/build-server.sh && ./scripts/build-local-app.sh",
     "build:server": "./scripts/build-server.sh",
     "update:icons": "./scripts/update-icons.sh",
     "lint": "biome lint .",
