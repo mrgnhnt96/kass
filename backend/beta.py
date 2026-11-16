@@ -8,8 +8,8 @@ applies right away, without restarting the server.
 
 Add a name to BETA_FEATURES and gate the feature with `enabled(name)`. To
 make it public, remove the name: every check still using it then raises,
-which shows what to clean up. The app keeps its own list in
-app/src/lib/betaFeatures.ts.
+which shows what to clean up. The app gates its side with
+`updater::beta_features_on()`.
 """
 
 from . import config

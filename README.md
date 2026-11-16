@@ -48,18 +48,18 @@ Requires an Apple Silicon Mac. Download the latest DMG from [Releases](https://g
 
 ## Development
 
-Built with Tauri (Rust), React and a bundled FastAPI server running Whisper and Qwen3 on MLX.
+Built in Rust with GPUI, with a bundled FastAPI server running Whisper and Qwen3 on MLX.
 
 ```bash
 brew install just
 just setup     # Python venv, dependencies and the pre-push hook
 just dev       # backend + desktop app
-just check     # lint, format and typecheck
+just check     # lint and format
 just test      # backend tests
 just install   # build and install to /Applications
 ```
 
-You'll need [Bun](https://bun.sh), [Rust](https://rustup.rs), [Python 3.12](https://python.org), Xcode and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). See [Build from source](https://kass.mrgnhnt.com/docs/build-from-source/) for signing and details.
+You'll need [Rust](https://rustup.rs), [Python 3.12](https://python.org), Xcode and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). See [Build from source](https://kass.mrgnhnt.com/docs/build-from-source/) for signing and details.
 
 `git push` runs a pre-push hook (`scripts/hooks/pre-push`) that lints and formats only the files the push changes. If it fixes anything, it stops the push and lists the files: commit them and push again. `SKIP=1 git push` skips it once.
 
@@ -67,12 +67,12 @@ To release, move the Unreleased notes in [CHANGELOG.md](CHANGELOG.md) under the 
 
 To try a feature before it's public, run `tb release cut v0.7.0-beta.1` from a clean `main`. Betas are published as prereleases: the website and the public update skip them, and only copies with **Settings › General › Beta updates** on install them. Betas keep their notes under Unreleased until the public release.
 
-To ship a feature in a public release without showing it yet, add its name to `BETA_FEATURES` in [app/src/lib/betaFeatures.ts](app/src/lib/betaFeatures.ts) and gate it with `useBetaFeature(name)` (the server has `beta.enabled(name)` in [backend/beta.py](backend/beta.py); Rust has `updater::beta_features`). It only shows for beta users. Remove the name to make it public; the compiler points at every gate to remove.
+To ship a feature in a public release without showing it yet, add its name to `BETA_FEATURES` in [backend/beta.py](backend/beta.py) and gate it with `beta.enabled(name)` on the server and `updater::beta_features_on()` in the app. It only shows for beta users. Remove the name to make it public; every server check still using it then raises.
 
 | Path       | What                                               |
 | ---------- | -------------------------------------------------- |
-| `app/`     | React frontend                                     |
-| `tauri/`   | Desktop shell and native dictation code (Rust)     |
+| `tauri/`   | The desktop app, its windows and dictation (Rust)  |
+| `crates/`  | The app's screens and shared Rust libraries        |
 | `backend/` | Python server: STT, refinement, captures, learning |
 | `site/`    | Website, docs and changelog                        |
 

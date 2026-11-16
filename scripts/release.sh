@@ -66,8 +66,8 @@ if [ -n "$latest" ] && [ "$(./scripts/newest-version.py "${latest#v}" "$version"
 fi
 
 ./scripts/set-version.sh "$version"
-git add package.json app/package.json tauri/package.json tauri/src-tauri/tauri.conf.json \
-  tauri/src-tauri/Cargo.toml tauri/src-tauri/Cargo.lock backend/pyproject.toml backend/__init__.py bun.lock
+git add tauri/src-tauri/tauri.conf.json tauri/src-tauri/Cargo.toml tauri/src-tauri/Cargo.lock \
+  backend/pyproject.toml backend/__init__.py
 git commit -m "chore: release $tag"
 git tag -a "$tag" -m "Kass $version"
 git push origin "$branch" "$tag"

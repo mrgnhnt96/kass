@@ -5,7 +5,6 @@
 # Directories
 backend_dir := "backend"
 tauri_dir := "tauri"
-app_dir := "app"
 venv := backend_dir / "venv"
 
 venv_bin := venv / "bin"
@@ -13,8 +12,8 @@ python := venv_bin / "python"
 
 # ─── Setup ────────────────────────────────────────────────────────────
 
-# Full project setup (python venv + JS deps + dev sidecar)
-setup: setup-python setup-js setup-hooks
+# Full project setup (python venv + git hooks)
+setup: setup-python setup-hooks
     @echo ""
     @echo "Setup complete! Run: just dev"
 
@@ -26,14 +25,10 @@ setup-python:
 setup-hooks:
     git config core.hooksPath scripts/hooks
 
-# Install JavaScript dependencies
-setup-js:
-    bun install
-
 # ─── Development ──────────────────────────────────────────────────────
 
-# Start backend (if not already running) + frontend for development
-dev: _ensure-venv _ensure-sidecar
+# Start backend (if not already running) + the desktop app for development
+dev: _ensure-venv
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -59,13 +54,12 @@ dev-backend: _ensure-venv
     {{ venv_bin }}/uvicorn backend.main:app --reload --port 17494
 
 # Start the desktop app only (backend must be running separately)
-dev-frontend: _ensure-sidecar
+dev-frontend:
     ./scripts/dev-app.sh
 
 # Kill all dev processes
 kill:
     -pkill -f "uvicorn backend.main:app" 2>/dev/null || true
-    -pkill -f "vite" 2>/dev/null || true
     @echo "Dev processes killed."
 
 # ─── Build ────────────────────────────────────────────────────────────
@@ -96,13 +90,8 @@ release version:
 
 # ─── Code Quality ────────────────────────────────────────────────────
 
-# Run all checks (JS + Python lint + format)
-check: check-js check-python check-rust
-
-# JS/TS: lint + format (Biome), then typecheck app and tauri (tsc)
-check-js:
-    bun run check
-    bun run typecheck
+# Run all checks (Python + Rust lint + format)
+check: check-python check-rust
 
 # Rust: format check (rustfmt) and lint (clippy, warnings fail)
 check-rust:
@@ -114,19 +103,16 @@ check-python: _ensure-venv
     {{ venv_bin }}/ruff check {{ backend_dir }}
     {{ venv_bin }}/ruff format --check {{ backend_dir }}
 
-# Lint with Biome (JS) + ruff (Python)
+# Lint with ruff (Python)
 lint: _ensure-venv
-    bun run lint
     {{ venv_bin }}/ruff check {{ backend_dir }}
 
-# Format with Biome (JS) + ruff (Python)
+# Format with ruff (Python)
 format: _ensure-venv
-    bun run format
     {{ venv_bin }}/ruff format {{ backend_dir }}
 
-# Fix lint + format issues (JS + Python)
+# Fix lint + format issues (Python)
 fix: _ensure-venv
-    bun run check:fix
     {{ venv_bin }}/ruff check {{ backend_dir }} --fix
     {{ venv_bin }}/ruff format {{ backend_dir }}
 
@@ -175,18 +161,14 @@ logs:
 # Clean build artifacts
 clean:
     rm -rf {{ tauri_dir }}/src-tauri/target/release
-    rm -rf {{ app_dir }}/dist
 
 # Clean Python venv and cache
 clean-python:
     rm -rf {{ venv }}
     find {{ backend_dir }} -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
-# Nuclear clean (everything including node_modules)
+# Nuclear clean (everything, Cargo's build cache too)
 clean-all: clean clean-python
-    rm -rf node_modules
-    rm -rf {{ app_dir }}/node_modules
-    rm -rf {{ tauri_dir }}/node_modules
     cd {{ tauri_dir }}/src-tauri && cargo clean
 
 # ─── Internal ─────────────────────────────────────────────────────────
@@ -199,8 +181,3 @@ _ensure-venv:
         echo "Python venv not found. Run: just setup"
         exit 1
     fi
-
-# Ensure Tauri dev sidecar placeholder exists
-[private]
-_ensure-sidecar:
-    bun run setup:dev

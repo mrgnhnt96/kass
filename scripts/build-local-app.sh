@@ -3,7 +3,7 @@
 # Backend binaries must already exist (run build-server.sh when backend code changes).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$PATH"
 # The same identity every build, so macOS keeps the app's privacy grants.
 identity=$(./scripts/signing-identity.sh)
 
@@ -35,14 +35,13 @@ import json, sys
 with open(sys.argv[1], 'w') as config:
     json.dump({'bundle': {'createUpdaterArtifacts': sys.argv[3] == 'True', 'macOS': {'signingIdentity': sys.argv[2]}}}, config)
 PY
-if command -v bun >/dev/null 2>&1; then
-  bun=(bun)
-else
-  bun=(npx --yes bun@1.3.8)
+# The Tauri CLI packs and signs the bundle (it only bundles; the app no
+# longer uses Tauri).
+tauri_cli=2.9.6
+if [ "$(cargo tauri --version 2>/dev/null)" != "tauri-cli $tauri_cli" ]; then
+  cargo install tauri-cli --version "$tauri_cli" --locked
 fi
-# The screens, then the app with them inside, then the Tauri CLI packs and
-# signs the bundle (it only bundles; the app no longer uses Tauri).
-"${bun[@]}" run --cwd tauri build
-(cd tauri/src-tauri && cargo build --release --features custom-protocol)
-"${bun[@]}" run --cwd tauri tauri bundle --bundles app --config "$config"
-codesign --verify --deep --strict tauri/src-tauri/target/release/bundle/macos/Kass.app
+cd tauri/src-tauri
+cargo build --release
+cargo tauri bundle --bundles app --config "$config"
+codesign --verify --deep --strict target/release/bundle/macos/Kass.app

@@ -66,7 +66,7 @@ cp "$SOURCE_ICON" "$ICON_BUNDLE/Assets/Kass.png"
 
 # 4. App, site and README
 echo "Writing app, site and README icons..."
-cp "$SOURCE_ICON" app/src/assets/kass-logo.png
+cp "$SOURCE_ICON" tauri/assets/kass-logo.png
 sips -s format png -z 512 512 "$SOURCE_ICON" --out site/public/icon.png >/dev/null
 sips -s format png -z 256 256 "$SOURCE_ICON" --out site/src/assets/icon.png >/dev/null
 # iOS masks the home-screen icon itself, so it must be a full-bleed square
