@@ -1,9 +1,10 @@
 //! The main window's frame in GPUI: the title bar strip, the left rail, the
 //! settings navigation and the status line. The screens not yet rebuilt in
 //! GPUI still come from the page, in a web view placed over the content
-//! area; the native ones (src/settings, Insights) hide it.
+//! area; the native ones (src/settings, Captures, Insights) hide it.
 
 pub mod bridge;
+mod captures;
 pub mod data;
 mod insights;
 pub mod logs;
@@ -15,6 +16,7 @@ use std::sync::Arc;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use kass_captures::CapturesPage;
 use kass_insights::{InsightsPage, Link};
 use kass_ui::{
     metrics, theme, AlertLevel, Sidebar, SidebarFooter, SidebarTab, TabAlert,
@@ -71,17 +73,19 @@ fn view(cx: &App) -> Option<Entity<MainShell>> {
 
 /// Show `path`: the page's router follows, and the shell shows it now.
 pub fn navigate(path: &str, search: &str, cx: &mut App) {
+    let mut search = search.to_string();
     if let Some(view) = view(cx) {
-        view.update(cx, |shell, cx| {
+        search = view.update(cx, |shell, cx| {
             shell.location = Location {
                 path: path.to_string(),
-                search: search.to_string(),
+                search,
             };
             shell.follow_link(cx);
             cx.notify();
+            shell.location.search.clone()
         });
     }
-    bridge::navigate(path, search);
+    bridge::navigate(path, &search);
 }
 
 /// The page's router moved (`shell_location`).
@@ -120,7 +124,7 @@ enum Placement {
 
 impl Placement {
     fn of(path: &str) -> Self {
-        if settings::Page::of(path).is_some() || active_tab(path) == "insights" {
+        if settings::Page::of(path).is_some() || is_native_tab(active_tab(path)) {
             Self::Hidden
         } else if settings::is_settings(path) {
             Self::Settings
@@ -146,6 +150,11 @@ impl Placement {
     }
 }
 
+/// Tabs of the rail the shell draws itself.
+fn is_native_tab(tab: &str) -> bool {
+    matches!(tab, "captures" | "insights")
+}
+
 /// The tab of the rail a path belongs to: its first segment.
 fn active_tab(path: &str) -> &str {
     path.trim_start_matches('/').split('/').next().unwrap_or("")
@@ -156,7 +165,12 @@ pub struct MainShell {
     location: Location,
     placed: Option<Placement>,
     settings: Settings,
+    captures: Entity<CapturesPage>,
+    /// The server the Captures page was made for; it starts over on another.
+    captures_server: String,
+    icons: Rc<insights::Icons>,
     insights: Entity<InsightsPage>,
+    window: AnyWindowHandle,
     logo: Arc<Image>,
     restarting: bool,
     _subscriptions: Vec<Subscription>,
@@ -166,16 +180,28 @@ impl MainShell {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let data = shell_data(cx);
         let subscriptions = vec![
-            cx.observe(&data, |_, _, cx| cx.notify()),
+            cx.observe_in(&data, window, |shell: &mut Self, data, window, cx| {
+                let server = data.read(cx).api.base_url();
+                if server != shell.captures_server {
+                    shell.captures = new_captures(&data, &shell.icons, window, cx);
+                    shell.captures_server = server;
+                }
+                cx.notify();
+            }),
             cx.observe_window_appearance(window, |_, window, cx| {
                 kass_ui::system_appearance_changed(window.appearance(), cx);
             }),
         ];
         kass_ui::system_appearance_changed(window.appearance(), cx);
         let api = data.read(cx).api.clone();
+        let icons = Rc::new(insights::Icons::default());
         Self {
             settings: Settings::new(data.clone(), window, cx),
-            insights: cx.new(|cx| InsightsPage::new(api, Rc::new(insights::Icons::default()), cx)),
+            captures: new_captures(&data, &icons, window, cx),
+            captures_server: api.base_url(),
+            insights: cx.new(|cx| InsightsPage::new(api, icons.clone(), cx)),
+            icons,
+            window: window.window_handle(),
             data,
             location: Location {
                 path: "/captures".into(),
@@ -191,14 +217,31 @@ impl MainShell {
         }
     }
 
-    /// A link into a native screen: Insights on an app or period.
+    /// A link into a native screen: Insights on an app or period, or a
+    /// capture in Captures.
     fn follow_link(&mut self, cx: &mut Context<Self>) {
-        if active_tab(&self.location.path) != "insights" {
-            return;
-        }
-        let link = Link::parse(&self.location.search);
-        if !link.is_empty() {
-            self.insights.update(cx, |page, cx| page.open(link, cx));
+        match active_tab(&self.location.path) {
+            "insights" => {
+                let link = Link::parse(&self.location.search);
+                if !link.is_empty() {
+                    self.insights.update(cx, |page, cx| page.open(link, cx));
+                }
+            }
+            "captures" => {
+                let Some(id) = captures::capture_in(&self.location.search) else {
+                    return;
+                };
+                // Dropped once followed, so the same link works again.
+                self.location.search.clear();
+                bridge::navigate(&self.location.path, "");
+                let (page, window) = (self.captures.downgrade(), self.window);
+                cx.defer(move |cx| {
+                    let _ = window.update(cx, |_, window, cx| {
+                        let _ = page.update(cx, |page, cx| page.open_capture(id, window, cx));
+                    });
+                });
+            }
+            _ => {}
         }
     }
 
@@ -283,6 +326,20 @@ impl MainShell {
     }
 }
 
+/// The Captures page, on the server the shell is using now.
+fn new_captures(
+    data: &Entity<ShellData>,
+    icons: &Rc<insights::Icons>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<CapturesPage> {
+    let api = data.read(cx).api.clone();
+    let host = Rc::new(captures::Host {
+        icons: icons.clone(),
+    });
+    cx.new(|cx| CapturesPage::new(api, host, window, cx))
+}
+
 /// What's wrong with the models, for the Models tab: a model dictation needs
 /// that isn't downloaded is an error; a failed download is a warning.
 fn model_alerts(data: &ShellData) -> Option<TabAlert> {
@@ -340,6 +397,8 @@ impl Render for MainShell {
                 .into_any_element()
         } else if active_tab(&path) == "insights" {
             self.insights.clone().into_any_element()
+        } else if active_tab(&path) == "captures" {
+            self.captures.clone().into_any_element()
         } else {
             div().into_any_element()
         };
@@ -414,7 +473,7 @@ mod tests {
         assert_eq!(Placement::of("/settings/logs"), Placement::Hidden);
         assert_eq!(Placement::of("/settings/dictation"), Placement::Settings);
         assert_eq!(Placement::of("/insights"), Placement::Hidden);
-        assert_eq!(Placement::of("/captures"), Placement::Content);
+        assert_eq!(Placement::of("/captures"), Placement::Hidden);
         assert_eq!(Placement::of("/models"), Placement::Content);
     }
 

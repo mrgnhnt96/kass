@@ -16,7 +16,7 @@ use kass_api::types::{
     CaptureResponse, CaptureSettings, CaptureSource, CorrectionLearningStatus, DictionaryEntry,
     FeedbackTarget, MovedCorrections, UsagePeriod, UsageStatsResponse, WritingStylesResponse,
 };
-use kass_api::{ApiClient, CaptureEvent, SseCancel};
+use kass_api::{ApiClient, CaptureEvent, Mac, SseCancel};
 use kass_i18n::tr;
 use kass_ui::{
     Button, Confirm, SelectOption, SelectOptions, Toast, ToastKind, close_dialog, dialog_footer,
@@ -134,6 +134,10 @@ pub struct CapturesPage {
     pub(crate) list_scroll: ScrollHandle,
     pub(crate) adding_entry: bool,
     pub(crate) deleting: bool,
+    /// Macs with an app listening to the server, this one included.
+    pub(crate) peers: Vec<Mac>,
+    /// A capture a link asked for, opened once the list has loaded.
+    linked: Option<String>,
     refreshing: Option<Task<()>>,
     events: SseCancel,
     _tasks: Vec<Task<()>>,
@@ -194,6 +198,8 @@ impl CapturesPage {
             list_scroll: ScrollHandle::new(),
             adding_entry: false,
             deleting: false,
+            peers: Vec::new(),
+            linked: None,
             refreshing: None,
             events: SseCancel::new(),
             _tasks: Vec::new(),
@@ -338,7 +344,61 @@ impl CapturesPage {
         }
         self.sync_style_select(window, cx);
         self.sync_search_placeholder(window, cx);
+        self.follow_link(window, cx);
         cx.notify();
+    }
+
+    /// Opens capture `id` (from the command palette or a `kass://` link):
+    /// once the list has loaded, it shows every app and clears the search so
+    /// the capture is in view. One older than the list is fetched and added.
+    pub fn open_capture(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.linked = Some(id);
+        self.follow_link(window, cx);
+    }
+
+    fn follow_link(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.linked.clone() else {
+            return;
+        };
+        if self.captures_load == Load::Loading {
+            return;
+        }
+        if self.captures.iter().any(|c| c.id == id) {
+            self.linked = None;
+            self.show_linked(id, window, cx);
+            return;
+        }
+        if self.filter != CaptureAppFilter::All {
+            self.set_filter(CaptureAppFilter::All, window, cx);
+            return;
+        }
+        self.linked = None;
+        self.call(
+            window,
+            cx,
+            {
+                let id = id.clone();
+                move |client| client.capture(&id)
+            },
+            move |page, result, window, cx| {
+                let Ok(capture) = result else {
+                    return;
+                };
+                if !page.captures.iter().any(|c| c.id == capture.id) {
+                    page.captures.push(capture);
+                }
+                page.show_linked(id, window, cx);
+            },
+        );
+    }
+
+    fn show_linked(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.query.is_empty() {
+            self.query.clear();
+            self.search.update(cx, |s, cx| s.set_value("", window, cx));
+        }
+        self.select(Some(id), window, cx);
+        window.focus(&self.focus, cx);
     }
 
     fn sync_search_placeholder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -635,6 +695,10 @@ impl CapturesPage {
                             }
                         }
                     }
+                    // While down, no Mac is known to be connected.
+                    if sender.send(CaptureEvent::Peers(Vec::new())).is_err() {
+                        return;
+                    }
                     for _ in 0..30 {
                         if cancel.is_cancelled() {
                             return;
@@ -649,21 +713,30 @@ impl CapturesPage {
                 cx.background_executor()
                     .timer(Duration::from_millis(400))
                     .await;
-                let (mut changed, mut learned) = (false, false);
+                let (mut changed, mut learned, mut peers) = (false, false, None);
                 loop {
                     match receiver.try_recv() {
                         Ok(CaptureEvent::Changed) => changed = true,
                         Ok(CaptureEvent::Learned) => learned = true,
+                        Ok(CaptureEvent::Peers(macs)) => peers = Some(macs),
                         Ok(_) => {}
                         Err(mpsc::TryRecvError::Empty) => break,
                         Err(mpsc::TryRecvError::Disconnected) => return,
                     }
                 }
-                if !(changed || learned) {
+                if !(changed || learned || peers.is_some()) {
                     continue;
                 }
                 let alive = page.update_in(cx, |page, window, cx| {
-                    page.refresh(changed, window, cx);
+                    if let Some(peers) = peers
+                        && page.peers != peers
+                    {
+                        page.peers = peers;
+                        cx.notify();
+                    }
+                    if changed || learned {
+                        page.refresh(changed, window, cx);
+                    }
                     if learned {
                         page.reload_reports(window, cx);
                     }
@@ -1000,18 +1073,24 @@ impl CapturesPage {
                 match result {
                     Ok(report) => {
                         let applied = page.host.apply_correction(
-                            &capture.id,
-                            &submission.before,
-                            &submission.expected_text,
+                            capture.id.clone(),
+                            submission.before.clone(),
+                            submission.expected_text.clone(),
+                            cx,
                         );
-                        if let Some(app) = applied {
+                        cx.spawn_in(window, async move |_, cx| {
+                            let Some(app) = applied.await else {
+                                return;
+                            };
                             let title = if app.is_empty() {
                                 tr!("captures-teach-updated-in-app")
                             } else {
                                 tr!("captures-teach-updated-in", app = app)
                             };
-                            show_toast(window, cx, Toast::new(title));
-                        }
+                            cx.update(|window, cx| show_toast(window, cx, Toast::new(title)))
+                                .ok();
+                        })
+                        .detach();
                         let report_id = report.id.clone();
                         add_round(&mut detail.reports, report, submission.replaces.as_deref());
                         detail.teach.saved_round(report_id);

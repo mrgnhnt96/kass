@@ -1,9 +1,10 @@
 //! What the Captures page asks of the app around it: the things only the
 //! app can do (fix text where it was typed, look up app icons, open other
-//! screens). Every method has a default that does nothing, so the page runs
-//! on its own, as in the example.
+//! screens). Which Mac this is comes from the API client, and which others
+//! are connected from the page's own event stream. Every method has a
+//! default that does nothing, so the page runs on its own, as in the example.
 
-use gpui_kit::{App, Image, Window};
+use gpui_kit::{App, Image, Task, Window};
 use std::sync::Arc;
 
 /// A screen the page links to.
@@ -23,24 +24,20 @@ pub enum Route {
 pub trait CapturesHost {
     /// Fixes the text where Kass typed it, if it still reads `before` there.
     /// `Some(app)` when it changed it (an empty name when the app is
-    /// unknown); `None` when it didn't.
-    fn apply_correction(&self, _capture_id: &str, _before: &str, _after: &str) -> Option<String> {
-        None
+    /// unknown); `None` when it didn't, or holds it until the app is back.
+    fn apply_correction(
+        &self,
+        _capture_id: String,
+        _before: String,
+        _after: String,
+        _cx: &mut App,
+    ) -> Task<Option<String>> {
+        Task::ready(None)
     }
 
     /// The icon of an installed app, by bundle id.
     fn app_icon(&self, _bundle_id: &str) -> Option<Arc<Image>> {
         None
-    }
-
-    /// This Mac's id, to tell its captures from another Mac's.
-    fn this_mac(&self) -> Option<String> {
-        None
-    }
-
-    /// Another Mac's app is connected to the same server.
-    fn other_mac_connected(&self) -> bool {
-        false
     }
 
     fn navigate(&self, _route: Route, _window: &mut Window, _cx: &mut App) {}

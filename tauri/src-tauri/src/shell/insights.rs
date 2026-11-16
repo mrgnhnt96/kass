@@ -1,4 +1,5 @@
-//! What the native Insights page needs from the app: installed apps' icons.
+//! What the native Insights page needs from the app: installed apps' icons,
+//! which Captures shares.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,6 +19,13 @@ pub struct Icons {
 
 impl InsightsHost for Icons {
     fn app_icon(&self, bundle_id: &str) -> Option<Arc<Image>> {
+        self.get(bundle_id)
+    }
+}
+
+impl Icons {
+    /// The icon of an installed app, by bundle id.
+    pub fn get(&self, bundle_id: &str) -> Option<Arc<Image>> {
         if let Some(known) = self.known.borrow().get(bundle_id) {
             return known.clone();
         }
