@@ -254,3 +254,45 @@ pub async fn model_rollback(proxy: &Proxy) -> Result<Result<Value, String>, Stri
         None => Ok(answer),
     })
 }
+
+/// Regrouping what each style learned after an app moves rereads its
+/// corrections, which takes longer than a lookup.
+const STYLES_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Writing styles or app assignments changed: the worker rereads them before
+/// the next dictation. `examples` drops the examples it grouped by style,
+/// `deleted` forgets what that style learned, and `regroup` sorts learned
+/// habits by style again. Awaited, so the page reloads the new state.
+pub async fn styles_changed(proxy: &Proxy, examples: bool, deleted: Option<&str>, regroup: bool) {
+    let body = json!({ "examples": examples, "deleted": deleted, "regroup": regroup });
+    if let Err(error) = post_within(proxy, "/worker/styles/changed", body, STYLES_TIMEOUT).await {
+        eprintln!("[server] couldn't tell the model worker the styles changed: {error}");
+    }
+}
+
+/// What only the worker knows about styles.
+#[derive(Debug, Default)]
+pub struct StylesState {
+    /// The largest prompt cache one style takes, in MB, once it's known.
+    pub cache_mb_per_style: Option<i64>,
+    /// The style a teach session is open on, which Kass's own window uses.
+    pub teaching_style: Option<String>,
+}
+
+/// Empty while the worker doesn't answer: the page then shows no cache size,
+/// and Kass's own window uses its assigned style.
+pub async fn styles_state(proxy: &Proxy) -> StylesState {
+    match post(proxy, "/worker/styles/state", json!({})).await {
+        Ok(answer) => StylesState {
+            cache_mb_per_style: answer.get("cache_mb_per_style").and_then(Value::as_i64),
+            teaching_style: answer
+                .get("teaching_style")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        },
+        Err(error) => {
+            eprintln!("[server] couldn't read the styles state from the model worker: {error}");
+            StylesState::default()
+        }
+    }
+}
