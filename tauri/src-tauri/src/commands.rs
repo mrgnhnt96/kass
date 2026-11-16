@@ -50,39 +50,17 @@ pub fn dispatch(_label: &str, cmd: &str, args: Value) -> Answer {
             });
             Ok(Value::Null)
         }),
-        "shell_sync" => now(|| {
-            crate::shell::set_synced(arg(a, "synced")?);
-            Ok(Value::Null)
-        }),
-        "shell_command_result" => now(|| {
-            crate::shell::bridge::answered(arg(a, "id")?, arg(a, "error")?);
-            Ok(Value::Null)
-        }),
+        "prefs_adopt" => now(|| Ok(crate::prefs::adopt(arg(a, "prefs")?))),
         "start_server" | "restart_server" => {
             let restart = cmd == "restart_server";
-            let parsed = (|| {
-                Ok((
-                    arg(a, "modelsDir")?,
-                    arg(a, "shareOnNetwork")?,
-                    arg(a, "sharedServer")?,
-                ))
-            })();
-            match parsed {
+            match arg(a, "modelsDir") {
                 Err(e) => Answer::Now(Err(e)),
-                Ok((models_dir, share_on_network, shared_server)) => Answer::later(async move {
+                Ok(models_dir) => Answer::later(async move {
                     let state = app.state::<ServerState>();
                     result(if restart {
-                        crate::restart_server(
-                            app,
-                            state,
-                            models_dir,
-                            share_on_network,
-                            shared_server,
-                        )
-                        .await
+                        crate::restart_server(app, state, models_dir).await
                     } else {
-                        crate::start_server(app, state, models_dir, share_on_network, shared_server)
-                            .await
+                        crate::start_server(app, state, models_dir).await
                     })
                 }),
             }

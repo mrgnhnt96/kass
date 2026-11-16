@@ -6,7 +6,8 @@ use gpui_kit::*;
 use kass_ui::{metrics, theme, Button, SettingRow, SettingSection};
 
 use super::toast_error;
-use crate::shell::{self, bridge};
+use crate::host::AppHandle;
+use crate::shell;
 
 /// A feature, and the screen where it's set up or used (`None`: ⌘K).
 const FEATURES: [(&str, Option<&str>); 9] = [
@@ -48,11 +49,13 @@ impl Render for FeaturesPage {
                         .child("⌘K")
                         .into_any_element(),
                 };
-                SettingRow::new(kass_i18n::t(&format!("settings-features-items-{key}-title")))
-                    .description(kass_i18n::t(&format!(
-                        "settings-features-items-{key}-description"
-                    )))
-                    .action(action)
+                SettingRow::new(kass_i18n::t(&format!(
+                    "settings-features-items-{key}-title"
+                )))
+                .description(kass_i18n::t(&format!(
+                    "settings-features-items-{key}-description"
+                )))
+                .action(action)
             }));
         let onboarding =
             SettingSection::new(kass_i18n::t("settings-features-onboarding-section-title")).child(
@@ -64,24 +67,15 @@ impl Render for FeaturesPage {
                             .small()
                             .label(kass_i18n::t("settings-features-onboarding-action"))
                             .on_click(|_, window, cx| {
-                                window
-                                    .spawn(cx, async move |cx| {
-                                        if let Err(e) =
-                                            bridge::send(bridge::Command::OpenOnboarding).await
-                                        {
-                                            let _ = cx.update(|window, cx| {
-                                                toast_error(
-                                                    kass_i18n::t(
-                                                        "settings-features-onboarding-title",
-                                                    ),
-                                                    &e,
-                                                    window,
-                                                    cx,
-                                                )
-                                            });
-                                        }
-                                    })
-                                    .detach();
+                                // From the first step again.
+                                if let Err(e) = crate::open_onboarding(AppHandle, false) {
+                                    toast_error(
+                                        kass_i18n::t("settings-features-onboarding-title"),
+                                        &e,
+                                        window,
+                                        cx,
+                                    );
+                                }
                             }),
                     ),
             );

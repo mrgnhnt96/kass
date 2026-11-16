@@ -16,7 +16,6 @@ use objc2_app_kit::NSWindow;
 
 use crate::host::webview::{self, OnClose, Spec};
 use crate::host::{self, AppHandle};
-use crate::shell::bridge::{self, Command};
 use crate::shell::{self, data};
 use crate::MAIN_WINDOW_LABEL;
 
@@ -229,7 +228,7 @@ fn commands(cx: &App) -> Vec<PaletteCommand> {
         }));
     }
     // Only the themes the user isn't already on.
-    let current = data.synced.theme.clone();
+    let current = data.prefs.theme.clone();
     for theme in ["light", "dark", "system"] {
         if current != theme {
             commands.push(command(
@@ -243,13 +242,8 @@ fn commands(cx: &App) -> Vec<PaletteCommand> {
     commands
 }
 
-/// Show it now; the page saves it and syncs it back.
+/// Show it now; every window follows once it's saved.
 fn set_theme(theme: &'static str, cx: &mut App) {
     kass_ui::set_theme_choice(data::theme_choice(theme), cx);
-    cx.spawn(async move |_| {
-        if let Err(e) = bridge::send(Command::SetTheme(theme)).await {
-            eprintln!("[palette] theme: {e}");
-        }
-    })
-    .detach();
+    crate::prefs::set_theme(theme);
 }

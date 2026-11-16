@@ -100,19 +100,11 @@ struct Config {
 impl Config {
     fn of(data: &ShellData) -> Self {
         let settings = data.settings.as_ref();
-        let server_url = match data.synced.server_url.trim() {
-            "" => LOCAL_SERVER_URL.to_string(),
-            url => url.to_string(),
-        };
         Self {
-            server_url,
+            server_url: data.server_url(),
             // While using another Mac's server, this Mac's own stands by:
             // a take moves there when that one doesn't answer.
-            fallback_url: data
-                .synced
-                .remote_server_url
-                .as_ref()
-                .map(|_| LOCAL_SERVER_URL.to_string()),
+            fallback_url: data.remote().map(|_| LOCAL_SERVER_URL.to_string()),
             input_device_id: settings.and_then(|s| s.input_device_id.clone()),
             // Until settings load, say nothing about the microphone so
             // dictation keeps the one it remembered from the last launch.
