@@ -24,6 +24,7 @@ async fn main() -> Result<(), String> {
         listen,
         worker,
         database,
+        shared_server: std::env::var("KASS_SHARED_SERVER").ok(),
     })
     .await?;
     println!("Kass API on {}, worker on {worker}", running.address());

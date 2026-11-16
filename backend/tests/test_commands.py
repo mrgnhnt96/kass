@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 from backend import config
 from backend.database import get_db
 from backend.database.models import Base, Capture, CaptureSettings
-from backend.models import CaptureSettingsResponse, CaptureSettingsUpdate
+from backend.models import CaptureSettingsResponse
 from backend.services import capture_stream, commands
 from backend.services.refinement import RefinementFlags, build_refinement_prompt
 
@@ -129,22 +129,6 @@ def test_transforms_are_validated_before_they_are_saved():
         commands.normalize_transforms([{"name": "!!!", "instruction": "x"}])
 
 
-def test_settings_reject_unsaveable_transforms():
-    from backend.services.settings import update_capture_settings
-
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as db:
-        patch = CaptureSettingsUpdate(
-            command_transforms=[{"name": "A", "instruction": "x"}, {"name": "a", "instruction": "y"}]
-        )
-        with pytest.raises(ValueError, match="called"):
-            update_capture_settings(db, patch.model_dump(exclude_unset=True))
-        row = update_capture_settings(db, {"command_transforms": [], "chord_command_keys": []})
-        assert row.command_transforms == []
-        assert row.chord_command_keys == []
-
-
 def test_new_installs_get_the_default_transforms_and_command_chord():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -186,7 +170,8 @@ def test_databases_with_the_retired_command_model_column_keep_working(tmp_path):
     from sqlalchemy import text
 
     from backend.database.migrations import run_migrations
-    from backend.services.settings import get_capture_settings, update_capture_settings
+    from backend.services.settings import get_capture_settings
+    from backend.tests.settings_rows import save_settings
 
     engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
     Base.metadata.create_all(engine)
@@ -197,7 +182,7 @@ def test_databases_with_the_retired_command_model_column_keep_working(tmp_path):
     run_migrations(engine)
     with Session(engine) as db:
         get_capture_settings(db)
-        row = update_capture_settings(db, {"llm_model": "4B"})
+        row = save_settings(db, llm_model="4B")
         assert CaptureSettingsResponse.model_validate(row).llm_model == "4B"
 
 

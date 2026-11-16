@@ -1,49 +1,32 @@
-"""User settings endpoints — capture/refine defaults."""
+"""What the Rust server needs from the worker when settings change.
+
+The settings routes and the capture_settings row live in the Rust server; the
+worker reads the row for dictation, sweeps history past the retention window,
+and switches the speech model's shared adapter.
+"""
 
 import asyncio
-from typing import get_args
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter
+from pydantic import BaseModel
 
-from .. import models
-from ..database import get_db
-from ..services import history_retention, settings as settings_service
+from ..services import history_retention, shared_adapters
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(prefix="/worker", tags=["worker"])
 
 
-@router.get("/captures", response_model=models.CaptureSettingsResponse)
-async def get_capture_settings_endpoint(db: Session = Depends(get_db)):
-    return settings_service.get_capture_settings(db)
+class SharedAdaptersSwitched(BaseModel):
+    enabled: bool
 
 
-@router.put("/captures", response_model=models.CaptureSettingsResponse)
-async def update_capture_settings_endpoint(
-    patch: models.CaptureSettingsUpdate,
-    db: Session = Depends(get_db),
-):
-    try:
-        saved = settings_service.update_capture_settings(db, patch.model_dump(exclude_unset=True))
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    if patch.history_retention_days is not None:
-        # A shorter window applies now, not at the next hourly sweep, so the
-        # captures list the app reloads after saving is already trimmed.
-        await asyncio.to_thread(history_retention.sweep)
-    return saved
+@router.post("/history/sweep")
+async def sweep_history():
+    """Delete captures past a newly chosen window now, not at the next hourly sweep."""
+    deleted = await asyncio.to_thread(history_retention.sweep)
+    return {"deleted": deleted}
 
 
-@router.get("/captures/retention-status", response_model=models.RetentionStatusResponse)
-async def retention_status_endpoint(db: Session = Depends(get_db)):
-    """Whether to ask before history retention first deletes anything, and how much it would."""
-    days, confirmed, expiring = history_retention.status(db)
-    return models.RetentionStatusResponse(days=days, confirmed=confirmed, expiring=expiring)
-
-
-@router.get("/captures/retention-preview", response_model=models.RetentionPreviewResponse)
-async def retention_preview_endpoint(days: int, db: Session = Depends(get_db)):
-    """How many captures keeping ``days`` of history would delete now."""
-    if days not in get_args(models.HistoryRetentionDays):
-        raise HTTPException(status_code=422, detail="days must be one of the retention choices")
-    return models.RetentionPreviewResponse(days=days, expiring=history_retention.count_expiring(db, days))
+@router.post("/shared-adapters/switched")
+async def shared_adapters_switched(request: SharedAdaptersSwitched):
+    shared_adapters.switched(request.enabled)
+    return {"ok": True}

@@ -1,4 +1,4 @@
-"""Dictionaries: scopes, what a dictation's merged dictionary does, and the API (docs/plans/DICTIONARIES.md)."""
+"""Dictionaries: scopes, what a dictation's merged dictionary does, and the worker's routes (docs/plans/DICTIONARIES.md)."""
 
 import re
 import statistics
@@ -12,8 +12,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.database import get_db, session as database_session
-from backend.database.models import Base
+from backend.database import session as database_session
+from backend.database.models import Base, DictionaryEntry
 from backend.services import dictionary, phrase_seams, styles
 from backend.services.correction_rules import MAX_TEXT
 from backend.services.dictionary import Entry
@@ -309,181 +309,53 @@ def storage(monkeypatch):
 
 
 @pytest.fixture
-def client(storage):
+def worker(storage):
     from backend.routes.dictionary import router
 
     app = FastAPI()
     app.include_router(router)
-
-    def db():
-        with storage() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = db
     return TestClient(app)
 
 
 GLOBAL = [{"scope": "global"}]
 
 
-def add(client, written, spoken=None, places=GLOBAL):
-    return client.post("/dictionary", json={"written": written, "spoken": spoken, "places": places})
-
-
-def test_the_api_adds_lists_and_rejects_the_same_word_twice(client):
-    added = add(client, "  Voicebox ", "voice  box")
-    assert added.status_code == 200
-    assert added.json() | {"id": "x", "created_at": None} == {
-        "id": "x",
-        "written": "Voicebox",
-        "spoken": "voice box",
-        "places": [{"scope": "global", "scope_id": None, "app_name": None}],
-        "created_at": None,
-        "match_sound": True,
-        "source": "user",
-        "phrase": False,
-    }
-
-    duplicate = add(client, "VoiceBox", "Voice Box")
-    assert duplicate.status_code == 409
-    assert duplicate.json()["detail"] == "That word is already in the dictionary for everywhere"
-
-    # The same word said is fine in another place.
-    in_app = add(client, "voicebox", "voice box", [{"scope": "app", "scope_id": ZED, "app_name": "Zed"}])
-    assert in_app.status_code == 200
-    assert [e["written"] for e in client.get("/dictionary").json()["entries"]] == ["voicebox", "Voicebox"]
-
-
-def test_the_api_adds_a_phrase_that_keeps_its_lines(client):
-    added = client.post(
-        "/dictionary",
-        json={"written": "\n Thanks,  \n\n  Morgan \n", "spoken": " sign  off ", "places": GLOBAL, "phrase": True},
-    )
-    assert added.status_code == 200
-    assert (added.json()["written"], added.json()["spoken"], added.json()["phrase"]) == (
-        "Thanks,\n\nMorgan",
-        "sign off",
-        True,
-    )
-    assert dictionary.for_app(ZED).apply("Sign off") == "Thanks,\n\nMorgan"
-    # Longer than a word may be, not than a phrase may.
-    assert (
-        client.post(
-            "/dictionary", json={"written": "x" * 900, "spoken": "long one", "places": GLOBAL, "phrase": True}
-        ).status_code
-        == 200
-    )
-    assert (
-        client.post(
-            "/dictionary", json={"written": "x" * 1001, "spoken": "too long", "places": GLOBAL, "phrase": True}
-        ).status_code
-        == 400
-    )
-
-    # A phrase is said: it needs what you say, and keeps it.
-    assert client.post("/dictionary", json={"written": "hi", "places": GLOBAL, "phrase": True}).status_code == 400
-    patched = client.patch(f"/dictionary/{added.json()['id']}", json={"spoken": None})
-    assert patched.status_code == 400
-    edited = client.patch(f"/dictionary/{added.json()['id']}", json={"written": "Cheers,\nMorgan"})
-    assert (edited.json()["written"], edited.json()["phrase"]) == ("Cheers,\nMorgan", True)
-
-
-def test_the_api_rejects_empty_words_and_unknown_places(client):
-    assert add(client, "   ").status_code == 400
-    assert add(client, "Zed", places=[{"scope": "style", "scope_id": "nope"}]).status_code == 400
-    assert add(client, "Zed", places=[{"scope": "app"}]).status_code == 400
-    assert add(client, "Zed", places=[]).status_code == 422
-    assert add(client, "x" * 201).status_code == 400
-
-
-def test_one_entry_applies_in_several_places_and_edits_them_together(client, storage):
+def add(storage, written, spoken=None, places=GLOBAL):
     with storage() as db:
-        code = styles.create_style(db, "Code")
-    slack = {"scope": "app", "scope_id": SLACK, "app_name": "Slack"}
-    added = add(client, "VoiceBox", "voice box", [{"scope": "style", "scope_id": code.id}, slack]).json()
-
-    assert [p["scope"] for p in added["places"]] == ["style", "app"]
-    assert len(client.get("/dictionary").json()["entries"]) == 1
-    assert dictionary.for_app(SLACK).apply("voice box") == "VoiceBox"
-    assert dictionary.for_app(ZED).apply("voice box") == "voice box"
-
-    # Moving it: Slack stays, the style goes, Zed joins; the words change everywhere.
-    zed = {"scope": "app", "scope_id": ZED, "app_name": "Zed"}
-    edited = client.patch(f"/dictionary/{added['id']}", json={"written": "Voicebox", "places": [slack, zed]}).json()
-    assert [(p["scope"], p["scope_id"]) for p in edited["places"]] == [("app", SLACK), ("app", ZED)]
-    assert edited["created_at"] == added["created_at"]
-    assert dictionary.for_app(ZED).apply("voice box") == "Voicebox"
-
-    # Everywhere replaces the rest.
-    everywhere = client.patch(f"/dictionary/{added['id']}", json={"places": [zed, {"scope": "global"}]}).json()
-    assert everywhere["places"] == [{"scope": "global", "scope_id": None, "app_name": None}]
-
-    assert client.delete(f"/dictionary/{added['id']}").json() == {"deleted": True}
-    assert client.get("/dictionary").json()["entries"] == []
+        return dictionary.add_group(db, written, spoken, places)
 
 
-def test_moving_an_entry_onto_the_same_word_is_refused(client):
-    zed = {"scope": "app", "scope_id": ZED, "app_name": "Zed"}
-    add(client, "VoiceBox", "voice box", [zed])
-    other = add(client, "Voicebox", "voice box").json()
-
-    moved = client.patch(f"/dictionary/{other['id']}", json={"places": [zed]})
-
-    assert moved.status_code == 409
-    assert moved.json()["detail"] == "That word is already in the dictionary for Zed"
+def listed(storage):
+    with storage() as db:
+        return dictionary.list_groups(db)
 
 
-def test_editing_and_deleting_change_what_dictation_uses(client):
-    added = add(client, "Kubernetes").json()
+def test_the_worker_reloads_the_dictionary_the_server_changed(storage, worker):
+    assert dictionary.for_app(ZED).terms == ()
+    with storage() as db:
+        db.add(DictionaryEntry(id="rust", scope="global", scope_id="", written="Kubernetes", key="kubernetes"))
+        db.commit()
+    assert dictionary.for_app(ZED).terms == ()
+
+    assert worker.post("/worker/dictionary/changed").json() == {"ok": True}
+
     assert dictionary.for_app(ZED).terms == ("Kubernetes",)
 
-    edited = client.patch(f"/dictionary/{added['id']}", json={"written": "k8s", "spoken": "kates"})
-    assert edited.json()["spoken"] == "kates"
-    assert dictionary.for_app(ZED).apply("run kates") == "run k8s"
 
-    assert client.delete(f"/dictionary/{added['id']}").json() == {"deleted": True}
-    assert dictionary.for_app(ZED).terms == ()
-    assert client.delete(f"/dictionary/{added['id']}").status_code == 404
+def test_the_worker_counts_terms_with_whisper_or_leaves_it_to_the_server(worker, monkeypatch):
+    from backend.routes import dictionary as routes
 
+    monkeypatch.setattr(routes, "_tokenizer", lambda: None)
+    assert worker.post("/worker/dictionary/token-counts", json={"terms": ["Zed"]}).json() == {"counts": None}
 
-def test_an_app_gets_its_styles_entries_and_resolved_shows_overrides(client, storage):
-    with storage() as db:
-        code = styles.create_style(db, "Code")
-        styles.assign_app(db, ZED, "Zed", code.id)
-    add(client, "VoiceBox", "voice box")
-    add(client, "mrgnhnt96", places=[{"scope": "style", "scope_id": code.id}])
-    mine = add(client, "Voicebox", "voice box", [{"scope": "app", "scope_id": ZED}]).json()
+    class Tokenizer:
+        def encode(self, text):
+            return text.split(" ")
 
-    resolved = client.get("/dictionary/resolved", params={"bundle_id": ZED}).json()
-
-    assert [(e["scope"], e["written"], e["overridden"]) for e in resolved["entries"]] == [
-        ("app", "Voicebox", False),
-        ("style", "mrgnhnt96", False),
-        ("global", "VoiceBox", True),
-    ]
-    assert resolved["entries"][0]["id"] == mine["id"]
-    assert resolved["prompt_terms"] == ["mrgnhnt96", "Voicebox"]
-    assert resolved["dropped_terms"] == []
-    # Slack is in the default style: only the global entry.
-    assert dictionary.for_app(SLACK).apply("voice box") == "VoiceBox"
-
-
-def test_the_api_turns_sound_matching_off_and_on(client):
-    added = add(client, "Meghan").json()
-    assert added["match_sound"] is True
-    assert added["source"] == "user"
-    assert dictionary.for_app(ZED).apply("Megan") == "Meghan"
-
-    edited = client.patch(f"/dictionary/{added['id']}", json={"match_sound": False}).json()
-    assert edited["match_sound"] is False
-    assert dictionary.for_app(ZED).apply("Megan") == "Megan"
-    resolved = client.get("/dictionary/resolved", params={"bundle_id": ZED}).json()
-    assert [(e["written"], e["match_sound"]) for e in resolved["entries"]] == [("Meghan", False)]
-    assert resolved["prompt_terms"] == ["Meghan"]
-
-    exact = client.post("/dictionary", json={"written": "Saggar", "places": GLOBAL, "match_sound": False}).json()
-    assert exact["match_sound"] is False
-    assert dictionary.for_app(ZED).apply("Sagar") == "Sagar"
+    monkeypatch.setattr(routes, "_tokenizer", Tokenizer)
+    counted = worker.post("/worker/dictionary/token-counts", json={"terms": ["Zed", "voice box"]}).json()
+    assert counted == {"counts": [2, 3]}
+    assert worker.post("/worker/dictionary/token-counts", json={"terms": []}).json() == {"counts": []}
 
 
 @pytest.mark.parametrize(
@@ -517,21 +389,21 @@ def test_a_spelled_fix_adds_a_word_that_never_respells_others(storage):
         assert found.apply("meghan met Megan and Meagan") == "Meghan met Megan and Meagan"
 
 
-def test_a_spelled_fix_twice_adds_the_word_once(storage, client):
+def test_a_spelled_fix_twice_adds_the_word_once(storage):
     with storage() as db:
         first = dictionary.add_spelled_word("MEGHAN", ZED, db=db)
     with storage() as db:
         again = dictionary.add_spelled_word("meghan", SLACK, "Meghan", db)
 
     assert again.id == first.id
-    [listed] = client.get("/dictionary").json()["entries"]
-    assert (listed["written"], listed["match_sound"], listed["source"]) == ("Meghan", False, "spoken_fix")
+    [group] = listed(storage)
+    assert (group.written, group.match_sound, group.source) == ("Meghan", False, "spoken_fix")
 
 
-def test_a_spelled_fix_never_changes_the_users_entry(storage, client):
-    mine = add(client, "Meghan").json()
+def test_a_spelled_fix_never_changes_the_users_entry(storage):
+    mine = add(storage, "Meghan")
     zed = {"scope": "app", "scope_id": ZED, "app_name": "Zed"}
-    theirs = add(client, "Saggar", "sagar", [zed]).json()
+    theirs = add(storage, "Saggar", "sagar", [zed])
 
     with storage() as db:
         kept = dictionary.add_spelled_word("MEGHAN", ZED, db=db)
@@ -540,30 +412,31 @@ def test_a_spelled_fix_never_changes_the_users_entry(storage, client):
         # In Zed, "sagar" already writes something else; that stays.
         assert dictionary.add_spelled_word("SAGAR", ZED, db=db) is None
 
-    assert kept.id == mine["id"]
+    assert kept.id == mine.id
     assert (kept.match_sound, kept.source) == (True, "user")
     assert elsewhere.written == "Sagar"
     assert dictionary.for_app(ZED).apply("sagar met Megan") == "Saggar met Meghan"
-    entries = {e["id"]: e for e in client.get("/dictionary").json()["entries"]}
-    assert (entries[mine["id"]]["match_sound"], entries[theirs["id"]]["spoken"]) == (True, "sagar")
+    groups = {group.id: group for group in listed(storage)}
+    assert (groups[mine.id].match_sound, groups[theirs.id].spoken) == (True, "sagar")
 
 
-def test_a_spelled_fix_an_entry_already_said_that_way_is_left_alone(storage, client):
-    add(client, "Megan", "meghan")
+def test_a_spelled_fix_an_entry_already_said_that_way_is_left_alone(storage):
+    add(storage, "Megan", "meghan")
 
     with storage() as db:
         assert dictionary.add_spelled_word("MEGHAN", ZED, db=db) is None
 
-    assert [e["written"] for e in client.get("/dictionary").json()["entries"]] == ["Megan"]
+    assert [group.written for group in listed(storage)] == ["Megan"]
 
 
-def test_editing_a_spelled_fix_makes_it_the_users(storage, client):
+def test_editing_a_spelled_fix_makes_it_the_users(storage):
     with storage() as db:
         added = dictionary.add_spelled_word("MEGHAN", db=db)
 
-    edited = client.patch(f"/dictionary/{added.id}", json={"match_sound": True}).json()
+    with storage() as db:
+        edited = dictionary.update_group(db, added.id, {"match_sound": True})
 
-    assert (edited["match_sound"], edited["source"]) == (True, "user")
+    assert (edited.match_sound, edited.source) == (True, "user")
 
 
 def test_a_spelled_fix_without_a_word_or_database_adds_nothing(storage, monkeypatch):
@@ -710,9 +583,9 @@ def test_corrected_words_are_added_everywhere_and_fix_the_mistake(storage):
         assert dictionary.list_entries(db) == []
 
 
-def test_a_corrected_word_never_changes_the_users_entry(storage, client):
-    add(client, "Picto")
+def test_a_corrected_word_never_changes_the_users_entry(storage):
+    add(storage, "Picto")
     with storage() as db:
         assert dictionary.add_corrected_words(db, "Pikto works", "Picto works", "report-1") == []
-    [listed] = client.get("/dictionary").json()["entries"]
-    assert (listed["written"], listed["source"]) == ("Picto", "user")
+    [group] = listed(storage)
+    assert (group.written, group.source) == ("Picto", "user")

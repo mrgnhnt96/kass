@@ -64,6 +64,11 @@ impl Proxy {
     pub fn worker(&self) -> SocketAddr {
         self.worker
     }
+
+    /// The pooled connections to the worker, for calls of this server's own.
+    pub(crate) fn client(&self) -> &Client<HttpConnector, Body> {
+        &self.client
+    }
 }
 
 /// A route still answered by the worker, for every method: CORS preflights

@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend import config
-from backend.database import get_db, session as database_session
+from backend.database import session as database_session
 from backend.database.migrations import run_migrations
 from backend.database.models import Base, Capture, CaptureFeedback, KnownName, RetiredCapture
 from backend.services import (
@@ -24,7 +24,8 @@ from backend.services import (
     usage_stats,
     writing_style,
 )
-from backend.services.settings import get_capture_settings, update_capture_settings
+from backend.services.settings import get_capture_settings
+from backend.tests.settings_rows import save_settings
 
 SLACK, MAIL = "com.tinyspeck.slackmacgap", "com.apple.mail"
 NOW = datetime.utcnow()
@@ -48,7 +49,7 @@ def storage(tmp_path, monkeypatch):
 
 def keep(storage, days):
     with storage() as db:
-        update_capture_settings(db, {"history_retention_days": days})
+        save_settings(db, history_retention_days=days)
 
 
 def add(storage, capture_id, days_ago, app=MAIL, words=5, source="dictation", said=None, meant=None):
@@ -281,29 +282,15 @@ def test_the_current_take_and_captures_in_use_stay(storage):
     assert ids(storage) == {"current"}
 
 
-def test_preview_counts_what_a_shorter_window_would_delete(storage):
+def test_the_worker_sweeps_when_the_server_saves_a_shorter_window(storage):
     for days_ago in (100, 60, 20, 5, 0):
         add(storage, f"c{days_ago}", days_ago)
+    keep(storage, 30)
     app = FastAPI()
     from backend.routes.settings import router
 
     app.include_router(router)
-
-    def db():
-        with storage() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = db
-    client = TestClient(app)
-    expiring = {
-        days: client.get(f"/settings/captures/retention-preview?days={days}").json()["expiring"]
-        for days in (7, 30, 90, 365, 0)
-    }
-    assert expiring == {7: 3, 30: 2, 90: 1, 365: 0, 0: 0}
-    assert client.get("/settings/captures/retention-preview?days=12").status_code == 422
-    assert client.put("/settings/captures", json={"history_retention_days": 12}).status_code == 422
-    # Saving a shorter window sweeps right away.
-    assert client.put("/settings/captures", json={"history_retention_days": 30}).status_code == 200
+    assert TestClient(app).post("/worker/history/sweep").json() == {"deleted": 2}
     assert ids(storage) == {"c20", "c5", "c0"}
 
 
@@ -323,7 +310,7 @@ def test_confirming_the_window_lets_the_sweep_delete(storage):
     history_retention.sweep()
     with storage() as db:
         # Keeping the default, as the launch dialog's first choice does.
-        assert update_capture_settings(db, {"history_retention_days": 30}).history_retention_confirmed
+        assert save_settings(db, history_retention_days=30).history_retention_confirmed
     assert history_retention.sweep() == 1
     assert ids(storage) == {"new"}
 
@@ -349,23 +336,3 @@ def test_nothing_to_delete_confirms_without_asking(storage):
     add(storage, "later", -40)
     assert history_retention.sweep(now=NOW + timedelta(days=40)) == 1
     assert ids(storage) == {"later"}
-
-
-def test_the_status_endpoint_says_whether_to_ask(storage):
-    add(storage, "old", 40)
-    add(storage, "new", 1)
-    app = FastAPI()
-    from backend.routes.settings import router
-
-    app.include_router(router)
-
-    def db():
-        with storage() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = db
-    client = TestClient(app)
-    assert client.get("/settings/captures/retention-status").json() == {"days": 30, "confirmed": False, "expiring": 1}
-    assert client.put("/settings/captures", json={"history_retention_days": 90}).json()["history_retention_confirmed"]
-    assert client.get("/settings/captures/retention-status").json() == {"days": 90, "confirmed": True, "expiring": 0}
-    assert ids(storage) == {"old", "new"}

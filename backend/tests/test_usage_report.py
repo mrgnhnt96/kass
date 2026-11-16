@@ -1,7 +1,7 @@
 """Daily usage reports: which days go, catching up missed days, opting out and back in."""
 
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.database.models import Base, Capture, TakeReport
 from backend.services import settings as settings_service, usage_report
+from backend.tests.settings_rows import save_settings
 
 # Thursday, Oct 1 2026, in Denver (MDT, UTC-6).
 TODAY = date(2026, 10, 1)
@@ -31,7 +32,7 @@ def db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        settings_service.update_capture_settings(session, {"onboarding_completed": True})
+        save_settings(session, onboarding_completed=True)
         yield session
     engine.dispose()
 
@@ -137,7 +138,7 @@ def test_a_failed_upload_is_retried_next_time(db):
 
 
 def test_waits_for_onboarding(db):
-    settings_service.update_capture_settings(db, {"onboarding_completed": False})
+    save_settings(db, onboarding_completed=False)
     dictate(db, datetime(2026, 9, 30, 16, 0))
     sink = Sink()
     assert usage_report.report(db, today=TODAY, post=sink) == 0
@@ -145,7 +146,7 @@ def test_waits_for_onboarding(db):
 
 
 def test_days_with_sharing_off_are_never_sent(db):
-    settings_service.update_capture_settings(db, {"share_usage": False})
+    save_settings(db, share_usage=False)
     dictate(db, datetime(2026, 9, 29, 16, 0))
     take(db, datetime(2026, 9, 29, 16, 0))
     sink = Sink()
@@ -154,10 +155,8 @@ def test_days_with_sharing_off_are_never_sent(db):
     # Take reports from days that will never be sent aren't kept.
     assert db.query(TakeReport).count() == 0
 
-    # Turned back on today: only from today onward.
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(settings_service, "date", type("D", (), {"today": staticmethod(lambda: TODAY)}))
-        settings_service.update_capture_settings(db, {"share_usage": True})
+    # Turned back on today: the server marks yesterday sent, so only today onward goes.
+    save_settings(db, share_usage=True, usage_sent_through=(TODAY - timedelta(days=1)).isoformat())
     dictate(db, datetime(2026, 10, 1, 16, 0))
     usage_report.report(db, today=date(2026, 10, 2), post=sink)
     assert [e["event_properties"]["day"] for e in sink.events] == ["2026-10-01"]

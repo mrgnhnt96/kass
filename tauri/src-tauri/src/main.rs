@@ -458,6 +458,14 @@ struct Api {
     running: kass_server::Running,
     /// Listening for other Macs too, not just this one.
     shared: bool,
+    /// The other Mac's server it stood in for when it started.
+    shared_server: Option<String>,
+}
+
+impl Api {
+    fn serves(&self, share: bool, shared_server: &Option<String>) -> bool {
+        self.shared == share && self.shared_server == *shared_server
+    }
 }
 
 /// Whether the server should listen for other Macs on the network: asked
@@ -985,11 +993,16 @@ async fn free_api_port() -> Result<(), String> {
 
 /// Serve Kass's API on `SERVER_PORT`, in front of the worker: to this Mac
 /// only, or to other Macs on the network too while `share` is on. One
-/// already listening for the right Macs keeps running.
+/// already listening for the right Macs, standing in for the same server,
+/// keeps running.
 async fn serve_api(app: &tauri::AppHandle, state: &ServerState, share: bool) -> Result<(), String> {
+    let shared_server = state.shared_server.lock().unwrap().clone();
     let previous = {
         let mut api = state.api.lock().unwrap();
-        if api.as_ref().is_some_and(|api| api.shared == share) {
+        if api
+            .as_ref()
+            .is_some_and(|api| api.serves(share, &shared_server))
+        {
             return Ok(());
         }
         api.take()
@@ -1011,6 +1024,7 @@ async fn serve_api(app: &tauri::AppHandle, state: &ServerState, share: bool) -> 
         listen: (host, SERVER_PORT).into(),
         worker: (std::net::Ipv4Addr::LOCALHOST, WORKER_PORT).into(),
         database: data_dir.join("kass.db"),
+        shared_server: shared_server.clone(),
     })
     .await;
     let mut api = state.api.lock().unwrap();
@@ -1020,11 +1034,18 @@ async fn serve_api(app: &tauri::AppHandle, state: &ServerState, share: bool) -> 
             *api = Some(Api {
                 running,
                 shared: share,
+                shared_server,
             });
             Ok(())
         }
         // Another start got there first.
-        Err(_) if api.as_ref().is_some_and(|api| api.shared == share) => Ok(()),
+        Err(_)
+            if api
+                .as_ref()
+                .is_some_and(|api| api.serves(share, &shared_server)) =>
+        {
+            Ok(())
+        }
         Err(error) => Err(error),
     }
 }

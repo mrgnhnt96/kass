@@ -243,22 +243,6 @@ class Transform(BaseModel):
 HistoryRetentionDays = Literal[0, 7, 30, 90, 365]
 
 
-class RetentionPreviewResponse(BaseModel):
-    """How many captures a retention of ``days`` would delete now."""
-
-    days: HistoryRetentionDays
-    expiring: int
-
-
-class RetentionStatusResponse(BaseModel):
-    """Whether the app should ask before history retention first deletes anything."""
-
-    days: HistoryRetentionDays
-    confirmed: bool
-    # Captures the current window would delete once confirmed.
-    expiring: int
-
-
 class CaptureSettingsResponse(BaseModel):
     """Server-persisted defaults for the capture / refine flow."""
 
@@ -298,47 +282,6 @@ class CaptureSettingsResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class CaptureSettingsUpdate(BaseModel):
-    """Partial update for capture settings — every field is optional."""
-
-    stt_model: str | None = Field(default=None, pattern="^(base|small|medium|large|turbo)$")
-    language: str | None = None
-    auto_refine: bool | None = None
-    llm_model: str | None = Field(default=None, pattern="^(0\\.6B|1\\.7B|4B)$")
-    smart_cleanup: bool | None = None
-    self_correction: bool | None = None
-    preserve_technical: bool | None = None
-    punctuation_style: str | None = Field(default=None, pattern="^(standard|casual|learned)$")
-    allow_auto_paste: bool | None = None
-    live_text: bool | None = None
-    voice_edits: bool | None = None
-    expressive: bool | None = None
-    sound_cues: bool | None = None
-    sound_cue_volume: float | None = Field(default=None, ge=0, le=1)
-    input_device_id: str | None = Field(
-        default=None, description="Configured audio input deviceId (None means default microphone)"
-    )
-    hotkey_enabled: bool | None = None
-    chord_push_to_talk_keys: list[str] | None = Field(default=None, min_length=1, max_length=6)
-    chord_toggle_to_talk_keys: list[str] | None = Field(default=None, min_length=1, max_length=6)
-    # Empty turns Command Mode's chord off.
-    chord_command_keys: list[str] | None = Field(default=None, max_length=6)
-    command_transforms: list[Transform] | None = None
-    history_retention_days: HistoryRetentionDays | None = None
-    onboarding_completed: bool | None = None
-    discard_audio: bool | None = None
-    share_usage: bool | None = None
-    shared_adapters: bool | None = None
-
-
-class TakeReportRequest(BaseModel):
-    """``POST /usage/takes``: how one take ended, for usage reports."""
-
-    mode: Literal["dictation", "command"]
-    outcome: Literal["delivered", "failed"]
-    latency_ms: int | None = Field(default=None, ge=0)
 
 
 class CommandRunRequest(BaseModel):
@@ -419,24 +362,6 @@ class HealthResponse(BaseModel):
     started_at: float | None = None  # Server process start, Unix seconds
     pid: int | None = None
     peak_memory_mb: int | None = None  # Peak resident memory of the server process
-
-
-class DirectoryCheck(BaseModel):
-    """Health status for a single directory."""
-
-    path: str
-    exists: bool
-    writable: bool
-    error: str | None = None
-
-
-class FilesystemHealthResponse(BaseModel):
-    """Response model for filesystem health check."""
-
-    healthy: bool
-    disk_free_mb: float | None = None
-    disk_total_mb: float | None = None
-    directories: list[DirectoryCheck]
 
 
 class ModelStatus(BaseModel):
@@ -703,72 +628,3 @@ class CaptureFeedbackResponse(BaseModel):
     snapshot: CaptureResponse
     source: CaptureFeedbackSource
     created_at: datetime
-
-
-class DictionaryPlace(BaseModel):
-    """Where a dictionary entry applies: everywhere, a writing style, or an app."""
-
-    scope: Literal["global", "style", "app"]
-    scope_id: str | None = Field(default=None, max_length=255)
-    app_name: str | None = Field(default=None, max_length=255)
-
-
-class DictionaryEntryModel(BaseModel):
-    """A word dictation should get right, in every place it applies (docs/plans/DICTIONARIES.md)."""
-
-    id: str
-    written: str
-    spoken: str | None = None
-    places: list[DictionaryPlace]
-    created_at: datetime | None = None
-    # Off: only fixed where spelled exactly, never swapped in for a word that sounds like it.
-    match_sound: bool = True
-    # "spoken_fix": added by itself when the user spelled the word aloud to fix it.
-    # "correction": added by itself when the user corrected the word in a transcript.
-    source: Literal["user", "spoken_fix", "correction"] = "user"
-    # A phrase: ``written`` is text inserted exactly where ``spoken`` is said.
-    phrase: bool = False
-
-
-class DictionaryResponse(BaseModel):
-    entries: list[DictionaryEntryModel]
-
-
-class DictionaryEntryCreate(BaseModel):
-    written: str = Field(max_length=2000)
-    spoken: str | None = Field(default=None, max_length=1000)
-    places: list[DictionaryPlace] = Field(min_length=1, max_length=100)
-    match_sound: bool = True
-    phrase: bool = False
-
-
-class DictionaryEntryUpdate(BaseModel):
-    written: str | None = Field(default=None, max_length=2000)
-    spoken: str | None = Field(default=None, max_length=1000)
-    places: list[DictionaryPlace] | None = Field(default=None, min_length=1, max_length=100)
-    match_sound: bool | None = None
-
-
-class ResolvedDictionaryEntry(BaseModel):
-    """One place an entry applies to an app from; ``id`` is the entry's."""
-
-    id: str
-    scope: Literal["global", "style", "app"]
-    scope_id: str | None = None
-    app_name: str | None = None
-    written: str
-    spoken: str | None = None
-    created_at: datetime | None = None
-    match_sound: bool = True
-    phrase: bool = False
-    # A more specific place has an entry for the same word said.
-    overridden: bool = False
-
-
-class ResolvedDictionaryResponse(BaseModel):
-    """What one app's dictations use."""
-
-    entries: list[ResolvedDictionaryEntry]
-    # Terms Whisper is prompted with, and those that don't fit its prompt.
-    prompt_terms: list[str]
-    dropped_terms: list[str]

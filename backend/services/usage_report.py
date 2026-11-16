@@ -268,11 +268,6 @@ def run_once() -> None:
         logger.info("Sent %d day(s) of usage", sent)
 
 
-def record_take(db: Session, mode: str, outcome: str, latency_ms: int | None) -> None:
-    db.add(TakeReport(mode=mode, outcome=outcome, latency_ms=latency_ms))
-    db.commit()
-
-
 async def periodic_job():
     """A minute after startup, so it never competes with loading models, then hourly."""
     await asyncio.sleep(FIRST_RUN_DELAY_SECONDS)

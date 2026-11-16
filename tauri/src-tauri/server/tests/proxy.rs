@@ -126,6 +126,7 @@ async fn start_server(worker: SocketAddr) -> kass_server::Running {
         listen: "127.0.0.1:0".parse().unwrap(),
         worker,
         database: std::env::temp_dir().join("kass-proxy-test-unused.db"),
+        shared_server: None,
     })
     .await
     .unwrap()
@@ -149,7 +150,7 @@ async fn passes_a_request_through_unchanged() {
     let server = start_server(start_worker().await).await;
     let response = raw_request(
         server.address(),
-        "PATCH /dictionary/7?mac=abc&x=%20y HTTP/1.1\r\nHost: studio.local:17493\r\n\
+        "PATCH /models/7?mac=abc&x=%20y HTTP/1.1\r\nHost: studio.local:17493\r\n\
          X-Kass-Mac: mac-1\r\nX-Forwarded-For: 10.0.0.9\r\nContent-Length: 5\r\n\
          Connection: close\r\n\r\nhello",
     )
@@ -158,7 +159,7 @@ async fn passes_a_request_through_unchanged() {
     assert!(response.to_lowercase().contains("x-worker: yes"));
     let body = json_body(&response);
     assert_eq!(body["method"], "PATCH");
-    assert_eq!(body["uri"], "/dictionary/7?mac=abc&x=%20y");
+    assert_eq!(body["uri"], "/models/7?mac=abc&x=%20y");
     assert_eq!(body["body"], "hello");
     assert_eq!(body["host"], "studio.local:17493");
     assert_eq!(body["mac"], "mac-1");

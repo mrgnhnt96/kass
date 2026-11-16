@@ -1,0 +1,77 @@
+-- The tables the settings, retention and usage routes read, as the worker's
+-- SQLAlchemy models create them (backend/database/models.py).
+CREATE TABLE capture_settings (
+	id INTEGER NOT NULL,
+	stt_model VARCHAR NOT NULL,
+	language VARCHAR NOT NULL,
+	auto_refine BOOLEAN NOT NULL,
+	llm_model VARCHAR NOT NULL,
+	smart_cleanup BOOLEAN NOT NULL,
+	self_correction BOOLEAN NOT NULL,
+	preserve_technical BOOLEAN NOT NULL,
+	punctuation_style VARCHAR NOT NULL,
+	allow_auto_paste BOOLEAN NOT NULL,
+	live_text BOOLEAN NOT NULL,
+	voice_edits BOOLEAN NOT NULL,
+	expressive BOOLEAN NOT NULL,
+	sound_cues BOOLEAN NOT NULL,
+	sound_cue_volume FLOAT NOT NULL,
+	input_device_id VARCHAR,
+	hotkey_enabled BOOLEAN NOT NULL,
+	chord_push_to_talk_keys JSON NOT NULL,
+	chord_toggle_to_talk_keys JSON NOT NULL,
+	chord_command_keys JSON NOT NULL,
+	command_transforms JSON NOT NULL,
+	history_retention_days INTEGER NOT NULL,
+	history_retention_confirmed BOOLEAN NOT NULL,
+	onboarding_completed BOOLEAN NOT NULL,
+	discard_audio BOOLEAN NOT NULL,
+	share_usage BOOLEAN NOT NULL,
+	usage_device_id VARCHAR,
+	usage_sent_through VARCHAR,
+	shared_adapters BOOLEAN NOT NULL,
+	updated_at DATETIME,
+	PRIMARY KEY (id)
+);
+CREATE TABLE captures (
+	id VARCHAR NOT NULL,
+	audio_path VARCHAR NOT NULL,
+	source VARCHAR NOT NULL,
+	language VARCHAR,
+	duration_ms INTEGER,
+	transcript_raw TEXT NOT NULL,
+	transcript_refined TEXT,
+	stt_model VARCHAR,
+	llm_model VARCHAR,
+	refinement_flags TEXT,
+	refinement_review TEXT,
+	app_bundle_id VARCHAR,
+	app_name VARCHAR,
+	command_selection TEXT,
+	command_instruction TEXT,
+	command_transform VARCHAR,
+	style_id VARCHAR,
+	app_category VARCHAR,
+	teaches_style_id VARCHAR,
+	mac_id VARCHAR,
+	mac_name VARCHAR,
+	audio_deleted BOOLEAN NOT NULL,
+	prosody TEXT,
+	created_at DATETIME,
+	PRIMARY KEY (id)
+);
+CREATE TABLE take_reports (
+	id INTEGER NOT NULL,
+	created_at DATETIME NOT NULL,
+	mode VARCHAR NOT NULL,
+	outcome VARCHAR NOT NULL,
+	latency_ms INTEGER,
+	PRIMARY KEY (id)
+);
+CREATE TABLE sync_changes (
+	kind VARCHAR NOT NULL,
+	ref_id VARCHAR NOT NULL,
+	deleted BOOLEAN NOT NULL,
+	changed_at DATETIME NOT NULL,
+	PRIMARY KEY (kind, ref_id)
+);
