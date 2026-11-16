@@ -15,7 +15,9 @@ http-body-util = "0.1"
 libc = "0.2"
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# float_roundtrip: numbers read back exactly as Python wrote them (the
+# measurements saved with captures, `stream::prosody`).
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 tokio = { version = "1", features = ["net", "rt", "macros", "sync", "io-util", "time"] }
 uuid = { version = "1", features = ["v4"] }
 # Silero voice detection for streamed dictation (`stream::speech`). Links a
@@ -23,6 +25,8 @@ uuid = { version = "1", features = ["v4"] }
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-native"] }
 # The dictation's recording, written as it arrives (`stream::intake`).
 hound = "3.5"
+# difflib, to find written words among the words heard (`stream::prosody`).
+kass-text = { path = "../text" }
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

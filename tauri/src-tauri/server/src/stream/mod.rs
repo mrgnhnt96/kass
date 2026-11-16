@@ -6,7 +6,10 @@
 //! - `intake`: the start message, PCM frames, the recording, pause cuts and
 //!   the phrase windows sent to recognition.
 //! - `models`: the worker's Whisper and Qwen3 calls the session makes.
+//! - `prosody`: how the dictation was said: "!" and drawn-out words written
+//!   into its text, and its measurements saved to learn from edits.
 
 pub mod intake;
 pub mod models;
+pub mod prosody;
 pub mod speech;
