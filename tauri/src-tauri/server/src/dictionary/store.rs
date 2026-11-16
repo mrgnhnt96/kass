@@ -801,6 +801,64 @@ pub fn add_spelled_word(
     Ok(added.ok())
 }
 
+/// Keep the terms a correction fixed (`kass_text::dictionary::corrected_words`),
+/// everywhere.
+///
+/// The user corrected the word once; dictation should not get it wrong
+/// again, with no second step. A word a dictionary entry already writes, or
+/// a misheard form an entry already replaces, is left to that entry: it is
+/// the user's. `added_by` is the report, so withdrawing it removes them.
+/// Returns the entries added.
+pub fn add_corrected_words(
+    conn: &mut Connection,
+    original: &str,
+    corrected: &str,
+    added_by: &str,
+    sync: Sync,
+) -> rusqlite::Result<Vec<Group>> {
+    let found = kass_text::dictionary::corrected_words(original, corrected);
+    add_corrected(conn, found, added_by, sync)
+}
+
+fn add_corrected(
+    conn: &mut Connection,
+    found: Vec<(String, Option<String>)>,
+    added_by: &str,
+    sync: Sync,
+) -> rusqlite::Result<Vec<Group>> {
+    if found.is_empty() {
+        return Ok(Vec::new());
+    }
+    let added = write(conn, |tx| {
+        let mut groups = Vec::new();
+        for (written, spoken) in found {
+            let entries = list_entries(tx)?;
+            let (wanted, heard) = (normal(&written), spoken.as_deref().map(normal));
+            let has = entries.iter().any(|entry| {
+                normal(&entry.written) == wanted
+                    || heard.as_ref().is_some_and(|heard| {
+                        normal(entry.spoken.as_deref().unwrap_or("")) == *heard
+                    })
+            });
+            if has {
+                continue;
+            }
+            let mut new = NewGroup::new(written.clone(), spoken, vec![Place::global().into()]);
+            new.source = "correction".into();
+            new.added_by = Some(added_by.into());
+            match add_in(tx, new, sync)? {
+                Ok(group) => groups.push(group),
+                Err(error) => eprintln!(
+                    "[server] couldn't add the corrected word {written:?} to the dictionary: {}",
+                    error.message()
+                ),
+            }
+        }
+        Ok(Ok::<_, EditError>(groups))
+    })?;
+    Ok(added.unwrap_or_default())
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -1235,5 +1293,63 @@ pub(crate) mod tests {
                 .to_string(),
             "2026-03-04 05:06:07"
         );
+    }
+
+    const SLACK: &str = "com.tinyspeck.slackmacgap";
+
+    fn corrected(original: &str, corrected: &str) -> Vec<(String, Option<String>)> {
+        let common: kass_text::dictionary::Common = std::sync::Arc::new(|word: &str| {
+            ["open", "code", "works", "and", "the", "is"].contains(&word.to_lowercase().as_str())
+        });
+        kass_text::dictionary::corrected_words_with(original, corrected, common)
+    }
+
+    #[test]
+    fn corrected_words_are_added_everywhere_and_fix_the_mistake() {
+        let mut conn = database();
+        let found = corrected("open Clard code", "open Claude code");
+        let added = add_corrected(&mut conn, found, "report-1", Sync::default()).unwrap();
+        assert_eq!(added.len(), 1);
+        let group = &added[0];
+        assert_eq!(
+            (group.written.as_str(), group.spoken.as_deref()),
+            ("Claude", Some("Clard"))
+        );
+        assert!(group.match_sound);
+        assert_eq!(group.source, "correction");
+        assert_eq!(group.places, vec![Place::global()]);
+
+        let entries = list_entries(&conn).unwrap();
+        let dictionary = crate::dictionary::matching::build(&resolve(&entries, Some(SLACK), None));
+        assert_eq!(dictionary.apply("Clard and claude"), "Claude and Claude");
+
+        assert!(delete_added_by(&mut conn, "report-1", Sync::default()).unwrap());
+        assert!(list_entries(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_corrected_word_never_changes_the_users_entry() {
+        let mut conn = database();
+        add(&mut conn, "Picto", None, global()).unwrap();
+        let found = corrected("Pikto works", "Picto works");
+        assert!(!found.is_empty());
+        assert!(add_corrected(&mut conn, found, "report-1", Sync::default())
+            .unwrap()
+            .is_empty());
+        let entries = list_entries(&conn).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            group(&rows(&conn, &entries[0].group_id).unwrap()).source,
+            "user"
+        );
+    }
+
+    #[test]
+    fn a_correction_with_no_new_words_adds_nothing() {
+        let mut conn = database();
+        let found = corrected("the code is open", "the code is open");
+        assert!(add_corrected(&mut conn, found, "report-1", Sync::default())
+            .unwrap()
+            .is_empty());
     }
 }

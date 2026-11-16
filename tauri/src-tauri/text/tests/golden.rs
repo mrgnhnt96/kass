@@ -2,12 +2,14 @@
 //! (`tests/golden/python.json`, made by `tests/golden/record.py`) and checks
 //! kass-text returns the same.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use kass_text::content_check::{self, Verdict};
 use kass_text::correction_rules::{self, Rule, Rules};
+use kass_text::dictionary::{self, Common, Dictionary, Term};
 use kass_text::lexicon::{self, WordData};
 use kass_text::phrase_seams::{self, Names};
 use kass_text::refinement::{self, Flags};
@@ -199,6 +201,49 @@ fn planned_value(planned: &Planned) -> Value {
     })
 }
 
+/// The words recorded as common, deciding common words the way Python did.
+fn common(args: &Value) -> Common {
+    let words: HashSet<String> = strings(&args["common"]).into_iter().collect();
+    Arc::new(move |word: &str| words.contains(word))
+}
+
+fn string_pairs(value: &Value) -> Vec<(String, String)> {
+    value
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|pair| {
+            (
+                pair[0].as_str().unwrap().to_string(),
+                pair[1].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
+fn dictionary_value(found: &Dictionary) -> Value {
+    let mut replacements: Vec<[&str; 2]> = found
+        .replacements
+        .iter()
+        .map(|(spoken, written)| [spoken.as_str(), written.as_str()])
+        .collect();
+    replacements.sort();
+    let mut exact: Vec<&String> = found.exact.iter().collect();
+    exact.sort();
+    let spellings: Vec<[&str; 2]> = found
+        .spellings_in_order()
+        .map(|(key, term)| [key, term])
+        .collect();
+    json!({
+        "replacements": replacements,
+        "spellings": spellings,
+        "exact": exact,
+        "terms": found.terms,
+        "names": found.names,
+        "span": found.span,
+    })
+}
+
 /// The Rust result for one recorded call, or `None` for a function not ported.
 fn call(function: &str, args: &Value, examples: &[Value]) -> Option<Value> {
     let value = match function {
@@ -243,6 +288,47 @@ fn call(function: &str, args: &Value, examples: &[Value]) -> Option<Value> {
                 json!({"outcome": summary.outcome, "added": summary.added, "missing": summary.missing, "reasons": summary.reasons})
             })
         }
+
+        "Dictionary.apply" => {
+            let parts = &args["dictionary"];
+            let found = Dictionary::of(
+                string_pairs(&parts["replacements"]),
+                string_pairs(&parts["spellings"]),
+                strings(&parts["exact"]),
+                common(args),
+            );
+            json!(found.apply(text(args, "text")))
+        }
+        "dictionary.build" => {
+            let active: Vec<Term> = args["resolved"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|entry| !entry["overridden"].as_bool().unwrap())
+                .map(|entry| Term {
+                    written: text(entry, "written").to_string(),
+                    spoken: opt_text(entry, "spoken").map(String::from),
+                    match_sound: entry["match_sound"].as_bool().unwrap(),
+                    phrase: entry["phrase"].as_bool().unwrap(),
+                })
+                .collect();
+            let exact_spelling = args["exact_spelling"].as_bool().unwrap_or(true);
+            dictionary_value(&dictionary::build(&active, exact_spelling))
+        }
+        "dictionary.misheard_terms" => json!(dictionary::misheard_terms_with(
+            text(args, "original"),
+            text(args, "corrected"),
+            &*common(args),
+        )),
+        "dictionary.corrected_words" => json!(dictionary::corrected_words_with(
+            text(args, "original"),
+            text(args, "corrected"),
+            common(args),
+        )),
+        "dictionary.sounds_alike" => json!(dictionary::sounds_alike(
+            text(args, "heard"),
+            text(args, "written")
+        )),
 
         "dictation_edits.apply_dictation_edits" => json!(dictation_edits::apply_dictation_edits(
             text(args, "text"),
@@ -417,6 +503,17 @@ fn call(function: &str, args: &Value, examples: &[Value]) -> Option<Value> {
 
         "spelling.join_spelling" => json!(spelling::join_spelling(text(args, "text"))),
         "spelling.respell" => json!(spelling::respell(text(args, "text"))),
+        "spelling.distance" => json!(spelling::distance(
+            text(args, "a"),
+            text(args, "b"),
+            args["limit"].as_u64().unwrap() as usize
+        )),
+        "spelling.sounds_like" => json!(spelling::sounds_like(
+            text(args, "letters"),
+            text(args, "word")
+        )),
+        "spelling.shaped" => json!(spelling::shaped(text(args, "letters"), text(args, "like"))),
+        "spelling.is_spelled" => json!(spelling::is_spelled(text(args, "text"))),
 
         "refinement.collapse_repetitive_artifacts" => {
             json!(refinement::collapse_repetitive_artifacts(

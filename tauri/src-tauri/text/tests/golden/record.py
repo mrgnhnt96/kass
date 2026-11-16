@@ -19,6 +19,7 @@ import argparse
 import dataclasses
 import functools
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from backend.services import (  # noqa: E402
     correction_notes,
     correction_rules,
     dictation_edits,
+    dictionary,
     laughter,
     personal_examples,
     phrase_seams,
@@ -75,6 +77,7 @@ TESTS = [
     "test_writing_styles.py",
     "test_spelling.py",
     "test_correction_learning.py",
+    "test_dictionary.py",
 ]
 
 
@@ -88,6 +91,13 @@ def _value(value):
         return {str(key): _value(item) for key, item in value.items()}
     if isinstance(value, content_check.Verdict):
         return value.to_dict()
+    if isinstance(value, dictionary.Dictionary):
+        return {
+            **_dictionary(value),
+            "terms": list(value.terms),
+            "names": sorted(value.names),
+            "span": value.span,
+        }
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         fields = {field.name: _value(getattr(value, field.name)) for field in dataclasses.fields(value)}
         return {"type": type(value).__name__, **fields}
@@ -180,6 +190,42 @@ def _check_state(said, refined, flags, examples=None, retractable=""):
     return {**_learned_punctuation(), "examples": _pairs(shown)}
 
 
+def _dictionary(found):
+    """What ``Dictionary.apply`` reads: spellings keep their order."""
+    return {
+        "replacements": sorted([spoken, written] for spoken, written in found.replacements.items()),
+        "spellings": [[key, term] for key, term in found.spellings.items()],
+        "exact": sorted(found.exact),
+    }
+
+
+def _resolved(resolved):
+    return [
+        {
+            "written": entry.written,
+            "spoken": entry.spoken,
+            "match_sound": entry.match_sound,
+            "phrase": entry.phrase,
+            "overridden": overridden,
+        }
+        for entry, overridden in resolved
+    ]
+
+
+def _common(*texts):
+    """The words of ``texts`` that are common words, as matching decides it."""
+    words = {word for text in texts for word in re.findall(dictionary._WORD, text)}
+    return {"common": sorted(word for word in words if phrase_seams._common_word(word))}
+
+
+def _apply_state(found, text):
+    return _common(text, *found.spellings.values())
+
+
+def _correction_state(original, corrected):
+    return _common(original, corrected)
+
+
 # How each recorded function's arguments are written, by position (missing
 # ones keep their default) and keyword, and what else it reads.
 SIGNATURES = {
@@ -243,6 +289,15 @@ SIGNATURES = {
     ),
     (spelling, "join_spelling"): (["text"], {}),
     (spelling, "respell"): (["text"], {}),
+    (spelling, "distance"): (["a", "b", "limit"], {}),
+    (spelling, "sounds_like"): (["letters", "word"], {}),
+    (spelling, "shaped"): (["letters", "like"], {}),
+    (spelling, "is_spelled"): (["text"], {}),
+    (dictionary, "build"): ([("resolved", _resolved), "exact_spelling"], {}),
+    (dictionary.Dictionary, "apply"): ([("dictionary", _dictionary), "text"], {}, _apply_state),
+    (dictionary, "misheard_terms"): (["original", "corrected"], {}, _correction_state),
+    (dictionary, "corrected_words"): (["original", "corrected"], {}, _correction_state),
+    (dictionary, "sounds_alike"): (["heard", "written"], {}),
     (refinement, "collapse_repetitive_artifacts"): (["text", "min_run"], {}),
     (refinement, "strip_stt_artifacts"): (["text"], {}),
     (refinement, "prepare_refinement"): (
@@ -400,6 +455,32 @@ _HABITS = [
 ]
 
 
+def _entry(written, spoken=None, match_sound=True, phrase=False):
+    return dictionary.Entry(
+        id=written, scope="global", scope_id=None, app_name=None, written=written,
+        spoken=spoken, created_at=None, match_sound=match_sound, phrase=phrase,
+    )
+
+
+# A dictionary like a user's: names, a replacement, a phrase, a name only
+# ever spelled exactly, and common words.
+_ENTRIES = [
+    (_entry("Kubernetes"), False),
+    (_entry("Kass"), False),
+    (_entry("Voicebox", "voice box"), False),
+    (_entry("Meghan", match_sound=False), False),
+    (_entry("Tailscale"), False),
+    (_entry("GitHub"), False),
+    (_entry("Claude"), False),
+    (_entry("Midna"), False),
+    (_entry("Morgan"), False),
+    (_entry("Slack"), False),
+    (_entry("Talk soon, Morgan", "sign off", phrase=True), False),
+    (_entry("TestFlight", "test flight"), False),
+    (_entry("Kass", "cass"), True),
+]
+
+
 def _run_stages(raw: str, cleaned: str) -> None:
     """Every stage over one parity take, the way a dictation would run them."""
     for text in (raw, cleaned):
@@ -447,6 +528,21 @@ def _run_stages(raw: str, cleaned: str) -> None:
     refinement.keep_said_punctuation(raw, cleaned)
     writing_style.observe(cleaned, raw, deliberate=True)
     writing_style.observe(cleaned, cleaned.lower().rstrip("."), deliberate=False)
+    for exact_spelling in (True, False):
+        found = dictionary.build(_ENTRIES, exact_spelling=exact_spelling)
+        for text in (raw, cleaned, cleaned.lower()):
+            found.apply(text)
+    dictionary.corrected_words(raw, cleaned)
+    for said, term in dictionary.misheard_terms(raw, cleaned):
+        dictionary.sounds_alike(said, term)
+    for text in (raw, cleaned):
+        spelling.is_spelled(text)
+    pairs = cleaned.split()[:12]
+    for a, b in zip(pairs, pairs[1:]):
+        letters = re.sub(r"\W", "", a).upper()
+        spelling.distance(a.lower(), b.lower(), 3)
+        spelling.sounds_like(letters, b)
+        spelling.shaped(letters, b)
     words = raw.split()
     # A pause after some of the words: at most a dozen places, spread out.
     for cut in sorted({1 + i * (len(words) - 1) // 12 for i in range(12)} - {len(words)}):
