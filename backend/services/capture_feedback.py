@@ -75,11 +75,15 @@ def save_feedback(capture_id: str, request: CaptureFeedbackCreate, db: Session, 
 
 
 def _learn_words(row: CaptureFeedback, original: str, db: Session) -> None:
+    learn_words(row.source, original, row.expected_text, row.id, db)
+
+
+def learn_words(source: str, original: str, expected: str, report_id: str, db: Session) -> None:
     """A word the user fixed goes in the dictionary, so it isn't misheard again."""
-    if row.source not in CaptureFeedback.EXPLICIT_SOURCES:
+    if source not in CaptureFeedback.EXPLICIT_SOURCES:
         return
     try:
-        dictionary.add_corrected_words(db, original, row.expected_text, row.id)
+        dictionary.add_corrected_words(db, original, expected, report_id)
     except Exception:
         logger.warning("Could not add the corrected words to the dictionary", exc_info=True)
 

@@ -23,11 +23,11 @@ pub fn now() -> NaiveDateTime {
     chrono::Utc::now().naive_utc()
 }
 
-fn stored(at: NaiveDateTime) -> String {
+pub(crate) fn stored(at: NaiveDateTime) -> String {
     at.format(STORED).to_string()
 }
 
-fn parse_stored(text: Option<String>) -> Option<NaiveDateTime> {
+pub(crate) fn parse_stored(text: Option<String>) -> Option<NaiveDateTime> {
     let text = text?;
     ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f"]
         .iter()
