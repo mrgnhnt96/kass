@@ -1,0 +1,19 @@
+[package]
+name = "mlxbench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+mlx-rs = { version = "0.34.0", features = ["safetensors"] }
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+hound = "3"
+flate2 = { version = "1", features = ["zlib"] }
+
+[profile.release]
+debug = 1
