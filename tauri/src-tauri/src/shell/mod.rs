@@ -1,18 +1,21 @@
 //! The main window's frame in GPUI: the title bar strip, the left rail, the
 //! settings navigation and the status line. The screens not yet rebuilt in
 //! GPUI still come from the page, in a web view placed over the content
-//! area; the native ones (src/settings) hide it.
+//! area; the native ones (src/settings, Insights) hide it.
 
 pub mod bridge;
 pub mod data;
+mod insights;
 pub mod logs;
 pub(crate) mod status;
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use kass_insights::{InsightsPage, Link};
 use kass_ui::{
     metrics, theme, AlertLevel, Sidebar, SidebarFooter, SidebarTab, TabAlert,
 };
@@ -74,6 +77,7 @@ pub fn navigate(path: &str, search: &str, cx: &mut App) {
                 path: path.to_string(),
                 search: search.to_string(),
             };
+            shell.follow_link(cx);
             cx.notify();
         });
     }
@@ -87,6 +91,7 @@ pub fn set_location(location: Location) {
             view.update(cx, |shell, cx| {
                 if shell.location != location {
                     shell.location = location;
+                    shell.follow_link(cx);
                     cx.notify();
                 }
             });
@@ -115,7 +120,7 @@ enum Placement {
 
 impl Placement {
     fn of(path: &str) -> Self {
-        if settings::Page::of(path).is_some() {
+        if settings::Page::of(path).is_some() || active_tab(path) == "insights" {
             Self::Hidden
         } else if settings::is_settings(path) {
             Self::Settings
@@ -151,6 +156,7 @@ pub struct MainShell {
     location: Location,
     placed: Option<Placement>,
     settings: Settings,
+    insights: Entity<InsightsPage>,
     logo: Arc<Image>,
     restarting: bool,
     _subscriptions: Vec<Subscription>,
@@ -166,8 +172,10 @@ impl MainShell {
             }),
         ];
         kass_ui::system_appearance_changed(window.appearance(), cx);
+        let api = data.read(cx).api.clone();
         Self {
             settings: Settings::new(data.clone(), window, cx),
+            insights: cx.new(|cx| InsightsPage::new(api, Rc::new(insights::Icons::default()), cx)),
             data,
             location: Location {
                 path: "/captures".into(),
@@ -180,6 +188,17 @@ impl MainShell {
             )),
             restarting: false,
             _subscriptions: subscriptions,
+        }
+    }
+
+    /// A link into a native screen: Insights on an app or period.
+    fn follow_link(&mut self, cx: &mut Context<Self>) {
+        if active_tab(&self.location.path) != "insights" {
+            return;
+        }
+        let link = Link::parse(&self.location.search);
+        if !link.is_empty() {
+            self.insights.update(cx, |page, cx| page.open(link, cx));
         }
     }
 
@@ -319,6 +338,8 @@ impl Render for MainShell {
             self.settings
                 .render(&path, &search, window, cx)
                 .into_any_element()
+        } else if active_tab(&path) == "insights" {
+            self.insights.clone().into_any_element()
         } else {
             div().into_any_element()
         };
@@ -392,6 +413,7 @@ mod tests {
         assert_eq!(Placement::of("/settings/transcription"), Placement::Hidden);
         assert_eq!(Placement::of("/settings/logs"), Placement::Hidden);
         assert_eq!(Placement::of("/settings/dictation"), Placement::Settings);
+        assert_eq!(Placement::of("/insights"), Placement::Hidden);
         assert_eq!(Placement::of("/captures"), Placement::Content);
         assert_eq!(Placement::of("/models"), Placement::Content);
     }

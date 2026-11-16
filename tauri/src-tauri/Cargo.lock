@@ -4133,6 +4133,7 @@ dependencies = [
  "include_dir",
  "kass-api",
  "kass-i18n",
+ "kass-insights",
  "kass-server",
  "kass-ui",
  "kass-writing-style",
@@ -4184,6 +4185,17 @@ version = "0.1.0"
 dependencies = [
  "fluent-bundle",
  "unic-langid",
+]
+
+[[package]]
+name = "kass-insights"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui-kit",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
 ]
 
 [[package]]

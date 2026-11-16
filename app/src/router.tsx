@@ -130,11 +130,21 @@ const reportsRoute = createRoute({
   component: ReportsTab,
 });
 
+type InsightsSearch = { app?: string; apps?: 'all' | 'unknown'; period?: string };
+
 // Insights route: usage stats, for all apps or the one picked in Captures.
+// The native shell draws Insights itself (crates/kass-insights).
 const insightsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/insights',
-  component: InsightsTab,
+  component: nativeShell ? () => null : InsightsTab,
+  // What the native page opens on (kass-insights link.rs); this page reads
+  // the shared app filter and period instead.
+  validateSearch: (search: Record<string, unknown>): InsightsSearch => ({
+    app: typeof search.app === 'string' ? search.app : undefined,
+    apps: search.apps === 'all' || search.apps === 'unknown' ? search.apps : undefined,
+    period: typeof search.period === 'string' ? search.period : undefined,
+  }),
 });
 
 // Models route

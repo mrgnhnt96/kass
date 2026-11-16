@@ -114,6 +114,10 @@ export function CaptureWeekCard({
         >
           <Link
             to="/insights"
+            search={{
+              period: '7d',
+              ...(filter.kind === 'app' ? { app: filter.bundleId } : { apps: filter.kind }),
+            }}
             aria-label={t('captures.week.open')}
             title={t('captures.week.open')}
             onClick={() => setInsightsPeriod('7d')}
