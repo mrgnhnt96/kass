@@ -1,11 +1,10 @@
 //! The Rust dictation stream's audio side against Python's.
 //!
-//! `stream_audio/python.json` is what `backend/services/capture_stream.py`
-//! did with takes built from the parity recordings (`scripts/parity/audio`),
-//! recorded by `stream_audio/record.py` with the real Silero model. The same
-//! takes, played frame by frame into `stream::intake`, must detect the same
-//! voice, cut at the same pauses and send the same phrase windows to
-//! recognition. Re-record after changing the Python side.
+//! `stream_audio/python.json` is what Python's `capture_stream.py` did with
+//! takes built from the parity recordings (`scripts/parity/audio`), with the
+//! real Silero model, recorded before that code was removed. The same takes,
+//! played frame by frame into `stream::intake`, must detect the same voice,
+//! cut at the same pauses and send the same phrase windows to recognition.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -54,7 +53,7 @@ fn take(parts: &[Value]) -> Vec<i16> {
         .collect()
 }
 
-/// 16 kHz audio held sample by sample at `rate`, as `record.py`'s `at_rate`.
+/// 16 kHz audio held sample by sample at `rate`, as the recording did.
 fn at_rate(audio: &[i16], rate: i64) -> Vec<i16> {
     let count = audio.len() as i64 * rate / 16_000;
     (0..count)

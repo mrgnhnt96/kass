@@ -1,12 +1,11 @@
 //! Expressive dictation in Rust against Python's.
 //!
-//! `prosody/python.json` is what `backend/services/prosody.py` and
+//! `prosody/python.json` is what Python's `prosody.py` and
 //! `expression_learning.py` made of takes built from the parity recordings
-//! (`scripts/parity/audio`), with Whisper's word alignments, recorded by
-//! `prosody/record.py`. Played into `stream::prosody` the same way, the
+//! (`scripts/parity/audio`), with Whisper's word alignments, recorded before
+//! that code was removed. Played into `stream::prosody` the same way, the
 //! takes must give the same voice, words, measurements and written text,
-//! and the made-up edits the same learned rules. Re-record after changing
-//! the Python side.
+//! and the made-up edits the same learned rules.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -57,7 +56,7 @@ fn take(parts: &[Value]) -> Vec<i16> {
         .collect()
 }
 
-/// 16 kHz audio held sample by sample at `rate`, as `record.py`'s `at_rate`.
+/// 16 kHz audio held sample by sample at `rate`, as the recording did.
 fn at_rate(audio: &[i16], rate: i64) -> Vec<i16> {
     let count = audio.len() as i64 * rate / 16_000;
     (0..count)
