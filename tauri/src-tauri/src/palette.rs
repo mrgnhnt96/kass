@@ -1,5 +1,5 @@
 //! The ⌘K palette's window: a borderless child of the main window over its
-//! content area, so it covers the web view the way the page's dialog did.
+//! content area, over the screen showing there.
 //! It closes on Escape, a click outside the panel, ⌘K again, or when
 //! another window takes the keyboard.
 
@@ -48,7 +48,6 @@ pub fn toggle(cx: &mut App) {
 fn spec() -> Spec {
     Spec {
         label: LABEL,
-        query: None,
         options: WindowOptions {
             titlebar: None,
             // A panel that can take the keyboard; `cover` drops it to the
@@ -62,10 +61,9 @@ fn spec() -> Spec {
             window_background: WindowBackgroundAppearance::Transparent,
             ..Default::default()
         },
-        transparent: true,
         prepare: |_| {},
         on_close: OnClose::Close(|| {}),
-        root: Some(root),
+        root,
     }
 }
 

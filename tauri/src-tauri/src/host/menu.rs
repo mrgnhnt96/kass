@@ -1,6 +1,6 @@
 //! The menu bar: the same menus Tauri gave Kass on macOS. Each item sends
-//! its AppKit action down the responder chain, so the web view under the
-//! keyboard handles Copy, Paste and the rest as it did before.
+//! its AppKit action down the responder chain, to the view under the
+//! keyboard.
 
 use gpui_kit::{actions, App, KeyBinding, Menu, MenuItem, OsAction, SystemMenuType};
 use objc2::runtime::{AnyObject, Sel};

@@ -13,10 +13,8 @@ edition = "2021"
 members = ["server", "text"]
 
 [dependencies]
-# The app loop, windows and menus. Screens not yet ported to GPUI still run
-# in web views (wry) hosted in GPUI windows; see src/host.
+# The app loop, windows and menus; see src/host.
 gpui-kit = { version = "0.7", default-features = false }
-wry = { version = "0.53", default-features = false, features = ["protocol", "os-webview", "transparent", "devtools"] }
 raw-window-handle = "0.6"
 objc2 = "0.6"
 objc2-foundation = "0.3"
@@ -63,8 +61,6 @@ kass-models = { path = "../../crates/kass-models" }
 kass-palette = { path = "../../crates/kass-palette" }
 kass-pill = { path = "../../crates/kass-pill" }
 kass-onboarding = { path = "../../crates/kass-onboarding" }
-# Release builds carry the built screens (tauri/dist) inside the binary.
-include_dir = { version = "0.7", optional = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 # Observe-only global keyboard tap with left/right modifier fidelity,
@@ -75,11 +71,6 @@ include_dir = { version = "0.7", optional = true }
 # dance required (the Sonoma-crashing layout-translation path simply
 # isn't called).
 keytap = "0.4"
-
-[features]
-# Release builds: serve the screens from the bundled dist instead of the
-# Vite dev server.
-custom-protocol = ["dep:include_dir"]
 
 [lints.rust]
 # objc 0.2's msg_send!/class! test a `cargo-clippy` feature, which newer Rust

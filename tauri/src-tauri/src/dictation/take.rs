@@ -21,7 +21,7 @@ pub const MIN_RECORDING: Duration = Duration::from_millis(500);
 pub const ERROR_VISIBLE_MS: u64 = 6000;
 pub const BRIEF_NOTICE_MS: u64 = 2000;
 
-/// Pill state sent to the dictate webview.
+/// Pill state sent to the dictate window.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum PillEvent {

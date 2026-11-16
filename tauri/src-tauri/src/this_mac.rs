@@ -51,10 +51,6 @@ pub fn headers() -> Vec<(&'static str, String)> {
     headers
 }
 
-pub fn this_mac() -> Option<ThisMac> {
-    get().cloned()
-}
-
 fn load_or_make_id(dir: &Path) -> Option<String> {
     let path = dir.join("mac-id");
     if let Ok(saved) = std::fs::read_to_string(&path) {

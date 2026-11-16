@@ -15,7 +15,6 @@ use kass_ui::{
     Button, SelectOption, SelectOptions,
 };
 
-use super::bridge;
 use super::data::{self, Health, ShellData};
 use crate::app_location::{self, AppLocation};
 use crate::host::{self, AppHandle, Manager};
@@ -267,9 +266,10 @@ impl RetentionAsk {
         let task = self
             .data
             .update(cx, |data, cx| data.update_settings(patch, cx));
-        cx.spawn(async move |_, _| match task.await {
-            Ok(()) => bridge::invalidate(&[&["captures"]]),
-            Err(e) => eprintln!("[retention] save failed: {e}"),
+        cx.spawn(async move |_, _| {
+            if let Err(e) = task.await {
+                eprintln!("[retention] save failed: {e}");
+            }
         })
         .detach();
         close_dialog(window, cx);

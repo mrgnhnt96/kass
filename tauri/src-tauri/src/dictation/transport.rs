@@ -57,8 +57,8 @@ pub fn is_loopback(server_url: &str) -> bool {
 }
 
 /// Connect in the background. Returns the send side and the event side.
-/// `origin` is sent only for a remote server, where it must be the app's own
-/// webview origin (which the server's allowlist already trusts); loopback
+/// `origin` is sent only for a remote server, where it must be the app's
+/// origin, [`crate::APP_ORIGIN`] (which the server's allowlist trusts); loopback
 /// connections stay originless.
 #[cfg(test)]
 pub fn spawn(

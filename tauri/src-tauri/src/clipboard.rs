@@ -42,16 +42,6 @@ pub struct ClipboardSnapshot {
     change_count: i64,
 }
 
-impl ClipboardSnapshot {
-    pub fn change_count(&self) -> i64 {
-        self.change_count
-    }
-
-    pub fn item_count(&self) -> usize {
-        self.items.len()
-    }
-}
-
 type Id = *mut Object;
 
 /// RAII wrapper so the pool drains even on early return / `?` propagation.
