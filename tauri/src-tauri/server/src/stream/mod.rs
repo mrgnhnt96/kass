@@ -5,6 +5,8 @@
 //! - `speech`: Silero voice detection over the incoming audio.
 //! - `intake`: the start message, PCM frames, the recording, pause cuts and
 //!   the phrase windows sent to recognition.
+//! - `models`: the worker's Whisper and Qwen3 calls the session makes.
 
 pub mod intake;
+pub mod models;
 pub mod speech;
