@@ -16,6 +16,10 @@ gpui_kit::assets::icon_assets!(
         X,
         Pencil,
         Trash,
+        LayoutGrid,
+        CircleQuestionMark,
+        BookPlus,
+        MessageSquareQuote,
     ]
 );
 

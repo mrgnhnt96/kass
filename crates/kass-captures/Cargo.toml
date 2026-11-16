@@ -1,0 +1,21 @@
+[package]
+name = "kass-captures"
+description = "Kass's Captures page in GPUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+cpal = "0.15"
+gpui-kit = "0.7"
+hound = "3.5"
+kass-api.workspace = true
+kass-i18n.workspace = true
+kass-ui = { path = "../kass-ui" }
+regex = "1"
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+serde_json.workspace = true
