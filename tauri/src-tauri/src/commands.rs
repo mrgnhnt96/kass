@@ -187,7 +187,10 @@ pub fn dispatch(_label: &str, cmd: &str, args: Value) -> Answer {
             );
             Ok(Value::Null)
         }),
-        "open_onboarding" => now(|| result(crate::open_onboarding(app))),
+        "open_onboarding" => now(|| {
+            let resume: Option<bool> = arg(a, "resume")?;
+            result(crate::open_onboarding(app, resume.unwrap_or(false)))
+        }),
         "finish_onboarding" => now(|| {
             crate::finish_onboarding(app, arg(a, "show")?);
             Ok(Value::Null)

@@ -159,12 +159,26 @@ impl Manager for AppHandle {}
 /// An event as a Rust listener sees it.
 pub struct Event {
     payload: String,
+    target: Option<String>,
 }
 
 impl Event {
     /// The payload as JSON text.
     pub fn payload(&self) -> &str {
         &self.payload
+    }
+
+    /// The window label it was sent to with `emit_to`; `None` for everyone.
+    pub fn target(&self) -> Option<&str> {
+        self.target.as_deref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new(payload: &str, target: Option<&str>) -> Self {
+        Self {
+            payload: payload.to_string(),
+            target: target.map(str::to_string),
+        }
     }
 }
 
@@ -194,6 +208,7 @@ pub(crate) fn emit_value(event: &str, payload: serde_json::Value, target: Option
         for handler in handlers {
             handler(Event {
                 payload: text.clone(),
+                target: target.clone(),
             });
         }
     }
