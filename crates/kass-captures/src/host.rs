@@ -1,0 +1,52 @@
+//! What the Captures page asks of the app around it: the things only the
+//! app can do (fix text where it was typed, look up app icons, open other
+//! screens). Every method has a default that does nothing, so the page runs
+//! on its own, as in the example.
+
+use gpui_kit::{App, Image, Window};
+use std::sync::Arc;
+
+/// A screen the page links to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// Finishing setup: models and permissions.
+    Setup,
+    /// Writing Style settings, on a style when one is given.
+    WritingStyle(Option<String>),
+    CommandMode,
+    /// The dictionary's phrases.
+    DictionaryPhrases,
+    DictationSettings,
+    Insights,
+}
+
+pub trait CapturesHost {
+    /// Fixes the text where Kass typed it, if it still reads `before` there.
+    /// `Some(app)` when it changed it (an empty name when the app is
+    /// unknown); `None` when it didn't.
+    fn apply_correction(&self, _capture_id: &str, _before: &str, _after: &str) -> Option<String> {
+        None
+    }
+
+    /// The icon of an installed app, by bundle id.
+    fn app_icon(&self, _bundle_id: &str) -> Option<Arc<Image>> {
+        None
+    }
+
+    /// This Mac's id, to tell its captures from another Mac's.
+    fn this_mac(&self) -> Option<String> {
+        None
+    }
+
+    /// Another Mac's app is connected to the same server.
+    fn other_mac_connected(&self) -> bool {
+        false
+    }
+
+    fn navigate(&self, _route: Route, _window: &mut Window, _cx: &mut App) {}
+}
+
+/// The host when the page runs on its own.
+pub struct NoHost;
+
+impl CapturesHost for NoHost {}
