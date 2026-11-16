@@ -106,14 +106,6 @@ class SpeechDetector:
         low, high = start * RATE / self.rate, end * RATE / self.rate
         return any(low < offset + WINDOW and offset < high for offset in self.voiced)
 
-    def first_voice(self) -> int | None:
-        """The source sample offset where a voice was first detected, or None
-        before one. 0 when the model can't be loaded: every take counts as
-        speech from its start."""
-        if self.session is None:
-            return 0
-        return round(self.voiced[0] * self.rate / RATE) if self.voiced else None
-
     def quiet(self) -> int:
         """Source samples since the last voice, over the audio run so far.
 

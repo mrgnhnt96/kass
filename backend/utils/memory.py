@@ -10,16 +10,6 @@ GB = 1024**3
 MB = 1024**2
 
 
-def counters() -> tuple[int, int] | None:
-    """Bytes paged in and out since boot, to diff against a later reading."""
-    try:
-        swap = psutil.swap_memory()
-        return swap.sin, swap.sout
-    except Exception:
-        logger.debug("Could not read paging counters", exc_info=True)
-        return None
-
-
 def summary(since: tuple[int, int] | None = None) -> str:
     """Free memory and swap now, plus paging since ``since`` when given."""
     try:

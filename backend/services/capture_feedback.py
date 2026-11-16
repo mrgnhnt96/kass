@@ -88,16 +88,6 @@ def learn_words(source: str, original: str, expected: str, report_id: str, db: S
         logger.warning("Could not add the corrected words to the dictionary", exc_info=True)
 
 
-def latest_feedback(db: Session, capture_id: str, target: str) -> CaptureFeedback | None:
-    """The capture's newest report of ``target``: its text as corrected so far."""
-    return (
-        db.query(CaptureFeedback)
-        .filter(CaptureFeedback.capture_id == capture_id, CaptureFeedback.target == target)
-        .order_by(CaptureFeedback.created_at.desc(), CaptureFeedback.id.desc())
-        .first()
-    )
-
-
 def withdraw_feedback(capture_id: str, report_id: str, db: Session) -> bool:
     """Delete one report and everything it taught.
 

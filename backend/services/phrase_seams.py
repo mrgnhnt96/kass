@@ -1,25 +1,14 @@
-"""Join dictation phrases that were cut at pauses.
+"""Casing at a phrase's start, and the names a text capitalizes mid-sentence.
 
-Streaming dictation recognizes and refines each phrase on its own, so every
-phrase would otherwise come back punctuated as a finished sentence. A pause is
-a breath, not a sentence end: phrases stay open while dictation continues and
-the seam between two phrases is decided once the next one arrives.
-
-Whisper is given the earlier text when it recognizes a phrase, so the casing of
-its first word says whether the speaker continued the sentence. A capitalized
-first word is only treated as a new sentence when it is a common sentence
-opener; anything else is assumed to be a name continuing the sentence.
-
-A lowercase first word from Whisper reliably continues the sentence; a capital
+Whisper capitalizes a phrase cut off at a pause as if it began a sentence. A
+lowercase first word from Whisper reliably continues the sentence; a capital
 does not reliably start one. ``continue_phrase`` lowercases it only for a
 common word (``_common_word``). Names stay capitalized, including any the user
-capitalizes mid-sentence elsewhere.
+capitalizes mid-sentence elsewhere (``mid_sentence_capitals``).
 
-Streaming cleanup now sees a whole open sentence at a time
-(sentence_tail.py), so joins happen only where a long tail is settled
-mid-sentence. Before cleanup, ``strip_pause_mark``, ``continue_after_seam``
-and ``continue_phrase`` remove the ending and capital Whisper gives a phrase
-only because the audio paused.
+Streamed dictation, which joins phrases at pauses, runs in the Rust app
+(kass-text); these serve cleanup run again on a saved capture and the known
+names.
 """
 
 import functools
@@ -43,7 +32,6 @@ _SENTENCE_OPENERS = frozenset((
 ))
 # fmt: on
 
-_TERMINAL = ".?!:;"
 
 # macOS's word list: common words in lowercase, names capitalized.
 _WORD_LIST = "/usr/share/dict/words"
@@ -87,12 +75,6 @@ def _lexicon() -> tuple[frozenset[str], frozenset[str]]:
     )
 
 
-def load_word_data() -> None:
-    """Read the vocabulary and word list now, so the first dictation doesn't wait. Blocking."""
-    _vocabulary()
-    _lexicon()
-
-
 def _common_word(word: str) -> bool:
     """Whether ``word`` is mostly written in lowercase mid-sentence, so not a name.
 
@@ -118,14 +100,6 @@ def _first_word(text: str) -> str:
     return match.group(1) if match else ""
 
 
-def _starts_sentence(raw: str) -> bool:
-    word = _first_word(raw)
-    if not word or not word[0].isupper():
-        return False
-    key = word.casefold().replace("\u2019", "'")
-    return key in _SENTENCE_OPENERS or key.split("'")[0] in _SENTENCE_OPENERS
-
-
 def _keeps_capital(word: str) -> bool:
     """ "I" and its contractions, acronyms, and words like "GitHub" or "iPhone"."""
     return word == "I" or word.startswith(("I'", "I\u2019")) or any(c.isupper() for c in word[1:])
@@ -137,40 +111,6 @@ def _lower_first(text: str) -> str:
         return text
     index = text.index(word)
     return text[:index] + word[0].lower() + text[index + 1 :]
-
-
-def open_phrase(text: str, raw: str) -> str:
-    """Drop end punctuation the phrase got only because the audio paused.
-
-    A closing period always goes; a question or exclamation mark goes only when
-    Whisper, which heard the earlier text, didn't end the phrase with it.
-    A phrase that ends with a spoken line break isn't open: it stays as it is.
-    """
-    if "\n" in text[len(text.rstrip()) :]:
-        return text
-    text = text.rstrip()
-    heard = raw.rstrip()[-1:]
-    if re.search(r"[\w)\"'\u201d][?!]$", text) and text[-1] != heard:
-        return text[:-1]
-    return re.sub(r"(?<=[\w)\"'\u201d])\.$", "", text)
-
-
-def strip_pause_mark(text: str) -> str:
-    """Drop the ending Whisper gives a phrase only because the audio paused.
-
-    Cut off at a pause, Whisper ends the phrase as if it were finished: a
-    period, a trailing dash ("if I pause-"), or dots ("How..."). None of that
-    was said. A question or exclamation mark stays until the next phrase
-    shows whether the sentence went on (``continue_after_seam``). So does the
-    period of an abbreviation ("U.S."), which isn't an ending.
-    """
-    stripped = text.rstrip()
-    last = stripped.split()[-1] if stripped else ""
-    if re.search(r"[\w)\"'\u201d](?:\.{2,}|\u2026|[-\u2013\u2014]+)$", stripped):
-        return re.sub(r"(?:\.{2,}|\u2026|[-\u2013\u2014]+)$", "", stripped)
-    if re.search(r"[\w)\"'\u201d]\.$", stripped) and "." not in last[:-1]:
-        return stripped[:-1]
-    return stripped
 
 
 def mid_sentence_capitals(text: str) -> set[str]:
@@ -207,154 +147,3 @@ def continue_phrase(phrase: str, earlier: str, names: frozenset[str] = frozenset
     if key in _SENTENCE_OPENERS or key.split("'")[0] in _SENTENCE_OPENERS or _common_word(word):
         return _lower_first(phrase)
     return phrase
-
-
-def continues_sentence(before: str) -> bool:
-    """Whether text inserted after ``before`` (the field up to the caret) is mid-sentence.
-
-    An empty field, a line break, or a finished sentence (``.``, ``?``, ``!``,
-    ``:``) start a new one. So does anything that isn't a word, a comma or a
-    dash, such as a list bullet.
-    """
-    trailing = before[len(before.rstrip()) :]
-    text = before.rstrip().rstrip("\"'\u201d\u2019)]")
-    if not text or "\n" in trailing:
-        return False
-    return text[-1].isalnum() or text[-1] in ",;\u2014\u2013"
-
-
-def match_raw_start(text: str, raw: str) -> str:
-    """Give ``text``, cleaned up from ``raw``, the casing of raw's first word.
-
-    Cleanup writes every text as the start of a sentence. Where ``raw``
-    continues one, the same word must stay lowercase. The word is looked for
-    among raw's first few words, since cleanup drops fillers ("um").
-    """
-    word = _first_word(text)
-    if not word or not word[0].isupper():
-        return text
-    for heard in re.findall(r"[^\W\d_][\w'\u2019]*", raw)[:4]:
-        if heard.casefold() == word.casefold():
-            return _lower_first(text) if heard[0].islower() else text
-    return text
-
-
-def continue_after_seam(before: str, phrase: str, earlier: str, names: frozenset[str] = frozenset()) -> tuple[str, str]:
-    """Join ``phrase`` after ``before``, text that ended where the audio paused.
-
-    Returns both, adjusted. Whisper ends a phrase cut at a pause as if it were
-    finished, and a question or exclamation mark there is as often the pause
-    as the speaker (``pause? for a second``). Cleanup takes a mark it is given
-    as a sentence end, so the mark goes. The capital Whisper gave the next
-    phrase stays instead: a weaker hint that a new sentence may start, which
-    cleanup drops when the words run on. A word that is always capitalized
-    ("I", a name) can't be that hint, so there the mark stays. Without such a
-    mark the phrase continues as ``continue_phrase`` decides.
-    """
-    if not re.search(r"[\w)\"'”][?!]$", before):
-        return before, continue_phrase(phrase, earlier, names)
-    word = _first_word(phrase)
-    if word and word[0].isupper() and continue_phrase(phrase, earlier, names) == phrase:
-        return before, phrase
-    return before[:-1], phrase
-
-
-# A period after these ends an abbreviation, not a sentence.
-_ABBREVIATIONS = frozenset(("mr", "mrs", "ms", "dr", "st", "vs", "etc", "jr", "sr", "prof", "inc", "ltd", "approx"))
-# "I" and its contractions, as a whole word: not "i.e." or "i18n".
-_LOWER_I = re.compile(r"(?<![\w'\u2019.@/-])i(?=(?:['\u2019](?:m|d|ll|ve|re))?(?![\w'\u2019-])(?!\.\w))")
-_SENTENCE_END = re.compile(r"[^\W\d_][\"')\]\u201d\u2019]*[.?!][\"')\]\u201d\u2019]*$")
-
-
-def _is_name(word: str, names: frozenset[str]) -> bool:
-    if word in names or _keeps_capital(word):
-        return True
-    key = word.casefold().replace("\u2019", "'")
-    return key not in _SENTENCE_OPENERS and key.split("'")[0] not in _SENTENCE_OPENERS and not _common_word(word)
-
-
-def _ends_sentence(token: str) -> bool:
-    """Whether ``token`` ends a sentence: not "...", "U.S." or "etc."."""
-    if not _SENTENCE_END.search(token) or re.search(r"\.\.|\u2026", token):
-        return False
-    word = token.rstrip("\"')]\u201d\u2019.?!")
-    return "." not in word and word.casefold() not in _ABBREVIATIONS
-
-
-def keep_raw_capitals(text: str, raw: str, names: frozenset[str] = frozenset()) -> str:
-    """Undo lowercasing that cleanup or a seam did against ``raw``, the transcript.
-
-    Told a text that continues a sentence, cleanup may write the rest of it in
-    lowercase, "i" included, and after a sentence it ends itself. Whatever the
-    cause: "I" stays capitalized wherever the transcript has it, a name the
-    transcript capitalizes mid-sentence keeps its capital everywhere, and a
-    sentence after ``.``, ``?`` or ``!`` starts with a capital. A style that
-    starts sentences in lowercase applies after this.
-    """
-    if re.search(r"(?<![\w'\u2019])I(?![\w-])", raw) and not _LOWER_I.search(raw):
-        text = _LOWER_I.sub("I", text)
-    for name in mid_sentence_capitals(raw):
-        if name != "I" and not name.startswith(("I'", "I\u2019")) and _is_name(name, names):
-            lower = re.escape(name.lower())
-            text = re.sub(rf"(?<![\w'\u2019.@/-]){lower}(?![\w-])(?!\.\w)", name, text)
-    parts = re.split(r"(\s+)", text)
-    for index in range(2, len(parts), 2):
-        token = parts[index]
-        word = _first_word(token)
-        if (
-            word
-            and word.islower()
-            and token.lstrip("\"'(\u201c\u2018").startswith(word)
-            and _ends_sentence(parts[index - 2])
-        ):
-            parts[index] = token.replace(word, word[0].upper() + word[1:], 1)
-    return "".join(parts)
-
-
-def close_phrase(text: str) -> str:
-    """End a finished dictation that was left open at its last pause.
-
-    A spoken line break at the end stays, after the period.
-    """
-    stripped = text.rstrip()
-    if re.search(r"[\w)\"'\u201d]$", stripped):
-        trailing = text[len(stripped) :]
-        return stripped + "." + (trailing if "\n" in trailing else "")
-    return text
-
-
-def join_phrases(previous: str, phrase: str, raw_phrase: str, style: str) -> str:
-    """Attach ``phrase`` to ``previous`` across a pause.
-
-    ``raw_phrase`` is what Whisper heard for ``phrase``; its casing decides
-    whether the speaker continued the sentence or began a new one.
-    """
-    before = previous.rstrip()
-    if not before:
-        return phrase
-    if not phrase:
-        return previous
-    # Spoken formatting may end a phrase with a line or paragraph break.
-    whitespace = previous[len(before) :] if "\n" in previous[len(before) :] else " "
-    if phrase[0] == "\n":
-        # The phrase starts with a spoken line break: it is the whole seam.
-        return f"{before}{whitespace.strip(' ')}{phrase}"
-    new_sentence = _starts_sentence(raw_phrase)
-    casual = style == "casual"
-
-    if whitespace != " ":
-        return f"{before}{whitespace}{phrase}"
-    if before[-1] in _TERMINAL:
-        if casual and new_sentence and before[-1] == "." and not before.endswith(".."):
-            return f"{before[:-1]}, {_lower_first(phrase)}"
-        return f"{before} {phrase}"
-    if before[-1] == ",":
-        return f"{before} {_lower_first(phrase) if casual or not new_sentence else phrase}"
-    if not re.search(r"[\w)\"'\u201d]$", before):
-        return f"{before} {phrase}"
-    if not new_sentence:
-        first = _first_word(raw_phrase)
-        return f"{before} {_lower_first(phrase) if first and first[0].islower() else phrase}"
-    if casual:
-        return f"{before}, {_lower_first(phrase)}"
-    return f"{before}. {phrase}"
