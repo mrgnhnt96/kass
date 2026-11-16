@@ -4132,6 +4132,7 @@ dependencies = [
  "hound",
  "include_dir",
  "kass-api",
+ "kass-captures",
  "kass-i18n",
  "kass-insights",
  "kass-onboarding",
@@ -4169,6 +4170,21 @@ dependencies = [
  "thiserror 2.0.18",
  "ureq 2.12.1",
  "url",
+]
+
+[[package]]
+name = "kass-captures"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "cpal",
+ "gpui-kit",
+ "hound",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
+ "regex",
+ "unicode-normalization",
 ]
 
 [[package]]

@@ -131,11 +131,11 @@ impl CapturesPage {
 
     /// The Mac a capture came from, when another Mac shares this server.
     fn origin(&self, capture: &CaptureResponse) -> Option<String> {
-        if !self.host.other_mac_connected() {
+        let this = self.client.mac()?.id;
+        if !self.peers.iter().any(|peer| peer.id != this) {
             return None;
         }
         let mac = capture.mac_id.as_ref()?;
-        let this = self.host.this_mac()?;
         Some(if *mac == this {
             tr!("captures-inspector-this-mac")
         } else {

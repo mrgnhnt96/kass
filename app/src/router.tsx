@@ -114,7 +114,8 @@ const indexRoute = createRoute({
 const capturesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/captures',
-  component: CapturesTab,
+  // The native shell draws Captures itself (crates/kass-captures).
+  component: nativeShell ? () => null : CapturesTab,
   // `?capture=<id>` opens that capture (the command palette links here).
   validateSearch: (search: Record<string, unknown>): { capture?: string } => ({
     capture: typeof search.capture === 'string' ? search.capture : undefined,
