@@ -302,6 +302,15 @@ def test_keep_resident_and_foreground(worker, monkeypatch):
     assert manager._foreground_count == 0
 
 
+def test_speech_model_is_the_trained_one_while_active(worker, monkeypatch):
+    monkeypatch.setattr(manager, "_active", {})
+    assert worker.post("/worker/speech-model", json={"configured": "turbo"}).json() == {"model": "turbo"}
+
+    monkeypatch.setattr(manager, "_active", {"speech": {"configured": "turbo", "model": "/models/trained"}})
+    assert worker.post("/worker/speech-model", json={"configured": "turbo"}).json() == {"model": "/models/trained"}
+    assert worker.post("/worker/speech-model", json={"configured": "small"}).json() == {"model": "small"}
+
+
 def test_alignments_are_kept_for_a_while(monkeypatch):
     monkeypatch.setattr(stream_models, "_alignments", type(stream_models._alignments)())
     keys = [stream_models._keep_alignment(SimpleNamespace()) for _ in range(stream_models.MAX_ALIGNMENTS + 1)]

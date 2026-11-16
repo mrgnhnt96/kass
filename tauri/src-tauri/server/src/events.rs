@@ -300,7 +300,7 @@ fn peers_json(macs: &[Mac]) -> String {
     format!("[{}]", items.join(", "))
 }
 
-fn ascii_json(text: &str) -> String {
+pub(crate) fn ascii_json(text: &str) -> String {
     let mut out = String::from("\"");
     for c in text.chars() {
         match c {

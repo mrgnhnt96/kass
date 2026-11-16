@@ -104,7 +104,7 @@ async fn stream_socket(headers: HeaderMap, upgrade: WebSocketUpgrade) -> Respons
 
 async fn start_worker() -> SocketAddr {
     let app = Router::new()
-        .route("/captures/stream", get(stream_socket))
+        .route("/stand-in/socket", get(stream_socket))
         .route("/models/progress/{model_name}", get(events))
         .route("/upload", post(echo_request))
         .fallback(any(echo_request));
@@ -127,6 +127,7 @@ async fn start_server(worker: SocketAddr) -> kass_server::Running {
         worker,
         database: std::env::temp_dir().join("kass-proxy-test-unused.db"),
         shared_server: None,
+        voice_model: None,
     })
     .await
     .unwrap()
@@ -205,7 +206,7 @@ async fn streams_events_as_they_come() {
 #[tokio::test]
 async fn relays_a_websocket_with_its_close_code() {
     let server = start_server(start_worker().await).await;
-    let url = format!("ws://{}/captures/stream?mac=abc", server.address());
+    let url = format!("ws://{}/stand-in/socket?mac=abc", server.address());
     let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
     socket.send(Message::text("hello")).await.unwrap();
     assert_eq!(
@@ -233,7 +234,7 @@ async fn relays_a_websocket_with_its_close_code() {
 #[tokio::test]
 async fn passes_on_a_refused_websocket() {
     let server = start_server(start_worker().await).await;
-    let mut request = format!("ws://{}/captures/stream", server.address())
+    let mut request = format!("ws://{}/stand-in/socket", server.address())
         .into_client_request()
         .unwrap();
     request

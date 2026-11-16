@@ -72,6 +72,7 @@ impl Kass {
             worker: start_worker(worker.clone()).await,
             database,
             shared_server: standing_in.then(|| "http://shared.local:17493".to_string()),
+            voice_model: None,
         })
         .await
         .unwrap();

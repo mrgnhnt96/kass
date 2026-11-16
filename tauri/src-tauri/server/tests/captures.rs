@@ -118,6 +118,7 @@ impl Kass {
             worker: start_worker(worker.clone()).await,
             database,
             shared_server: None,
+            voice_model: None,
         })
         .await
         .unwrap();

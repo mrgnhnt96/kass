@@ -6,10 +6,10 @@ edition = "2021"
 publish = false
 
 [dependencies]
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json", "ws"] }
 caseless = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 http-body-util = "0.1"

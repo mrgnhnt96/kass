@@ -22,7 +22,7 @@ const DEFAULT_ORIGINS: [&str; 7] = [
 
 /// The worker's `allowed_origins()`: the defaults, and any listed in
 /// `KASS_CORS_ORIGINS` (comma-separated).
-fn allowed(origin: &str) -> bool {
+pub(crate) fn allowed(origin: &str) -> bool {
     let configured = std::env::var("KASS_CORS_ORIGINS").unwrap_or_default();
     DEFAULT_ORIGINS.contains(&origin)
         || configured

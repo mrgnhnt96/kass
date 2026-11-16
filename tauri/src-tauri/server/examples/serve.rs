@@ -25,6 +25,10 @@ async fn main() -> Result<(), String> {
         worker,
         database,
         shared_server: std::env::var("KASS_SHARED_SERVER").ok(),
+        voice_model: Some(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../backend/assets/silero_vad.onnx"),
+        ),
     })
     .await?;
     println!("Kass API on {}, worker on {worker}", running.address());

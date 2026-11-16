@@ -95,6 +95,7 @@ impl Kass {
                 worker: start_worker(self.worker.clone()).await,
                 database: self.data.join("kass.db"),
                 shared_server: None,
+                voice_model: None,
             })
             .await
             .unwrap(),
