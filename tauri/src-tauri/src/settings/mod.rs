@@ -1,5 +1,6 @@
 //! Settings in GPUI: the section list on the left and the pages rebuilt
-//! natively (General, Transcription & refinement, Features, Logs). The
+//! natively (General, Transcription & refinement, Writing style, Features,
+//! Logs). The
 //! sections still drawn by the page show in the web view to the right of
 //! the list.
 
@@ -7,10 +8,14 @@ mod features;
 mod general;
 mod logs;
 mod transcription;
+mod writing_style;
+
+use std::rc::Rc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use kass_ui::{metrics, show_toast, theme, Toast, ToastKind};
+use kass_writing_style::WritingStylePage;
 
 use crate::shell::{self, data::ShellData};
 
@@ -22,6 +27,7 @@ pub const NAV_WIDTH: f32 = 220.;
 pub enum Page {
     General,
     Transcription,
+    WritingStyle,
     Features,
     Logs,
 }
@@ -32,6 +38,7 @@ impl Page {
         match path.trim_end_matches('/') {
             "/settings" => Some(Self::General),
             "/settings/transcription" => Some(Self::Transcription),
+            "/settings/writing-style" => Some(Self::WritingStyle),
             "/settings/features" => Some(Self::Features),
             "/settings/logs" => Some(Self::Logs),
             _ => None,
@@ -59,8 +66,11 @@ const TABS: [(&str, &str); 8] = [
 pub struct Settings {
     general: Entity<general::GeneralPage>,
     transcription: Entity<transcription::TranscriptionPage>,
+    writing_style: Entity<WritingStylePage>,
     features: Entity<features::FeaturesPage>,
     logs: Entity<logs::LogsPage>,
+    /// The page and search last drawn, to tell when Writing style is shown.
+    shown: Option<(Page, String)>,
 }
 
 impl Settings {
@@ -69,13 +79,38 @@ impl Settings {
             general: cx.new(|cx| general::GeneralPage::new(data.clone(), window, cx)),
             transcription: cx
                 .new(|cx| transcription::TranscriptionPage::new(data.clone(), window, cx)),
+            writing_style: cx.new(|cx| {
+                WritingStylePage::new(data.read(cx).api.clone(), window, cx)
+                    .with_dictation(Rc::new(writing_style::HostDictation), cx)
+            }),
             features: cx.new(|_| features::FeaturesPage),
             logs: cx.new(logs::LogsPage::new),
+            shown: None,
         }
     }
 
-    pub fn render<T>(&self, path: &str, _: &mut Window, cx: &mut Context<T>) -> impl IntoElement {
+    pub fn render<T>(
+        &mut self,
+        path: &str,
+        search: &str,
+        _: &mut Window,
+        cx: &mut Context<T>,
+    ) -> impl IntoElement {
         let page = Page::of(path);
+        let shown = page.map(|page| (page, search.to_string()));
+        if shown != self.shown {
+            // Writing style fetches again each time it's shown (styles and
+            // their apps change as captures come in), and opens the style
+            // a link asks for.
+            if page == Some(Page::WritingStyle) {
+                let style = writing_style::style_in(search);
+                self.writing_style.update(cx, |page, cx| {
+                    page.refresh(cx);
+                    page.show(style, cx);
+                });
+            }
+            self.shown = shown;
+        }
         let content: AnyElement = match page {
             // Logs fills the pane; the rest are a readable column that scrolls.
             Some(Page::Logs) => div()
@@ -88,6 +123,7 @@ impl Settings {
                 let view: AnyView = match page {
                     Page::General => self.general.clone().into(),
                     Page::Transcription => self.transcription.clone().into(),
+                    Page::WritingStyle => self.writing_style.clone().into(),
                     _ => self.features.clone().into(),
                 };
                 div()
@@ -201,6 +237,7 @@ mod tests {
         assert_eq!(Page::of("/settings"), Some(Page::General));
         assert_eq!(Page::of("/settings/"), Some(Page::General));
         assert_eq!(Page::of("/settings/transcription"), Some(Page::Transcription));
+        assert_eq!(Page::of("/settings/writing-style"), Some(Page::WritingStyle));
         assert_eq!(Page::of("/settings/features"), Some(Page::Features));
         assert_eq!(Page::of("/settings/logs"), Some(Page::Logs));
         assert_eq!(Page::of("/settings/dictation"), None);
@@ -211,6 +248,7 @@ mod tests {
     fn settings_paths() {
         assert!(is_settings("/settings"));
         assert!(is_settings("/settings/dictionary"));
+        assert!(is_settings("/settings/writing-style"));
         assert!(!is_settings("/settingsx"));
         assert!(!is_settings("/models"));
     }

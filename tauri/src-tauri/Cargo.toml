@@ -53,6 +53,7 @@ kass-server = { path = "server" }
 kass-ui = { path = "../../crates/kass-ui" }
 kass-api = { path = "../../crates/kass-api" }
 kass-i18n = { path = "../../crates/kass-i18n" }
+kass-writing-style = { path = "../../crates/kass-writing-style" }
 # Release builds carry the built screens (tauri/dist) inside the binary.
 include_dir = { version = "0.7", optional = true }
 
