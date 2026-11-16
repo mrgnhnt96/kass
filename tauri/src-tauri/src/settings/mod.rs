@@ -1,11 +1,12 @@
 //! Settings in GPUI: the section list on the left and the pages rebuilt
 //! natively (General, Dictation, Command mode, Transcription & refinement,
-//! Writing style, Features, Logs). The sections still drawn by the page
-//! show in the web view to the right of the list.
+//! Writing style, Dictionary, Features, Logs). The sections still drawn by
+//! the page show in the web view to the right of the list.
 
 mod chord;
 mod command_mode;
 mod dictation;
+pub mod dictionary;
 mod features;
 mod general;
 mod hud_preview;
@@ -17,6 +18,7 @@ use std::rc::Rc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use kass_dictionary::DictionaryPage;
 use kass_ui::{metrics, show_toast, theme, Toast, ToastKind};
 use kass_writing_style::WritingStylePage;
 
@@ -33,6 +35,7 @@ pub enum Page {
     CommandMode,
     Transcription,
     WritingStyle,
+    Dictionary,
     Features,
     Logs,
 }
@@ -46,6 +49,7 @@ impl Page {
             "/settings/command-mode" => Some(Self::CommandMode),
             "/settings/transcription" => Some(Self::Transcription),
             "/settings/writing-style" => Some(Self::WritingStyle),
+            dictionary::PATH => Some(Self::Dictionary),
             "/settings/features" => Some(Self::Features),
             "/settings/logs" => Some(Self::Logs),
             _ => None,
@@ -76,9 +80,11 @@ pub struct Settings {
     command_mode: Entity<command_mode::CommandModePage>,
     transcription: Entity<transcription::TranscriptionPage>,
     writing_style: Entity<WritingStylePage>,
+    dictionary: Entity<DictionaryPage>,
     features: Entity<features::FeaturesPage>,
     logs: Entity<logs::LogsPage>,
-    /// The page and search last drawn, to tell when Writing style is shown.
+    /// The page and search last drawn, to tell when Writing style or the
+    /// Dictionary is shown.
     shown: Option<(Page, String)>,
 }
 
@@ -94,6 +100,10 @@ impl Settings {
             writing_style: cx.new(|cx| {
                 WritingStylePage::new(data.read(cx).api.clone(), window, cx)
                     .with_dictation(Rc::new(writing_style::HostDictation), cx)
+            }),
+            dictionary: cx.new(|cx| {
+                DictionaryPage::new(data.read(cx).api.clone(), window, cx)
+                    .with_dictation(Rc::new(dictionary::HostDictation::default()), cx)
             }),
             features: cx.new(|_| features::FeaturesPage),
             logs: cx.new(logs::LogsPage::new),
@@ -121,16 +131,33 @@ impl Settings {
                     page.show(style, cx);
                 });
             }
+            // So does the Dictionary (Captures adds to it), on the scope and
+            // kind a link asks for.
+            if page == Some(Page::Dictionary) {
+                let (scope, phrases) = dictionary::link(search);
+                self.dictionary.update(cx, |page, cx| {
+                    page.refresh(cx);
+                    page.show(scope, phrases, cx);
+                });
+            }
             self.shown = shown;
         }
         let content: AnyElement = match page {
-            // Logs fills the pane; the rest are a readable column that scrolls.
-            Some(Page::Logs) => div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .child(self.logs.clone())
-                .into_any_element(),
+            // Logs and the Dictionary fill the pane (the Dictionary scrolls
+            // its own wider column); the rest are a readable column that scrolls.
+            Some(page @ (Page::Logs | Page::Dictionary)) => {
+                let view: AnyView = if page == Page::Logs {
+                    self.logs.clone().into()
+                } else {
+                    self.dictionary.clone().into()
+                };
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(view)
+                    .into_any_element()
+            }
             Some(page) => {
                 let view: AnyView = match page {
                     Page::General => self.general.clone().into(),
@@ -252,11 +279,11 @@ mod tests {
         assert_eq!(Page::of("/settings/"), Some(Page::General));
         assert_eq!(Page::of("/settings/transcription"), Some(Page::Transcription));
         assert_eq!(Page::of("/settings/writing-style"), Some(Page::WritingStyle));
+        assert_eq!(Page::of("/settings/dictionary"), Some(Page::Dictionary));
         assert_eq!(Page::of("/settings/features"), Some(Page::Features));
         assert_eq!(Page::of("/settings/logs"), Some(Page::Logs));
         assert_eq!(Page::of("/settings/dictation"), Some(Page::Dictation));
         assert_eq!(Page::of("/settings/command-mode"), Some(Page::CommandMode));
-        assert_eq!(Page::of("/settings/dictionary"), None);
         assert_eq!(Page::of("/captures"), None);
     }
 

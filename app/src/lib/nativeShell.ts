@@ -34,6 +34,7 @@ const NATIVE_PAGES = [
   '/settings/command-mode',
   '/settings/transcription',
   '/settings/writing-style',
+  '/settings/dictionary',
   '/settings/features',
   '/settings/logs',
 ];
