@@ -183,7 +183,7 @@ def prepare(monkeypatch):
 
     from backend.services import settings as settings_service, styles
 
-    monkeypatch.setattr(manager.correction_learning, "run_job", lambda: None)
+    monkeypatch.setattr(manager.correction_learning, "initialize", lambda: None)
     monkeypatch.setattr(manager, "collect", lambda db, groups: [])
     monkeypatch.setattr(manager, "readiness", lambda samples: ({"audio_test": 0}, True))
     monkeypatch.setattr(manager, "_cached", lambda repo: "/cached")

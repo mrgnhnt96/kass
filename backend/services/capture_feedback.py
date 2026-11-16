@@ -104,9 +104,9 @@ def withdraw_feedback(capture_id: str, report_id: str, db: Session) -> bool:
     A capture's reports stack, each made from the one before, so the newer
     ones lose this one's changes and keep their own (text_merge); one left
     changing nothing goes too. Examples, habits and names are read from the
-    reports, so they drop it at once. Rules and the cleanup adapter are
-    relearned without it at the next idle moment
-    (correction_learning.request_run).
+    reports, so they drop it at once. The server relearns the rules without
+    it, and the cleanup adapter is retrained at the next idle moment
+    (correction_learning.request_retrain).
     """
     row = db.get(CaptureFeedback, report_id)
     if row is None or row.capture_id != capture_id:
@@ -163,7 +163,8 @@ def forget_capture(capture_id: str, db: Session) -> None:
 
 def reports_changed(target: str, source: str, db: Session, withdrawn: bool = False) -> None:
     # A withdrawn report may be in the cleanup adapter's training data too.
-    correction_learning.request_run(retrain=withdrawn)
+    if withdrawn:
+        correction_learning.request_retrain()
     if source not in CaptureFeedback.EXPLICIT_SOURCES:
         return
     known_names.invalidate()

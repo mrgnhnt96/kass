@@ -2,8 +2,9 @@
 
 The Rust server answers the capture list, each capture and its audio, the
 reports on them and the events stream from kass.db. The worker keeps saving,
-refining and retranscribing captures and the learning, and ``worker_router``
-holds what the server asks of it for the rest.
+refining and retranscribing captures and model learning, and ``worker_router``
+holds what the server asks of it for the rest. The server learns corrections
+(routes/learning.py has what it asks the worker).
 """
 
 import logging
@@ -24,26 +25,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 worker_router = APIRouter(prefix="/worker/captures", tags=["worker"])
-
-
-@router.get("/capture/learning")
-def correction_learning_status():
-    from ..services.correction_learning import status
-    from ..services.model_improvement import manager
-
-    result = status()
-    result["model"] = manager.status()
-    return result
-
-
-@router.post("/capture/learning/run")
-def run_correction_learning():
-    from ..services.correction_learning import run_job
-    from ..services.model_improvement import manager
-
-    result = run_job()
-    result["model"] = manager.start()
-    return result
 
 
 @router.post("/capture/learning/activity")
@@ -67,20 +48,6 @@ def download_voice_sounds():
     from ..services.voice_training import sounds
 
     return sounds.start()
-
-
-@router.post("/capture/learning/rollback")
-def rollback_correction_learning():
-    from ..services.correction_learning import rollback
-    from ..services.model_improvement import manager
-
-    try:
-        if manager.status()["can_rollback"]:
-            manager.rollback()
-            return correction_learning_status()
-        return rollback()
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB

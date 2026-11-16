@@ -116,6 +116,39 @@ fn rules(value: &Value) -> Rules {
     )
 }
 
+fn rule_example(value: &Value) -> correction_rules::Example {
+    correction_rules::Example {
+        id: text(value, "id").to_string(),
+        capture_id: text(value, "capture_id").to_string(),
+        original: text(value, "original").to_string(),
+        expected: text(value, "expected").to_string(),
+        language: opt_text(value, "language").map(String::from),
+        source: text(value, "source").to_string(),
+    }
+}
+
+/// `evaluate(..., every_report=True)`, the job's only call. The timing is
+/// the machine's, so the median is left out and a call where Python's
+/// latency gate failed (a test slows the clock) isn't replayed.
+fn evaluate(args: &Value) -> Option<Value> {
+    let examples: Vec<_> = args["examples"]
+        .as_array()?
+        .iter()
+        .map(rule_example)
+        .collect();
+    let active: Vec<Rule> = args["active"]
+        .as_array()?
+        .iter()
+        .map(|rule| Rule::from_json(rule).expect("a valid rule"))
+        .collect();
+    let blocked = args.get("blocked").map(strings).unwrap_or_default();
+    let (rules, metrics) = correction_rules::evaluate(&examples, &active, &blocked);
+    let mut metrics = metrics.to_json();
+    metrics["median_rule_ms"] = Value::Null;
+    let rules: Vec<Value> = rules.iter().map(Rule::to_json).collect();
+    Some(json!([rules, metrics]))
+}
+
 /// Python counts offsets in characters; kass-text in bytes.
 fn chars(text: &str, byte: usize) -> usize {
     text[..byte].chars().count()
@@ -466,6 +499,17 @@ fn call(function: &str, args: &Value, examples: &[Value]) -> Option<Value> {
         "correction_rules.apply_rules" => {
             json!(rules(&args["compiled"]).apply(text(args, "text"), opt_text(args, "language")))
         }
+        "correction_rules.candidate" => {
+            let rule = correction_rules::candidate(&rule_example(&args["example"]));
+            rule.map_or(Value::Null, |rule| rule.to_json())
+        }
+        "correction_rules.loss" => {
+            json!(correction_rules::loss(
+                text(args, "actual"),
+                text(args, "expected")
+            ))
+        }
+        "correction_rules.evaluate" => return evaluate(args),
         "correction_learning.apply_learned_corrections" => json!(rules(&args["rules"])
             .apply_learned_corrections(text(args, "text"), opt_text(args, "language"))),
 
@@ -526,11 +570,21 @@ fn matches_the_python_text_stages() {
     for recorded_call in calls {
         let function = recorded_call["fn"].as_str().unwrap();
         let args = &recorded_call["args"];
+        let mut expected = recorded_call["out"].clone();
+        if function == "correction_rules.evaluate" {
+            // Only the every-report path is ported: the job never holds
+            // reports back.
+            if args["every_report"] != json!(true) || expected[1]["latency_passed"] == json!(false)
+            {
+                continue;
+            }
+            expected[1]["median_rule_ms"] = Value::Null;
+        }
         let Some(out) = call(function, args, examples) else {
             *missing.entry(function).or_default() += 1;
             continue;
         };
-        if same(&out, &recorded_call["out"]) {
+        if same(&out, &expected) {
             matched += 1;
         } else {
             let mut failure = Map::new();

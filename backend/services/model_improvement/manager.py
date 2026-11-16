@@ -394,7 +394,8 @@ def _prepare():
     from ...backends.qwen_llm_backend import MLX_HF_REPOS
     from ..settings import get_capture_settings
 
-    correction_learning.run_job()
+    # The server learns the rules and has the worker reload them.
+    correction_learning.initialize()
     with _lock:
         groups = deepcopy(_state["groups"])
         active = deepcopy(_active)
@@ -853,18 +854,6 @@ def rollback():
         return status()
 
 
-def _learn_rules():
-    """Relearn correction rules; whether that invalidated the active adapter."""
-    correction_learning.initialize()
-    before = digest(correction_learning._state["rules"])
-    try:
-        correction_learning.run_job()
-    except Exception:
-        logger.exception("Correction learning failed; keeping the active rules")
-        return False
-    return bool(_active.get("llm")) and digest(correction_learning._state["rules"]) != before
-
-
 async def periodic_job():
     initialize()
     try:
@@ -877,10 +866,10 @@ async def periodic_job():
             if (
                 retrain
                 or time.monotonic() - _last_attempt >= INTERVAL_SECONDS
-                # A saved or withdrawn report is learned from soon, not in six
-                # hours. The adapter was tested with the old rules, so new ones
-                # retest it.
-                or (correction_learning.pending() and await asyncio.to_thread(_learn_rules))
+                # The server learns from a saved or withdrawn report soon, not
+                # in six hours. The adapter was tested with the old rules, so
+                # new ones retest it.
+                or (correction_learning.take_rules_changed() and bool(_active.get("llm")))
             ):
                 start()
     finally:

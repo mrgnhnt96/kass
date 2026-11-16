@@ -4,8 +4,11 @@ The broader training/evaluation/deployment loop is implemented in
 [MODEL_IMPROVEMENT.md](MODEL_IMPROVEMENT.md). This document describes only its
 lightweight vocabulary-rule component.
 
-The model-improvement scheduler (MODEL_IMPROVEMENT.md) runs this local CPU-only
-job before every adapter run (every six hours when idle). Captures → Learning from
+The Rust server runs this local CPU-only job (`tauri/src-tauri/server/src/learning.rs`,
+rules in `tauri/src-tauri/text/src/correction_rules.rs`). It checks kass.db for
+new, changed or withdrawn reports every 15 seconds and learns from them once the
+models are idle, saves `correction-learning.json`, and has the model worker
+reload it: dictations apply the rules from memory there. Captures → Learning from
 corrections exposes status, Check now, and Undo last update. No cloud uploads or
 model fine-tuning occur in this layer.
 
@@ -19,7 +22,7 @@ refined correction from the cleanup examples, the newest third of reports is hel
 out, and learning waits for the six-hourly run. Turning the beta on or off
 re-evaluates the rules on the next run.
 
-With the beta, learning also runs at the next idle minute (two minutes without
+With the beta, learning also runs once the models are idle (two minutes without
 foreground work) after a report is saved or withdrawn.
 
 ## Reports and their sources (beta)
@@ -41,8 +44,8 @@ spoken reports on `refined`: rules are case-sensitive and run after refinement,
 and `transcript_refined` is what was inserted.
 
 `DELETE /captures/{id}/feedback/{report_id}` withdraws one report and everything
-it taught. Cleanup examples, habits and known names drop it at once. At the next
-idle minute rules are relearned without it: a rule that lost its support is
+it taught. Cleanup examples, habits and known names drop it at once. Once the
+models are idle rules are relearned without it: a rule that lost its support is
 removed, and a block its contradiction caused is lifted. If a cleanup adapter is
 active, the adapter job also runs again, since the report may be in its training
 data. Captures' Undo on a report withdraws it.
@@ -112,10 +115,13 @@ published rules. Failure to load starts with no rules; job failures retain the
 previous active state and log the failure.
 
 - `GET /capture/learning`: status and last evaluation metrics
-- `POST /capture/learning/run`: run the job in a worker thread
-- `POST /capture/learning/rollback`: restore the prior safe version
+- `POST /capture/learning/run`: run the job now, then start a model-improvement
+  run if one is due
+- `POST /capture/learning/rollback`: restore the prior adapters if there are
+  any, else the prior safe rules
 - `DELETE /captures/{id}/feedback/{report_id}`: withdraw one report (beta)
 
-Validation: `backend/venv/bin/python -m pytest backend/tests/test_correction_learning.py
+Validation: `cargo test -p kass-text -p kass-server` in `tauri/src-tauri`, and
+`backend/venv/bin/python -m pytest backend/tests/test_correction_learning.py
 backend/tests/test_capture_feedback.py backend/tests/test_personal_examples.py
 backend/tests/test_model_improvement.py` (run as one command).

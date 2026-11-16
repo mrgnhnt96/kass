@@ -11,6 +11,7 @@ mod cors;
 pub mod db;
 pub mod dictionary;
 mod events;
+pub mod learning;
 pub mod proxy;
 pub mod routes;
 pub mod settings;
@@ -54,9 +55,11 @@ pub struct Running {
     address: SocketAddr,
     _shutdown: oneshot::Sender<()>,
     _relay: Relay,
+    _learning: Relay,
 }
 
-/// Stops passing on the worker's capture events when the server stops.
+/// A background task that stops when the server stops: passing on the
+/// worker's capture events, learning from reports.
 struct Relay(tokio::task::JoinHandle<()>);
 
 impl Drop for Relay {
@@ -98,6 +101,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
         state.events.clone(),
         state.proxy.clone(),
     )));
+    let learning = Relay(tokio::spawn(learning::watch(state.clone())));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
@@ -118,5 +122,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         address,
         _shutdown: shutdown,
         _relay: relay,
+        _learning: learning,
     })
 }
