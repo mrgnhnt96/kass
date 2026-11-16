@@ -1,0 +1,13 @@
+[package]
+name = "kass-ui"
+description = "Kass's GPUI theme and shared controls"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gpui-kit = "0.7"
+serde_json.workspace = true
+
+

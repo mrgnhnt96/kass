@@ -1,0 +1,31 @@
+{
+  "stt_model": "turbo",
+  "language": "auto",
+  "auto_refine": true,
+  "llm_model": "0.6B",
+  "smart_cleanup": true,
+  "self_correction": true,
+  "preserve_technical": true,
+  "punctuation_style": "standard",
+  "allow_auto_paste": true,
+  "live_text": false,
+  "voice_edits": true,
+  "expressive": true,
+  "sound_cues": true,
+  "sound_cue_volume": 0.5,
+  "input_device_id": null,
+  "hotkey_enabled": false,
+  "chord_push_to_talk_keys": ["Fn"],
+  "chord_toggle_to_talk_keys": ["Fn", "Space"],
+  "chord_command_keys": ["Fn", "Control"],
+  "command_transforms": [
+    {"id": "fix", "name": "Fix grammar", "instruction": "Fix spelling and grammar."},
+    {"name": "Shorter", "instruction": "Make it shorter."}
+  ],
+  "history_retention_days": 30,
+  "history_retention_confirmed": false,
+  "onboarding_completed": true,
+  "discard_audio": false,
+  "share_usage": true,
+  "shared_adapters": true
+}
