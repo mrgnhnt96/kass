@@ -51,16 +51,16 @@ dev: _ensure-venv _ensure-sidecar
 
     trap '[ -n "$backend_pid" ] && kill "$backend_pid" 2>/dev/null; wait' EXIT
 
-    echo "Starting Tauri desktop app..."
-    cd {{ tauri_dir }} && bun run tauri dev
+    echo "Starting the desktop app..."
+    ./scripts/dev-app.sh
 
 # Start the Python model worker only, on the port the app passes requests to
 dev-backend: _ensure-venv
     {{ venv_bin }}/uvicorn backend.main:app --reload --port 17494
 
-# Start Tauri desktop app only (backend must be running separately)
+# Start the desktop app only (backend must be running separately)
 dev-frontend: _ensure-sidecar
-    cd {{ tauri_dir }} && bun run tauri dev
+    ./scripts/dev-app.sh
 
 # Kill all dev processes
 kill:

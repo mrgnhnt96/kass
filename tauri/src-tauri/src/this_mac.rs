@@ -8,8 +8,8 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
+use crate::host::Manager;
 use serde::Serialize;
-use tauri::Manager;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ThisMac {
@@ -20,7 +20,7 @@ pub struct ThisMac {
 static THIS_MAC: OnceLock<ThisMac> = OnceLock::new();
 
 /// Read (or make) this Mac's id. Call once from setup.
-pub fn init(app: &tauri::AppHandle) {
+pub fn init(app: &crate::host::AppHandle) {
     let id = app
         .path()
         .app_data_dir()
@@ -51,7 +51,6 @@ pub fn headers() -> Vec<(&'static str, String)> {
     headers
 }
 
-#[tauri::command]
 pub fn this_mac() -> Option<ThisMac> {
     get().cloned()
 }

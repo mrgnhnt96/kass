@@ -12,8 +12,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use tauri::AppHandle;
-use tauri_plugin_notification::NotificationExt;
+use crate::host::AppHandle;
 
 use super::last_take::{self, Corrected, Correction};
 
@@ -29,14 +28,13 @@ static WATCHING: AtomicBool = AtomicBool::new(false);
 /// A correction saved in Captures, from `before` (the text as shown) to
 /// `after`. Returns the app's name when it was made at once; held or not
 /// made, it returns nothing and says nothing.
-#[tauri::command]
 pub async fn apply_correction(
     app: AppHandle,
     capture_id: String,
     before: String,
     after: String,
 ) -> Option<String> {
-    let corrected = tauri::async_runtime::spawn_blocking(move || {
+    let corrected = crate::host::async_runtime::spawn_blocking(move || {
         last_take::apply_correction(&capture_id, &before, &after, |pid, owned, b, a| {
             crate::text_insert::correct_focused(pid, owned, b, a, None)
         })
@@ -117,5 +115,5 @@ fn notify(app: &AppHandle, pid: i32) {
         Some(name) => format!("Updated in {name}"),
         None => "Updated where you dictated it".into(),
     };
-    let _ = app.notification().builder().title("Kass").body(body).show();
+    app.notify("Kass", &body);
 }

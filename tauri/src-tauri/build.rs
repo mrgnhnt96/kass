@@ -169,5 +169,37 @@ fn main() {
         }
     }
 
-    tauri_build::build()
+    #[cfg(target_os = "macos")]
+    embed_dev_info_plist();
+}
+
+/// A development build runs as a bare binary with no bundle, so macOS reads
+/// its Info.plist (the microphone and network usage strings, the bundle id)
+/// from the binary itself. Bundled builds use the bundle's.
+#[cfg(target_os = "macos")]
+fn embed_dev_info_plist() {
+    println!("cargo:rerun-if-changed=Info.plist");
+    if std::env::var("PROFILE").as_deref() != Ok("debug") {
+        return;
+    }
+    let plist = std::fs::read_to_string("Info.plist").expect("Info.plist");
+    let extra = format!(
+        "\t<key>CFBundleIdentifier</key>\n\t<string>com.mrgnhnt.kass</string>\n\
+         \t<key>CFBundleName</key>\n\t<string>Kass</string>\n\
+         \t<key>CFBundleShortVersionString</key>\n\t<string>{v}</string>\n\
+         \t<key>CFBundleVersion</key>\n\t<string>{v}</string>\n</dict>",
+        v = std::env::var("CARGO_PKG_VERSION").unwrap_or_default()
+    );
+    let merged = match plist.rfind("</dict>") {
+        Some(end) => format!(
+            "{}{}{}",
+            &plist[..end],
+            extra,
+            &plist[end + "</dict>".len()..]
+        ),
+        None => plist,
+    };
+    let path = format!("{}/Info.plist", std::env::var("OUT_DIR").expect("OUT_DIR"));
+    std::fs::write(&path, merged).expect("write dev Info.plist");
+    println!("cargo:rustc-link-arg-bins=-Wl,-sectcreate,__TEXT,__info_plist,{path}");
 }

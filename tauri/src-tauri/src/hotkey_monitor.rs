@@ -36,9 +36,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use crate::host::{AppHandle, Emitter, Manager};
 use keytap::chord::{Chord, ChordEvent, ChordMatcher};
 use keytap::{EventKind, Key, RecvTimeoutError, Tap};
-use tauri::{AppHandle, Emitter, Manager};
 
 use crate::dictation;
 use crate::dictation_handshake;
@@ -144,15 +144,13 @@ fn on_start(practice: bool, gate: Option<String>) -> OnStart {
 
 /// Practice mode on or off: while on, chords only send `chord:down` /
 /// `chord:up` events and nothing records.
-#[tauri::command]
-pub fn set_chord_practice(mode: tauri::State<'_, ChordMode>, enabled: bool) {
+pub fn set_chord_practice(mode: crate::host::State<'_, ChordMode>, enabled: bool) {
     mode.practice.store(enabled, Ordering::Relaxed);
 }
 
 /// Block takes with a message for the pill (the models are still
 /// downloading, for example), or unblock them with `None`.
-#[tauri::command]
-pub fn set_dictation_gate(mode: tauri::State<'_, ChordMode>, blocked: Option<String>) {
+pub fn set_dictation_gate(mode: crate::host::State<'_, ChordMode>, blocked: Option<String>) {
     if let Ok(mut gate) = mode.gate.lock() {
         *gate = blocked;
     }

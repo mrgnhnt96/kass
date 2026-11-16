@@ -69,16 +69,16 @@ const ASKED_MARKER: &str = "accessibility-asked";
 
 /// Whether Kass has asked for Accessibility before, which lists it in the
 /// Accessibility pane. macOS has no call that says whether it is listed.
-pub fn was_asked(app: &tauri::AppHandle) -> bool {
-    use tauri::Manager;
+pub fn was_asked(app: &crate::host::AppHandle) -> bool {
+    use crate::host::Manager;
     app.path()
         .app_config_dir()
         .is_ok_and(|dir| dir.join(ASKED_MARKER).exists())
 }
 
 /// Record that Kass asked, so the next time opens the pane instead.
-pub fn remember_asked(app: &tauri::AppHandle) {
-    use tauri::Manager;
+pub fn remember_asked(app: &crate::host::AppHandle) {
+    use crate::host::Manager;
     let Ok(dir) = app.path().app_config_dir() else {
         return;
     };

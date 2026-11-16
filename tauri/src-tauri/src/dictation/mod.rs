@@ -41,8 +41,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc as std_mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::host::{AppHandle, Emitter, Listener, Manager};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, Listener, Manager};
 
 use crate::focus_capture::FocusSnapshot;
 use crate::DICTATE_WINDOW_LABEL;
@@ -266,7 +266,7 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin, mode: TakeMo
     // when the copying app renders its data lazily.
     if env.pastes {
         let clipboard_slot = env.clipboard.clone();
-        tauri::async_runtime::spawn_blocking(move || {
+        crate::host::async_runtime::spawn_blocking(move || {
             if let Ok(snapshot) = crate::clipboard::save_clipboard() {
                 if let Ok(mut slot) = clipboard_slot.lock() {
                     *slot = Some(snapshot);
@@ -283,14 +283,14 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin, mode: TakeMo
 
     let learning_env = env.clone();
     let learning_flag = recording.clone();
-    tauri::async_runtime::spawn(async move {
+    crate::host::async_runtime::spawn(async move {
         while learning_flag.load(Ordering::Relaxed) {
             http::pause_learning(&learning_env.http, &learning_env.server.url()).await;
             tokio::time::sleep(LEARNING_PAUSE_INTERVAL).await;
         }
     });
 
-    tauri::async_runtime::spawn(async move {
+    crate::host::async_runtime::spawn(async move {
         let app_focus = env.focus.clone();
         let client = StreamClient::new(MAX_PENDING_BYTES)
             .with_target_app(move || target_app(&app_focus))
@@ -479,7 +479,7 @@ async fn withdraw_live(live: &Live<AxLive>) {
 /// The clipboard's text, once the user's clipboard is back from the last
 /// paste; `None` when what was copied isn't text.
 async fn clipboard_text() -> Option<String> {
-    let read = tauri::async_runtime::spawn_blocking(|| {
+    let read = crate::host::async_runtime::spawn_blocking(|| {
         crate::clipboard::restore_pending();
         crate::clipboard::read_text()
     })
@@ -509,7 +509,7 @@ pub fn set_focus(app: &AppHandle, take_id: u64, focus: Option<FocusSnapshot>) {
         let in_kass = bundle_id.as_deref() == Some(crate::KASS_BUNDLE_ID);
         let field_before = take.field_before.clone();
         let editable = take.editable.clone();
-        tauri::async_runtime::spawn_blocking(move || {
+        crate::host::async_runtime::spawn_blocking(move || {
             // Turn on an Electron target's accessibility tree now, while the
             // user speaks, so it is built by the time the text is inserted.
             crate::text_insert::wake_electron(pid);
@@ -548,7 +548,7 @@ fn read_selection(app: &AppHandle, take: &ActiveTake, focus: Option<FocusSnapsho
     let slot = take.selection.clone();
     let app = app.clone();
     let take_id = take.id;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::host::async_runtime::spawn_blocking(move || {
         let found = match focus {
             Some(focus) if focus.bundle_id.as_deref() == Some(crate::KASS_BUNDLE_ID) => {
                 selection_in_app(&app, take_id)
@@ -693,7 +693,7 @@ fn report_take(env: &AppEnv, since_release: Option<Duration>) {
         .map(|d| d.as_millis() as u64);
     let http = env.http.clone();
     let server_url = env.server.url();
-    tauri::async_runtime::spawn(async move {
+    crate::host::async_runtime::spawn(async move {
         http::report_take(&http, &server_url, mode, outcome, latency_ms).await;
     });
 }
@@ -890,7 +890,7 @@ impl LiveTarget for AxLive {
                     crate::text_insert::FallbackReason::NoFocusedElement,
                 );
             };
-            let outcome = tauri::async_runtime::spawn_blocking(move || {
+            let outcome = crate::host::async_runtime::spawn_blocking(move || {
                 crate::text_insert::begin_live_focused(pid, bundle.as_deref(), &text)
             })
             .await
@@ -911,7 +911,7 @@ impl LiveTarget for AxLive {
             let Some((pid, _)) = target else {
                 return Err(crate::text_insert::LiveError::Edited);
             };
-            let outcome = tauri::async_runtime::spawn_blocking(move || {
+            let outcome = crate::host::async_runtime::spawn_blocking(move || {
                 crate::text_insert::extend_live_focused(pid, &owned, &text)
             })
             .await
@@ -934,7 +934,7 @@ impl LiveTarget for AxLive {
                 return Err(crate::text_insert::LiveError::Edited);
             };
             let revised = !text.starts_with(owned.text.as_str());
-            let outcome = tauri::async_runtime::spawn_blocking(move || {
+            let outcome = crate::host::async_runtime::spawn_blocking(move || {
                 crate::text_insert::finish_live_focused(pid, &owned, &text)
             })
             .await
@@ -1089,7 +1089,7 @@ impl TakeEnv for AppEnv {
                 .filter(|editable| editable.pid == focus.pid)
                 .ok_or_else(|| last_take::NOTHING_TO_FIX.to_string())?;
             let owned = editable.owned.clone();
-            let result = tauri::async_runtime::spawn_blocking(move || {
+            let result = crate::host::async_runtime::spawn_blocking(move || {
                 let type_in = |text: &str| {
                     crate::type_over_selection(
                         focus.pid,
@@ -1172,9 +1172,9 @@ impl TakeEnv for AppEnv {
 // ========================================================================
 
 /// Push the server URL, webview origin and saved microphone to Rust.
-#[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn dictation_configure(
-    state: tauri::State<'_, DictationState>,
+    state: crate::host::State<'_, DictationState>,
     server_url: Option<String>,
     fallback_url: Option<String>,
     origin: Option<String>,
@@ -1215,8 +1215,7 @@ pub fn dictation_configure(
 
 /// Whether the other Mac's server in use is away (beta `network`), from the
 /// main window's health checks.
-#[tauri::command]
-pub fn dictation_set_away(state: tauri::State<'_, DictationState>, away: bool) {
+pub fn dictation_set_away(state: crate::host::State<'_, DictationState>, away: bool) {
     state.away.store(away, Ordering::Relaxed);
 }
 
@@ -1262,7 +1261,6 @@ fn next_device(current: Option<String>, known: bool, sent: Option<String>) -> Op
 }
 
 /// Stop the current take (the pill's stop button).
-#[tauri::command]
 pub fn dictation_stop(app: AppHandle) {
     stop(&app);
 }
@@ -1270,7 +1268,6 @@ pub fn dictation_stop(app: AppHandle) {
 /// Start a take from Kass's own Dictate button. The text lands in
 /// Captures instead of being pasted. Returns the take id, or `None` when a
 /// take is already recording.
-#[tauri::command]
 pub fn dictation_start(app: AppHandle) -> Option<u64> {
     let take = start(&app, Instant::now(), TakeOrigin::App, TakeMode::Dictation);
     if take.is_some() {
@@ -1281,7 +1278,6 @@ pub fn dictation_start(app: AppHandle) -> Option<u64> {
 
 /// Run an instruction, or a transform by name, on the text selected in the
 /// app the user came to Kass from (the ⌘K palette's transforms).
-#[tauri::command]
 pub async fn command_run(app: AppHandle, instruction: String) -> Result<(), String> {
     command::run_from_kass(&app, instruction).await
 }
@@ -1305,9 +1301,8 @@ pub fn show_hud(app: &AppHandle) {
 }
 
 /// Native microphones, with ids suitable for `input_device_id`.
-#[tauri::command]
 pub async fn list_input_devices() -> Result<Vec<NativeInputDevice>, String> {
-    tauri::async_runtime::spawn_blocking(capture::list_input_devices)
+    crate::host::async_runtime::spawn_blocking(capture::list_input_devices)
         .await
         .map_err(|e| e.to_string())?
 }

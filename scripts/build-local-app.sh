@@ -9,7 +9,7 @@ identity=$(./scripts/signing-identity.sh)
 
 # The server folder is copied into the app as-is, so sign its code first:
 # every library, then the executable with the app's hardened-runtime
-# entitlements. Tauri then seals the folder into the app signature.
+# entitlements. The bundler then seals the folder into the app signature.
 server=tauri/src-tauri/binaries/kass-server
 if [ ! -x "$server/kass-server" ]; then
   echo "Server not built at $server. Run scripts/build-server.sh first." >&2
@@ -26,8 +26,8 @@ codesign --force "$timestamp" --options runtime --entitlements tauri/src-tauri/E
 
 config=$(mktemp /tmp/kass-local-signing.XXXXXX)
 trap 'rm -f "$config"' EXIT
-# With the updater key set (release.yml), Tauri also packs the app as a signed
-# .app.tar.gz for the background updater.
+# With the updater key set (release.yml), the bundler also packs the app as a
+# signed .app.tar.gz for the background updater.
 updater=False
 [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && updater=True
 python3 - "$config" "$identity" "$updater" <<'PY'
@@ -40,5 +40,9 @@ if command -v bun >/dev/null 2>&1; then
 else
   bun=(npx --yes bun@1.3.8)
 fi
-"${bun[@]}" run --cwd tauri tauri build --bundles app --config "$config"
+# The screens, then the app with them inside, then the Tauri CLI packs and
+# signs the bundle (it only bundles; the app no longer uses Tauri).
+"${bun[@]}" run --cwd tauri build
+(cd tauri/src-tauri && cargo build --release --features custom-protocol)
+"${bun[@]}" run --cwd tauri tauri bundle --bundles app --config "$config"
 codesign --verify --deep --strict tauri/src-tauri/target/release/bundle/macos/Kass.app

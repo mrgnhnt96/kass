@@ -21,10 +21,10 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::OnceLock;
 use std::thread;
 
+use crate::host::{AppHandle, Manager};
 use objc::runtime::{Object, BOOL};
 use objc::{class, msg_send, sel, sel_impl};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
 
 const START_WAV: &[u8] = include_bytes!("../sounds/start.wav");
 const STOP_WAV: &[u8] = include_bytes!("../sounds/stop.wav");
@@ -308,7 +308,6 @@ impl Drop for AutoreleasePool {
 // ========================================================================
 
 /// Push the sound cue settings to Rust. `None` leaves a setting as it is.
-#[tauri::command]
 pub fn configure_sound_cues(enabled: Option<bool>, volume: Option<f32>) {
     let before = current();
     let next = before.with(enabled, volume);
@@ -321,7 +320,6 @@ pub fn configure_sound_cues(enabled: Option<bool>, volume: Option<f32>) {
 }
 
 /// Play the start cue at `volume`, so the volume slider can be heard.
-#[tauri::command]
 pub fn preview_sound_cue(volume: f32) {
     send(Cue::Start, clamp_volume(volume));
 }
