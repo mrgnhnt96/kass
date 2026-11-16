@@ -71,17 +71,23 @@ fn view(cx: &App) -> Option<Entity<MainShell>> {
     cx.try_global::<ShellGlobal>()?.view.as_ref()?.upgrade()
 }
 
+/// Whether the main window shows `path`.
+pub fn showing(path: &str, cx: &App) -> bool {
+    view(cx).is_some_and(|view| view.read(cx).location.path.trim_end_matches('/') == path)
+}
+
 /// Show `path`: the page's router follows, and the shell shows it now.
 pub fn navigate(path: &str, search: &str, cx: &mut App) {
     let mut search = search.to_string();
     if let Some(view) = view(cx) {
         search = view.update(cx, |shell, cx| {
-            shell.location = Location {
-                path: path.to_string(),
-                search,
-            };
-            shell.follow_link(cx);
-            cx.notify();
+            shell.go(
+                Location {
+                    path: path.to_string(),
+                    search,
+                },
+                cx,
+            );
             shell.location.search.clone()
         });
     }
@@ -94,9 +100,7 @@ pub fn set_location(location: Location) {
         if let Some(view) = view(cx) {
             view.update(cx, |shell, cx| {
                 if shell.location != location {
-                    shell.location = location;
-                    shell.follow_link(cx);
-                    cx.notify();
+                    shell.go(location, cx);
                 }
             });
         }
@@ -215,6 +219,19 @@ impl MainShell {
             restarting: false,
             _subscriptions: subscriptions,
         }
+    }
+
+    fn go(&mut self, location: Location, cx: &mut Context<Self>) {
+        let on_dictionary =
+            |location: &Location| location.path.trim_end_matches('/') == settings::dictionary::PATH;
+        // The page's own screens (Captures) cache the dictionary the native
+        // page changed.
+        if on_dictionary(&self.location) && !on_dictionary(&location) {
+            bridge::invalidate(&[&["dictionary"]]);
+        }
+        self.location = location;
+        self.follow_link(cx);
+        cx.notify();
     }
 
     /// A link into a native screen: Insights on an app or period, or a
@@ -471,7 +488,8 @@ mod tests {
         assert_eq!(Placement::of("/settings/"), Placement::Hidden);
         assert_eq!(Placement::of("/settings/transcription"), Placement::Hidden);
         assert_eq!(Placement::of("/settings/logs"), Placement::Hidden);
-        assert_eq!(Placement::of("/settings/dictation"), Placement::Settings);
+        assert_eq!(Placement::of("/settings/dictionary"), Placement::Hidden);
+        assert_eq!(Placement::of("/settings/dictation"), Placement::Hidden);
         assert_eq!(Placement::of("/insights"), Placement::Hidden);
         assert_eq!(Placement::of("/captures"), Placement::Hidden);
         assert_eq!(Placement::of("/models"), Placement::Content);

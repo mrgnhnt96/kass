@@ -4135,6 +4135,7 @@ dependencies = [
  "include_dir",
  "kass-api",
  "kass-captures",
+ "kass-dictionary",
  "kass-i18n",
  "kass-insights",
  "kass-onboarding",

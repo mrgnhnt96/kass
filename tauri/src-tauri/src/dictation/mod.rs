@@ -441,6 +441,13 @@ fn pick_kass_window(windows: &[(String, bool)]) -> &str {
 /// focused Kass window inserts through the DOM instead, so React sees
 /// the edit.
 async fn insert_in_app(app: &AppHandle, take_id: u64, text: String) -> Result<bool, String> {
+    let window = kass_window_label(app);
+    // A native box (the Dictionary's "When I say") takes it before the page.
+    if window == MAIN_WINDOW_LABEL
+        && crate::settings::dictionary::claim(take_id, text.clone()).await
+    {
+        return Ok(true);
+    }
     let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
     let tx = Mutex::new(Some(tx));
     let listener = app.listen("dictation:inserted", move |event| {
@@ -456,7 +463,6 @@ async fn insert_in_app(app: &AppHandle, take_id: u64, text: String) -> Result<bo
         }
     });
     let payload = serde_json::json!({ "take": take_id, "text": text });
-    let window = kass_window_label(app);
     let result = match app.emit_to(window.as_str(), "dictation:insert", payload) {
         Ok(()) => Ok(tokio::time::timeout(IN_APP_INSERT_TIMEOUT, rx)
             .await
