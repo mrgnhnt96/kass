@@ -29,6 +29,7 @@ import { StatusBar } from '@/components/StatusBar';
 import { Toaster } from '@/components/ui/toaster';
 import { useModelDownloadToast } from '@/lib/hooks/useModelDownloadToast';
 import { MODEL_DISPLAY_NAMES, useRestoreActiveTasks } from '@/lib/hooks/useRestoreActiveTasks';
+import { nativeShell, useNativeShell } from '@/lib/nativeShell';
 
 // Root layout component
 function RootLayout() {
@@ -36,16 +37,26 @@ function RootLayout() {
   const activeDownloads = useRestoreActiveTasks();
   // Send a brand-new user to /setup, once per launch.
   useFirstRunRedirect();
+  useNativeShell();
 
   return (
     <AppFrame>
-      <div className="flex flex-1 min-h-0 overflow-hidden border-t border-border">
-        <Sidebar />
-        <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
+      {/* In the native shell, the sidebar and status bar are the shell's. */}
+      {nativeShell ? (
+        <main className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
           <Outlet />
         </main>
-      </div>
-      <StatusBar />
+      ) : (
+        <>
+          <div className="flex flex-1 min-h-0 overflow-hidden border-t border-border">
+            <Sidebar />
+            <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
+              <Outlet />
+            </main>
+          </div>
+          <StatusBar />
+        </>
+      )}
       <CommandPalette />
       <RetentionAskDialog />
       <AppLocationDialog />

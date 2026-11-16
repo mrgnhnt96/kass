@@ -24,6 +24,8 @@ mod overlap;
 mod report;
 mod server_process;
 mod server_version;
+mod settings;
+mod shell;
 mod sidecar;
 mod sound_cues;
 mod synthetic_keys;
@@ -74,7 +76,9 @@ fn overlay_titlebar() -> Option<TitlebarOptions> {
 fn main_window_spec(cx: &App) -> Spec {
     Spec {
         label: MAIN_WINDOW_LABEL,
-        query: "",
+        // The page draws only the screens not yet in GPUI; the shell around
+        // them (src/shell) is native.
+        query: "?shell=native",
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -92,6 +96,7 @@ fn main_window_spec(cx: &App) -> Spec {
         // Closing it hides it: Kass keeps running for dictation, and the
         // Dock icon brings it back. The server stops when Kass quits.
         on_close: OnClose::Hide,
+        root: Some(shell::root),
     }
 }
 
@@ -125,6 +130,7 @@ fn dictate_window_spec() -> Spec {
         transparent: true,
         prepare: prepare_pill,
         on_close: OnClose::Never,
+        root: None,
     }
 }
 
@@ -144,6 +150,7 @@ fn onboarding_window_spec(cx: &App) -> Spec {
         },
         transparent: false,
         prepare: |_| {},
+        root: None,
         // Its close button: the same as finish_onboarding(None).
         on_close: OnClose::Close(|| {
             let app = AppHandle;
@@ -1735,7 +1742,7 @@ pub fn run() {
     // HotkeyState.
     handle.manage(HotkeyState::default());
 
-    let application = gpui_kit::application();
+    let application = gpui_kit::application().with_assets(kass_ui::Assets);
     application.on_open_urls(|urls| {
         for url in urls {
             deep_link::open(&AppHandle, &url);
@@ -1762,6 +1769,9 @@ pub fn run() {
     });
     application.run(|cx| {
         host::install(cx);
+        gpui_kit::init(cx);
+        kass_ui::init(cx);
+        shell::init(cx);
         cx.on_app_quit(|_| {
             let app = AppHandle;
             let state = app.state::<ServerState>();

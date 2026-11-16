@@ -31,6 +31,7 @@ semver = "1"
 base64 = "0.22"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["blocking", "json", "stream", "multipart"] }
 hound = "3.5"
@@ -47,6 +48,11 @@ objc = "0.2"
 core-foundation-sys = "0.8"
 # Kass's HTTP API on port 17493, in front of the Python model worker.
 kass-server = { path = "server" }
+# The screens ported to GPUI: Kass's theme and controls, the API client and
+# the translations (crates/).
+kass-ui = { path = "../../crates/kass-ui" }
+kass-api = { path = "../../crates/kass-api" }
+kass-i18n = { path = "../../crates/kass-i18n" }
 # Release builds carry the built screens (tauri/dist) inside the binary.
 include_dir = { version = "0.7", optional = true }
 
