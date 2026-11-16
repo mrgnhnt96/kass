@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { NativeDictationEvent } from '@/lib/hooks/useNativeDictationSession';
+import type { NativeDictationEvent } from '@/lib/hooks/nativeDictationEvent';
 import { usePlatform } from '@/platform/PlatformContext';
 
 /**

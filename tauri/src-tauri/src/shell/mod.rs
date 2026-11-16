@@ -30,9 +30,9 @@ use bridge::{Location, Synced};
 use data::ShellData;
 
 /// The strip the traffic lights sit in, above everything else.
-const TITLEBAR: f32 = 48.;
+pub(crate) const TITLEBAR: f32 = 48.;
 /// The left rail.
-const RAIL: f32 = 68.;
+pub(crate) const RAIL: f32 = 68.;
 
 struct ShellGlobal {
     data: Entity<ShellData>,

@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { apiClient } from '@/lib/api/client';
 import { claimInAppDictation, isEditableField } from '@/lib/hooks/useInAppDictationInsert';
-import type { NativeDictationEvent } from '@/lib/hooks/useNativeDictationSession';
+import type { NativeDictationEvent } from '@/lib/hooks/nativeDictationEvent';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { cn } from '@/lib/utils/cn';
 import { defaultChordKeys } from '@/lib/utils/keyCodes';

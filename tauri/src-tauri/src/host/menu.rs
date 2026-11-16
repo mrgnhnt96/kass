@@ -25,6 +25,7 @@ actions!(
         FullScreen,
         Minimize,
         Zoom,
+        TogglePalette,
     ]
 );
 
@@ -60,6 +61,7 @@ pub fn install(cx: &mut App) {
     cx.on_action(|_: &FullScreen, _| send(sel!(toggleFullScreen:)));
     cx.on_action(|_: &Minimize, _| send(sel!(performMiniaturize:)));
     cx.on_action(|_: &Zoom, _| send(sel!(performZoom:)));
+    cx.on_action(|_: &TogglePalette, cx| crate::palette::toggle(cx));
 
     // Before set_menus: GPUI reads the menus' shortcuts from the keymap.
     cx.bind_keys([
@@ -75,6 +77,7 @@ pub fn install(cx: &mut App) {
         KeyBinding::new("cmd-a", SelectAll, None),
         KeyBinding::new("ctrl-cmd-f", FullScreen, None),
         KeyBinding::new("cmd-m", Minimize, None),
+        KeyBinding::new("cmd-k", TogglePalette, None),
     ]);
 
     cx.set_menus([
@@ -99,7 +102,11 @@ pub fn install(cx: &mut App) {
             MenuItem::os_action("Paste", Paste, OsAction::Paste),
             MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
         ]),
-        Menu::new("View").items([MenuItem::action("Enter Full Screen", FullScreen)]),
+        Menu::new("View").items([
+            MenuItem::action("Command Palette", TogglePalette),
+            MenuItem::separator(),
+            MenuItem::action("Enter Full Screen", FullScreen),
+        ]),
         Menu::new("Window").items([
             MenuItem::action("Minimize", Minimize),
             MenuItem::action("Zoom", Zoom),
