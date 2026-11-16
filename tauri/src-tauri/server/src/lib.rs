@@ -7,6 +7,7 @@
 //! of its own.
 
 pub mod captures;
+pub mod cleanup_inputs;
 mod cors;
 pub mod db;
 pub mod dictionary;
