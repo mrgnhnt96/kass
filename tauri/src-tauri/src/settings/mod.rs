@@ -1,9 +1,11 @@
 //! Settings in GPUI: the section list on the left and the pages rebuilt
-//! natively (General, Transcription & refinement, Writing style, Features,
-//! Logs). The
-//! sections still drawn by the page show in the web view to the right of
-//! the list.
+//! natively (General, Dictation, Command mode, Transcription & refinement,
+//! Writing style, Features, Logs). The sections still drawn by the page
+//! show in the web view to the right of the list.
 
+mod chord;
+mod command_mode;
+mod dictation;
 mod features;
 mod general;
 mod logs;
@@ -26,6 +28,8 @@ pub const NAV_WIDTH: f32 = 220.;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     General,
+    Dictation,
+    CommandMode,
     Transcription,
     WritingStyle,
     Features,
@@ -37,6 +41,8 @@ impl Page {
     pub fn of(path: &str) -> Option<Self> {
         match path.trim_end_matches('/') {
             "/settings" => Some(Self::General),
+            "/settings/dictation" => Some(Self::Dictation),
+            "/settings/command-mode" => Some(Self::CommandMode),
             "/settings/transcription" => Some(Self::Transcription),
             "/settings/writing-style" => Some(Self::WritingStyle),
             "/settings/features" => Some(Self::Features),
@@ -65,6 +71,8 @@ const TABS: [(&str, &str); 8] = [
 /// The native pages, made once with the main window and kept while it's open.
 pub struct Settings {
     general: Entity<general::GeneralPage>,
+    dictation: Entity<dictation::DictationPage>,
+    command_mode: Entity<command_mode::CommandModePage>,
     transcription: Entity<transcription::TranscriptionPage>,
     writing_style: Entity<WritingStylePage>,
     features: Entity<features::FeaturesPage>,
@@ -77,6 +85,9 @@ impl Settings {
     pub fn new<T>(data: Entity<ShellData>, window: &mut Window, cx: &mut Context<T>) -> Self {
         Self {
             general: cx.new(|cx| general::GeneralPage::new(data.clone(), window, cx)),
+            dictation: cx.new(|cx| dictation::DictationPage::new(data.clone(), window, cx)),
+            command_mode: cx
+                .new(|cx| command_mode::CommandModePage::new(data.clone(), window, cx)),
             transcription: cx
                 .new(|cx| transcription::TranscriptionPage::new(data.clone(), window, cx)),
             writing_style: cx.new(|cx| {
@@ -122,6 +133,8 @@ impl Settings {
             Some(page) => {
                 let view: AnyView = match page {
                     Page::General => self.general.clone().into(),
+                    Page::Dictation => self.dictation.clone().into(),
+                    Page::CommandMode => self.command_mode.clone().into(),
                     Page::Transcription => self.transcription.clone().into(),
                     Page::WritingStyle => self.writing_style.clone().into(),
                     _ => self.features.clone().into(),
@@ -240,7 +253,9 @@ mod tests {
         assert_eq!(Page::of("/settings/writing-style"), Some(Page::WritingStyle));
         assert_eq!(Page::of("/settings/features"), Some(Page::Features));
         assert_eq!(Page::of("/settings/logs"), Some(Page::Logs));
-        assert_eq!(Page::of("/settings/dictation"), None);
+        assert_eq!(Page::of("/settings/dictation"), Some(Page::Dictation));
+        assert_eq!(Page::of("/settings/command-mode"), Some(Page::CommandMode));
+        assert_eq!(Page::of("/settings/dictionary"), None);
         assert_eq!(Page::of("/captures"), None);
     }
 

@@ -29,6 +29,10 @@ gpui_kit::assets::icon_assets!(
         Send,
         Lock,
         RotateCcw,
+        Circle,
+        Download,
+        Keyboard,
+        Accessibility,
     ]
 );
 
