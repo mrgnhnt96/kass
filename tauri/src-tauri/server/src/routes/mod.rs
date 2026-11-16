@@ -7,6 +7,7 @@ pub mod captures;
 pub mod commands;
 pub mod dictionary;
 pub mod health;
+pub mod learning;
 pub mod links;
 pub mod llm;
 pub mod models;
@@ -43,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         .merge(llm::router())
         .merge(capture_stream::router())
         .merge(captures::router())
+        .merge(learning::router())
         .merge(commands::router())
         .merge(models::router())
         .merge(settings::router())

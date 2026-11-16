@@ -195,3 +195,62 @@ pub async fn reports_changed(
         eprintln!("[server] couldn't tell the model worker the corrections changed: {error}");
     }
 }
+
+/// Whether nothing is using the models (no dictation for a while, no
+/// training running): when background learning may take the CPU. False
+/// when the worker doesn't answer.
+pub async fn models_idle(proxy: &Proxy) -> bool {
+    match post(proxy, "/worker/learning/idle", json!({})).await {
+        Ok(answer) => answer["idle"].as_bool().unwrap_or(false),
+        Err(error) => {
+            eprintln!("[server] couldn't ask the model worker whether it's idle: {error}");
+            false
+        }
+    }
+}
+
+/// Tell the worker the learned corrections changed, so dictations use them
+/// and the cleanup adapter is retested against them.
+pub async fn learning_changed(proxy: &Proxy) {
+    if let Err(error) = post_within(
+        proxy,
+        "/worker/learning/reload",
+        json!({}),
+        LEARNING_TIMEOUT,
+    )
+    .await
+    {
+        eprintln!("[server] couldn't tell the model worker the corrections changed: {error}");
+    }
+}
+
+/// The model-improvement job's status (`manager.status()`).
+pub async fn model_status(proxy: &Proxy) -> Result<Value, String> {
+    post(proxy, "/worker/learning/model", json!({})).await
+}
+
+/// Start a model-improvement run if one is due (`manager.start()`).
+pub async fn model_start(proxy: &Proxy) -> Result<Value, String> {
+    post_within(
+        proxy,
+        "/worker/learning/model/start",
+        json!({}),
+        LEARNING_TIMEOUT,
+    )
+    .await
+}
+
+/// Go back to the previous adapters; `Ok(Err(why))` when there are none.
+pub async fn model_rollback(proxy: &Proxy) -> Result<Result<Value, String>, String> {
+    let answer = post_within(
+        proxy,
+        "/worker/learning/model/rollback",
+        json!({}),
+        LEARNING_TIMEOUT,
+    )
+    .await?;
+    Ok(match answer["refused"].as_str() {
+        Some(why) => Err(why.to_string()),
+        None => Ok(answer),
+    })
+}
