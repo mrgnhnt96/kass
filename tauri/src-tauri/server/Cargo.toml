@@ -18,6 +18,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["net", "rt", "macros", "sync", "io-util", "time"] }
 uuid = { version = "1", features = ["v4"] }
+# Silero voice detection for streamed dictation (`stream::speech`). Links a
+# prebuilt ONNX Runtime, the same runtime the Python worker uses.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-native"] }
+# The dictation's recording, written as it arrives (`stream::intake`).
+hound = "3.5"
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

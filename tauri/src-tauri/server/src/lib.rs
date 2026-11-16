@@ -12,6 +12,7 @@ pub mod dictionary;
 pub mod proxy;
 pub mod routes;
 pub mod settings;
+pub mod stream;
 mod worker;
 
 use std::net::SocketAddr;
