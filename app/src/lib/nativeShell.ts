@@ -36,6 +36,8 @@ export const nativeShell = readFlag();
 /** Settings pages the shell draws itself (tauri/src-tauri/src/settings). */
 const NATIVE_PAGES = [
   '/settings',
+  '/settings/dictation',
+  '/settings/command-mode',
   '/settings/transcription',
   '/settings/writing-style',
   '/settings/features',
