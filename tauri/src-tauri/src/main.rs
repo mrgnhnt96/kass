@@ -24,6 +24,7 @@ mod login_item;
 mod onboarding;
 mod overlap;
 mod palette;
+mod prefs;
 mod report;
 mod server_process;
 mod server_version;
@@ -464,10 +465,8 @@ struct ServerState {
     child: Mutex<Option<sidecar::Child>>,
     server_pid: Mutex<Option<u32>>,
     models_dir: Mutex<Option<String>>,
-    /// Beta `network`: listen for other Macs, not just this one.
-    share_on_network: Mutex<bool>,
     /// Beta `network`: the other Mac's server this one stands in for while
-    /// it's away (backend/services/sync).
+    /// it's away (backend/services/sync), as of the last start.
     shared_server: Mutex<Option<String>>,
     /// Kass's API on `SERVER_PORT`, in front of the worker.
     api: Mutex<Option<Api>>,
@@ -488,9 +487,16 @@ impl Api {
 }
 
 /// Whether the server should listen for other Macs on the network: asked
-/// for, and on the beta channel (app/src/lib/betaFeatures.ts `network`).
-fn shares_on_network(app: &AppHandle, state: &ServerState) -> bool {
-    *state.share_on_network.lock().unwrap() && updater::beta_features(app)
+/// for, on the beta channel, and not using another Mac's (src/prefs.rs).
+fn shares_on_network(app: &AppHandle) -> bool {
+    prefs::get().shares(updater::beta_features(app))
+}
+
+/// Beta `network`: the other Mac's server this Mac's stands in for.
+fn shared_server(app: &AppHandle) -> Option<String> {
+    prefs::get()
+        .remote(updater::beta_features(app))
+        .map(str::to_string)
 }
 
 /// This Mac's address for other Macs on the network, like
@@ -511,12 +517,8 @@ async fn start_server(
     app: AppHandle,
     state: State<'_, ServerState>,
     models_dir: Option<String>,
-    share_on_network: Option<bool>,
-    shared_server: Option<String>,
 ) -> Result<String, String> {
-    if let Some(url) = shared_server {
-        *state.shared_server.lock().unwrap() = Some(url).filter(|u| !u.is_empty());
-    }
+    *state.shared_server.lock().unwrap() = shared_server(&app);
     // Store models_dir for use on restart (empty string means reset to default)
     if let Some(ref dir) = models_dir {
         if dir.is_empty() {
@@ -525,10 +527,7 @@ async fn start_server(
             *state.models_dir.lock().unwrap() = Some(dir.clone());
         }
     }
-    if let Some(share) = share_on_network {
-        *state.share_on_network.lock().unwrap() = share;
-    }
-    let share = shares_on_network(&app, &state);
+    let share = shares_on_network(&app);
     if state.api.lock().unwrap().is_none() {
         free_api_port().await?;
     }
@@ -1130,16 +1129,8 @@ async fn restart_server(
     app: AppHandle,
     state: State<'_, ServerState>,
     models_dir: Option<String>,
-    share_on_network: Option<bool>,
-    shared_server: Option<String>,
 ) -> Result<String, String> {
     println!("restart_server: stopping current server...");
-    if let Some(share) = share_on_network {
-        *state.share_on_network.lock().unwrap() = share;
-    }
-    if let Some(url) = shared_server {
-        *state.shared_server.lock().unwrap() = Some(url).filter(|u| !u.is_empty());
-    }
 
     // Update stored models_dir: empty string means reset to default, non-empty means set
     if let Some(ref dir) = models_dir {
@@ -1159,7 +1150,7 @@ async fn restart_server(
 
     // Start server again (uses the stored models_dir)
     println!("restart_server: starting server...");
-    start_server(app, state.clone(), None, None, None).await
+    start_server(app, state.clone(), None).await
 }
 
 /// Identifier of the Kass app itself — used to short-circuit auto-paste
@@ -1739,7 +1730,6 @@ pub fn run() {
         child: Mutex::new(None),
         server_pid: Mutex::new(None),
         models_dir: Mutex::new(None),
-        share_on_network: Mutex::new(false),
         shared_server: Mutex::new(None),
         api: Mutex::new(None),
     });

@@ -26,7 +26,7 @@ use crate::host::{self, webview, AppHandle, Listener, Manager};
 use crate::settings::{self, Settings};
 use crate::updater::{self, UpdateStatus};
 use crate::{ServerState, MAIN_WINDOW_LABEL};
-use bridge::{Location, Synced};
+use bridge::Location;
 use data::ShellData;
 
 /// The strip the traffic lights sit in, above everything else.
@@ -56,6 +56,11 @@ pub fn init(cx: &mut App) {
 
 pub fn shell_data(cx: &App) -> Entity<ShellData> {
     cx.global::<ShellGlobal>().data.clone()
+}
+
+/// [`shell_data`], or `None` before [`init`].
+pub fn try_shell_data(cx: &App) -> Option<Entity<ShellData>> {
+    Some(cx.try_global::<ShellGlobal>()?.data.clone())
 }
 
 /// What GPUI draws in the main window.
@@ -96,14 +101,6 @@ pub fn set_location(location: Location) {
                 }
             });
         }
-    });
-}
-
-/// The page's preferences changed (`shell_sync`).
-pub fn set_synced(synced: Synced) {
-    host::with_app(move |cx| {
-        let data = shell_data(cx);
-        data.update(cx, |data, cx| data.set_synced(synced, cx));
     });
 }
 

@@ -1,6 +1,7 @@
 //! What the shell and the native settings pages show, refreshed in the
 //! background: the server's health and settings, model readiness and
-//! downloads, the shared Mac's sync, permissions and the updater.
+//! downloads, the shared Mac's sync, permissions and the updater. Also
+//! checks whether the other Mac in use is away (beta `network`).
 
 use std::time::Duration;
 
@@ -11,13 +12,18 @@ use kass_api::types::{
 };
 use kass_api::{ApiClient, Mac, LOCAL_SERVER_URL};
 
-use super::bridge::{self, Synced};
+use super::bridge;
 use crate::dictation::capture::NativeInputDevice;
 use crate::host::{AppHandle, Manager};
+use crate::prefs::{self, Prefs};
 use crate::{this_mac, updater};
 
 /// How often the server is asked again, as the page's queries did.
 const POLL: Duration = Duration::from_secs(5);
+/// How often the other Mac in use is checked, and how long it has to
+/// answer. Macs on one network answer in milliseconds.
+const AWAY_CHECK: Duration = Duration::from_secs(3);
+const AWAY_TIMEOUT: Duration = Duration::from_millis(1500);
 /// Microphones and learned examples change rarely: every this many polls.
 const SLOW_EVERY: u32 = 6;
 
@@ -37,9 +43,11 @@ pub struct SharedSync {
 }
 
 pub struct ShellData {
-    /// Requests go to [`Synced::server_url`]; clones share it.
+    /// Requests go to [`ShellData::server_url`]; clones share it.
     pub api: ApiClient,
-    pub synced: Synced,
+    pub prefs: Prefs,
+    /// The other Mac in use can't be reached; this Mac's server stands in.
+    pub away: bool,
     pub health: Health,
     pub settings: Option<CaptureSettings>,
     pub readiness: Option<CaptureReadinessResponse>,
@@ -53,7 +61,10 @@ pub struct ShellData {
     pub update: updater::UpdateStatus,
     pub channel: updater::Channel,
     pub version: String,
+    /// Unfinished onboarding was opened this launch.
+    onboarding_checked: bool,
     _poll: Task<()>,
+    _away: Task<()>,
 }
 
 /// One round of answers from the server; `None` where a call failed.
@@ -76,9 +87,9 @@ impl ShellData {
             loop {
                 let slow = tick.is_multiple_of(SLOW_EVERY);
                 tick = tick.wrapping_add(1);
-                let Ok((api, remote)) = this.read_with(cx, |this, _| {
-                    (this.api.clone(), this.synced.remote_server_url.clone())
-                }) else {
+                let Ok((api, remote)) =
+                    this.read_with(cx, |this, _| (this.api.clone(), this.remote()))
+                else {
                     return;
                 };
                 let round = cx
@@ -97,9 +108,13 @@ impl ShellData {
                 cx.background_executor().timer(POLL).await;
             }
         });
-        Self {
+        let prefs = prefs::get();
+        kass_ui::set_theme_choice(theme_choice(&prefs.theme), cx);
+        let channel = updater::update_channel(AppHandle);
+        let mut data = Self {
             api: ApiClient::new(LOCAL_SERVER_URL, mac),
-            synced: Synced::default(),
+            prefs,
+            away: prefs::away(),
             health: Health::Connecting,
             settings: None,
             readiness: None,
@@ -110,10 +125,14 @@ impl ShellData {
             accessibility: crate::check_accessibility_permission(),
             input_monitoring: crate::check_input_monitoring_permission(),
             update: updater::update_status(app.state::<updater::UpdaterState>()),
-            channel: updater::update_channel(AppHandle),
+            channel,
             version: app.package_info().version,
+            onboarding_checked: false,
             _poll: poll,
-        }
+            _away: cx.spawn(check_away),
+        };
+        data.follow_prefs(cx);
+        data
     }
 
     fn apply(&mut self, round: Round, slow: bool) {
@@ -123,6 +142,7 @@ impl ShellData {
         };
         if round.settings.is_some() {
             self.settings = round.settings;
+            self.open_unfinished_onboarding();
         }
         if round.readiness.is_some() {
             self.readiness = round.readiness;
@@ -143,36 +163,62 @@ impl ShellData {
         self.input_monitoring = crate::check_input_monitoring_permission();
     }
 
-    /// The page synced its preferences: follow its server and theme.
-    pub fn set_synced(&mut self, synced: Synced, cx: &mut Context<Self>) {
-        if synced == self.synced {
+    /// Once per launch, when the server says onboarding isn't finished,
+    /// open it where it was (such as after the quit Input Monitoring needs).
+    fn open_unfinished_onboarding(&mut self) {
+        let Some(settings) = &self.settings else {
+            return;
+        };
+        if self.onboarding_checked {
             return;
         }
-        let url = if synced.server_url.is_empty() {
-            LOCAL_SERVER_URL.to_string()
-        } else {
-            synced.server_url.clone()
-        };
+        self.onboarding_checked = true;
+        if !settings.onboarding_completed {
+            let _ = crate::open_onboarding(AppHandle, true);
+        }
+    }
+
+    /// The other Mac in use: only for beta users.
+    pub fn remote(&self) -> Option<String> {
+        self.prefs.remote(self.beta()).map(str::to_string)
+    }
+
+    /// Where requests go: the other Mac's server, or this Mac's while it's
+    /// away or none is set.
+    pub fn server_url(&self) -> String {
+        match self.remote() {
+            Some(remote) if !self.away => remote,
+            _ => LOCAL_SERVER_URL.to_string(),
+        }
+    }
+
+    /// The preferences, the channel or the other Mac's presence changed:
+    /// follow the server and the theme.
+    pub fn follow_prefs(&mut self, cx: &mut Context<Self>) {
+        let prefs = prefs::get();
+        if prefs.theme != self.prefs.theme {
+            kass_ui::set_theme_choice(theme_choice(&prefs.theme), cx);
+        }
+        self.prefs = prefs;
+        self.away = prefs::away();
+        self.channel = updater::update_channel(AppHandle);
+        let url = self.server_url();
         if url != self.api.base_url() {
             self.api.set_base_url(url);
         }
-        if synced.theme != self.synced.theme {
-            kass_ui::set_theme_choice(theme_choice(&synced.theme), cx);
-        }
-        self.synced = synced;
         cx.notify();
     }
 
     /// The beta `network` sync to show, while another Mac's server is set.
     pub fn shared_sync(&self) -> Option<SharedSync> {
-        let remote = self.synced.remote_server_url.clone()?;
+        let remote = self.remote()?;
         let pending = match &self.sync {
             Some(status) if status.standing_in => status.pending.unwrap_or(0),
             _ => 0,
         };
         Some(SharedSync {
             remote,
-            away: self.synced.shared_away,
+            away: self.away,
             pending,
         })
     }
@@ -210,6 +256,52 @@ impl ShellData {
         self.update = updater::update_status(app.state::<updater::UpdaterState>());
         self.channel = updater::update_channel(app);
         cx.notify();
+    }
+}
+
+/// Beta `network`: while using another Mac's Kass, check it every few
+/// seconds. When it doesn't answer, this Mac's own server stands in: the
+/// requests go there, its models load, and new takes start there. When it's
+/// back, everything goes back to it; this Mac's server sends it what was
+/// done meanwhile (backend/services/sync).
+async fn check_away(this: WeakEntity<ShellData>, cx: &mut AsyncApp) {
+    // This Mac's server may still be starting when the other Mac is first
+    // found away, so it's asked to load its models until it has.
+    let mut woken = false;
+    loop {
+        let Ok((remote, api)) = this.read_with(cx, |this, _| (this.remote(), this.api.clone()))
+        else {
+            return;
+        };
+        let away = match remote {
+            None => false,
+            Some(remote) => {
+                let up = cx
+                    .background_executor()
+                    .spawn(async move { kass_api::answers_as_kass(&remote, AWAY_TIMEOUT) })
+                    .await;
+                if up {
+                    woken = false;
+                } else if !woken {
+                    woken = cx
+                        .background_executor()
+                        .spawn(async move { api.local_sync_wake().is_ok() })
+                        .await;
+                }
+                !up
+            }
+        };
+        if prefs::set_away(away) {
+            eprintln!(
+                "[network] {}",
+                if away {
+                    "The other Mac is away; dictating on this one"
+                } else {
+                    "The other Mac is back"
+                }
+            );
+        }
+        cx.background_executor().timer(AWAY_CHECK).await;
     }
 }
 

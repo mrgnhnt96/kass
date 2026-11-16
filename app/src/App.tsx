@@ -14,9 +14,9 @@ import { useCaptureEvents } from '@/lib/hooks/useCaptureEvents';
 import { useChordSync } from '@/lib/hooks/useChordSync';
 import { useDeepLinks } from '@/lib/hooks/useDeepLinks';
 import { useInAppDictationInsert } from '@/lib/hooks/useInAppDictationInsert';
-import { useSharedMacFallback } from '@/lib/hooks/useSharedMacFallback';
 import { useSoundCueSync } from '@/lib/hooks/useSoundCueSync';
 import { readThisMac } from '@/lib/macs';
+import { loadNativePrefs } from '@/lib/nativePrefs';
 import { queryClient } from '@/lib/queryClient';
 import { cn } from '@/lib/utils/cn';
 import { usePlatform } from '@/platform/PlatformContext';
@@ -93,7 +93,7 @@ function MainApp() {
   const serverStartingRef = useRef(false);
 
   // First run opens the onboarding window, which owns the chord until it's done.
-  const onboardingOwnsChord = useOnboardingLauncher(serverReady);
+  const onboardingOwnsChord = useOnboardingLauncher();
   // Replay the saved chord into the Rust hotkey listener every time
   // capture_settings resolves or the user edits the chord.
   useChordSync({ paused: onboardingOwnsChord });
@@ -105,8 +105,6 @@ function MainApp() {
   useDeepLinks(serverReady);
   // Captures dictated on another Mac sharing the server (beta `network`).
   useCaptureEvents(serverReady);
-  // This Mac stands in while the other Mac's server is away (beta `network`).
-  useSharedMacFallback();
 
   // Hooks above (the chord's settings among them) ask the server before it
   // is up. Whatever failed for that is asked again once it is, so the global
@@ -139,6 +137,8 @@ function MainApp() {
       setServerReady(true); // Web assumes server is running
       return;
     }
+    // The theme and the beta `network` settings are the app's.
+    const prefsLoaded = loadNativePrefs();
 
     // Only auto-start server in production mode
     // In dev mode, user runs server separately
@@ -229,7 +229,7 @@ function MainApp() {
     // Beta `network`: with another Mac's server set, use it. This Mac's own
     // starts too, standing in whenever that one can't be reached
     // (useSharedMacFallback), so the app opens on whichever answers first.
-    void readUpdateChannel().then(() => {
+    void Promise.all([readUpdateChannel(), prefsLoaded]).then(() => {
       const remote = remoteServerUrl();
       if (!remote) {
         startBundledServer();

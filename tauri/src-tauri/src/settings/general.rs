@@ -1,6 +1,7 @@
 //! Settings › General: the app (version, updates, the local server, restart,
 //! launch at login, theme), other Macs (beta), storage and privacy.
 
+use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -17,7 +18,8 @@ use kass_ui::{
 use super::toast_error;
 use crate::host::{self, AppHandle, Manager};
 use crate::login_item::{self, Status as LoginStatus};
-use crate::shell::bridge::{self, Command};
+use crate::prefs;
+use crate::shell::bridge;
 use crate::shell::data::{self, Health, ShellData};
 use crate::shell::status;
 use crate::updater::{self, UpdateStatus};
@@ -62,7 +64,11 @@ pub fn is_shorter(next: u16, current: u16) -> bool {
 fn version_description(version: &str, update: &UpdateStatus, up_to_date: bool) -> String {
     match update {
         UpdateStatus::Ready { version: latest } => {
-            kass_i18n::tr!(&format!("{G}-version-ready"), current = version, latest = latest.as_str())
+            kass_i18n::tr!(
+                &format!("{G}-version-ready"),
+                current = version,
+                latest = latest.as_str()
+            )
         }
         UpdateStatus::Downloading { version: latest } => kass_i18n::tr!(
             &format!("{G}-version-downloading"),
@@ -100,10 +106,15 @@ pub struct GeneralPage {
 
 impl GeneralPage {
     pub fn new(data: Entity<ShellData>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let current_theme = data.read(cx).synced.theme.clone();
+        let current_theme = data.read(cx).prefs.theme.clone();
         let themes = THEMES
             .iter()
-            .map(|choice| SelectOption::new(choice.to_string(), t(format!("settings-theme-options-{choice}"))))
+            .map(|choice| {
+                SelectOption::new(
+                    choice.to_string(),
+                    t(format!("settings-theme-options-{choice}")),
+                )
+            })
             .collect();
         let theme = cx.new(|cx| select_state(themes, Some(&current_theme), window, cx));
 
@@ -117,19 +128,23 @@ impl GeneralPage {
         let remote = cx.new(|cx| InputState::new(window, cx).placeholder("studio.local"));
 
         let subscriptions = vec![
-            cx.subscribe_in(&theme, window, |this, _, event: &SelectEvent<_>, window, cx| {
+            cx.subscribe(&theme, |this, _, event: &SelectEvent<_>, cx| {
                 if let SelectEvent::Confirm(Some(choice)) = event {
-                    this.set_theme(choice.clone(), window, cx);
+                    this.set_theme(choice.clone(), cx);
                 }
             }),
-            cx.subscribe_in(&retention, window, |this, _, event: &SelectEvent<_>, window, cx| {
-                if let SelectEvent::Confirm(Some(days)) = event {
-                    this.choose_retention(*days, window, cx);
-                }
-            }),
+            cx.subscribe_in(
+                &retention,
+                window,
+                |this, _, event: &SelectEvent<_>, window, cx| {
+                    if let SelectEvent::Confirm(Some(days)) = event {
+                        this.choose_retention(*days, window, cx);
+                    }
+                },
+            ),
             cx.observe_in(&data, window, |this, _, window, cx| {
                 this.sync_selects(window, cx);
-                if this.address.is_none() && this.data.read(cx).synced.share_on_network {
+                if this.address.is_none() && this.data.read(cx).prefs.share_on_network {
                     this.load_address(cx);
                 }
                 cx.notify();
@@ -162,7 +177,7 @@ impl GeneralPage {
             _subscriptions: subscriptions,
         };
         page.load_captures_dir(cx);
-        if page.data.read(cx).synced.share_on_network {
+        if page.data.read(cx).prefs.share_on_network {
             page.load_address(cx);
         }
         page
@@ -177,7 +192,7 @@ impl GeneralPage {
 
     /// Keep the dropdowns on what's saved, whoever changed it.
     fn sync_selects(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let theme_choice = self.data.read(cx).synced.theme.clone();
+        let theme_choice = self.data.read(cx).prefs.theme.clone();
         let days = Self::days(&self.data, cx);
         self.theme.update(cx, |state, cx| {
             if state.selected_value() != Some(&theme_choice) {
@@ -195,7 +210,9 @@ impl GeneralPage {
         let api = self.data.read(cx).api.clone();
         let task = data::background(cx, move || api.filesystem_health().ok());
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let dir = task.await.and_then(|h| h.captures_dir().map(str::to_string));
+            let dir = task
+                .await
+                .and_then(|h| h.captures_dir().map(str::to_string));
             let _ = this.update(cx, |this, cx| {
                 this.captures_dir = dir;
                 cx.notify();
@@ -217,7 +234,9 @@ impl GeneralPage {
     }
 
     fn save(&mut self, patch: CaptureSettingsUpdate, window: &mut Window, cx: &mut Context<Self>) {
-        let task = self.data.update(cx, |data, cx| data.update_settings(patch, cx));
+        let task = self
+            .data
+            .update(cx, |data, cx| data.update_settings(patch, cx));
         // Like the page, a failed save just leaves what the server kept.
         cx.spawn_in(window, async move |_, _| {
             if let Err(e) = task.await {
@@ -245,10 +264,10 @@ impl GeneralPage {
             })
     }
 
-    /// Ask the page to do `command`; `busy` is set until it's done.
+    /// Run `command` (src/prefs.rs); `busy` is set until it's done.
     fn command(
         &mut self,
-        command: Command,
+        command: impl Future<Output = Result<(), String>> + Send + 'static,
         busy: fn(&mut Self) -> &mut bool,
         failed: &'static str,
         window: &mut Window,
@@ -256,8 +275,9 @@ impl GeneralPage {
     ) {
         *busy(self) = true;
         cx.notify();
+        let command = host::async_runtime::spawn(command);
         cx.spawn_in(window, async move |this, cx| {
-            let result = bridge::send(command).await;
+            let result = command.await.unwrap_or_else(|e| Err(e.to_string()));
             let _ = this.update_in(cx, |this, window, cx| {
                 *busy(this) = false;
                 if let Err(e) = result {
@@ -270,18 +290,13 @@ impl GeneralPage {
         .detach();
     }
 
-    fn set_theme(&mut self, choice: String, window: &mut Window, cx: &mut Context<Self>) {
+    fn set_theme(&mut self, choice: String, cx: &mut Context<Self>) {
         let Some(&choice) = THEMES.iter().find(|c| **c == choice) else {
             return;
         };
-        // Show it now; the page saves it and syncs it back.
+        // Show it now; every window follows once it's saved.
         kass_ui::set_theme_choice(data::theme_choice(choice), cx);
-        cx.spawn_in(window, async move |_, _| {
-            if let Err(e) = bridge::send(Command::SetTheme(choice)).await {
-                eprintln!("[settings] theme: {e}");
-            }
-        })
-        .detach();
+        prefs::set_theme(choice);
     }
 
     fn check_for_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -352,9 +367,7 @@ impl GeneralPage {
                 this.login_busy = false;
                 match result {
                     Ok(status) => this.login = status,
-                    Err(e) => {
-                        toast_error(t(format!("{G}-launch-at-login-failed")), &e, window, cx)
-                    }
+                    Err(e) => toast_error(t(format!("{G}-launch-at-login-failed")), &e, window, cx),
                 }
                 cx.notify();
             });
@@ -476,7 +489,7 @@ impl GeneralPage {
             }
             let _ = this.update_in(cx, |this, window, cx| {
                 this.command(
-                    Command::UseRemote(Some(url)),
+                    prefs::use_remote(Some(url)),
                     |this| &mut this.connecting,
                     "settings-general-restart-failed",
                     window,
@@ -518,7 +531,10 @@ impl GeneralPage {
         };
 
         let beta_description = if !beta && version.contains("-beta.") {
-            kass_i18n::tr!(&format!("{G}-beta-updates-leaving"), version = version.as_str())
+            kass_i18n::tr!(
+                &format!("{G}-beta-updates-leaving"),
+                version = version.as_str()
+            )
         } else {
             t(format!("{G}-beta-updates-description"))
         };
@@ -588,12 +604,7 @@ impl GeneralPage {
                                     .text_color(muted)
                                     .child(label.to_uppercase()),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .truncate()
-                                    .child(value.clone()),
-                            )
+                            .child(div().text_size(px(13.)).truncate().child(value.clone()))
                     }))
                     .children((row.len()..3).map(|_| div().flex_1()))
             })
@@ -639,7 +650,7 @@ impl GeneralPage {
                             .disabled(self.beta_busy)
                             .on_change(cx.listener(|this, on: &bool, window, cx| {
                                 this.command(
-                                    Command::SetBeta(*on),
+                                    prefs::set_beta(*on),
                                     |this| &mut this.beta_busy,
                                     "settings-general-beta-updates-failed",
                                     window,
@@ -696,26 +707,25 @@ impl GeneralPage {
         if !data.beta() {
             return None;
         }
-        let synced = data.synced.clone();
-        let remote = synced.remote_server_url.clone();
+        let share_on_network = data.prefs.share_on_network;
+        let remote = data.remote();
 
         let share_row = remote.is_none().then(|| {
-            let description = match (&self.address, synced.share_on_network) {
-                (Some(address), true) => kass_i18n::tr!(
-                    &format!("{G}-network-share-on"),
-                    address = address.as_str()
-                ),
+            let description = match (&self.address, share_on_network) {
+                (Some(address), true) => {
+                    kass_i18n::tr!(&format!("{G}-network-share-on"), address = address.as_str())
+                }
                 _ => t(format!("{G}-network-share-description")),
             };
             SettingRow::new(t(format!("{G}-network-share-title")))
                 .description(description)
                 .action(
                     Toggle::new("share-on-network")
-                        .checked(synced.share_on_network)
+                        .checked(share_on_network)
                         .disabled(self.sharing_busy)
                         .on_change(cx.listener(|this, on: &bool, window, cx| {
                             this.command(
-                                Command::SetShareOnNetwork(*on),
+                                prefs::set_share_on_network(*on),
                                 |this| &mut this.sharing_busy,
                                 "settings-general-network-share-failed",
                                 window,
@@ -739,7 +749,7 @@ impl GeneralPage {
                         .disabled(self.connecting)
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.command(
-                                Command::UseRemote(None),
+                                prefs::use_remote(None),
                                 |this| &mut this.connecting,
                                 "settings-general-restart-failed",
                                 window,
@@ -764,7 +774,9 @@ impl GeneralPage {
                                     format!("{G}-network-remote-connect")
                                 }))
                                 .disabled(self.connecting)
-                                .on_click(cx.listener(|this, _, window, cx| this.connect(window, cx))),
+                                .on_click(
+                                    cx.listener(|this, _, window, cx| this.connect(window, cx)),
+                                ),
                         ),
                 ),
         };
@@ -777,7 +789,11 @@ impl GeneralPage {
         )
     }
 
-    fn storage_section(&self, settings: Option<&CaptureSettings>, cx: &mut Context<Self>) -> SettingSection {
+    fn storage_section(
+        &self,
+        settings: Option<&CaptureSettings>,
+        cx: &mut Context<Self>,
+    ) -> SettingSection {
         let loaded = settings.is_some();
         let discard = settings.is_some_and(|s| s.discard_audio);
         let mono = theme(cx).mono_font.clone();
@@ -792,12 +808,16 @@ impl GeneralPage {
             .child(
                 SettingRow::new(t(format!("{STORE}-recordings-title")))
                     .description(t(format!("{STORE}-recordings-description")))
-                    .action(self.toggle("discard-audio", discard, !loaded, |v| {
-                        CaptureSettingsUpdate {
+                    .action(self.toggle(
+                        "discard-audio",
+                        discard,
+                        !loaded,
+                        |v| CaptureSettingsUpdate {
                             discard_audio: Some(v),
                             ..Default::default()
-                        }
-                    }, cx)),
+                        },
+                        cx,
+                    )),
             )
             .child(
                 SettingRow::new(t(format!("{STORE}-folder-title")))
@@ -808,12 +828,7 @@ impl GeneralPage {
                             .gap(px(4.))
                             .child(t(format!("{STORE}-folder-description")))
                             .when_some(folder.clone(), |d, path| {
-                                d.child(
-                                    div()
-                                        .font_family(mono)
-                                        .text_size(px(11.))
-                                        .child(path),
-                                )
+                                d.child(div().font_family(mono).text_size(px(11.)).child(path))
                             }),
                     )
                     .action(
@@ -825,7 +840,12 @@ impl GeneralPage {
                             .on_click(move |_, window, cx| {
                                 if let Some(path) = &folder {
                                     if let Err(e) = host::open_external(path) {
-                                        toast_error(t(format!("{STORE}-folder-title")), &e.to_string(), window, cx);
+                                        toast_error(
+                                            t(format!("{STORE}-folder-title")),
+                                            &e.to_string(),
+                                            window,
+                                            cx,
+                                        );
                                     }
                                 }
                             }),
@@ -845,12 +865,16 @@ impl Render for GeneralPage {
         let privacy = SettingSection::new(t(format!("{G}-section-privacy"))).child(
             SettingRow::new(t(format!("{G}-share-usage-title")))
                 .description(t(format!("{G}-share-usage-description")))
-                .action(self.toggle("share-usage", share_usage, !loaded, |v| {
-                    CaptureSettingsUpdate {
+                .action(self.toggle(
+                    "share-usage",
+                    share_usage,
+                    !loaded,
+                    |v| CaptureSettingsUpdate {
                         share_usage: Some(v),
                         ..Default::default()
-                    }
-                }, cx)),
+                    },
+                    cx,
+                )),
         );
         div()
             .flex()

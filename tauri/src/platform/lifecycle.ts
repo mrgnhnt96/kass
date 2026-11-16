@@ -1,18 +1,16 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PlatformLifecycle, ServerLogEntry } from '@/platform/types';
-import { remoteServerUrl, sharesOnNetwork } from '@/stores/serverStore';
 
 class TauriLifecycle implements PlatformLifecycle {
   onServerReady?: () => void;
 
   async startServer(modelsDir?: string | null): Promise<string> {
     try {
+      // Whether it's shared, and which Mac's it stands in for, are the
+      // app's own preferences (tauri/src-tauri/src/prefs.rs).
       const result = await invoke<string>('start_server', {
         modelsDir: modelsDir ?? undefined,
-        shareOnNetwork: sharesOnNetwork(),
-        // Beta `network`: this Mac's server stands in for the other Mac's.
-        sharedServer: remoteServerUrl() ?? '',
       });
       console.log('Server started:', result);
       this.onServerReady?.();
@@ -39,11 +37,10 @@ class TauriLifecycle implements PlatformLifecycle {
 
   async restartServer(modelsDir?: string | null): Promise<string> {
     try {
+      // Whether it's shared, and which Mac's it stands in for, are the
+      // app's own preferences (tauri/src-tauri/src/prefs.rs).
       const result = await invoke<string>('restart_server', {
         modelsDir: modelsDir ?? undefined,
-        shareOnNetwork: sharesOnNetwork(),
-        // Beta `network`: this Mac's server stands in for the other Mac's.
-        sharedServer: remoteServerUrl() ?? '',
       });
       console.log('Server restarted:', result);
       this.onServerReady?.();
