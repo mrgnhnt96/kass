@@ -64,7 +64,7 @@ impl Gallery {
                 t += 0.05;
                 let db = -32. + 18. * (t * 3.1).sin().abs() + 6. * (t * 11.).sin();
                 for pill in [&recording, &styled] {
-                    let _ = pill.update(cx, |pill, _| pill.on_level(LevelEvent { take: 1, db }));
+                    pill.update(cx, |pill, _| pill.on_level(LevelEvent { take: 1, db }));
                 }
             }
         });
