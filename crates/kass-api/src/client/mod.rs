@@ -5,6 +5,7 @@ mod captures;
 mod dictionary;
 mod learning;
 mod models;
+pub use models::hugging_face_model_info;
 mod server;
 mod settings;
 mod writing_style;

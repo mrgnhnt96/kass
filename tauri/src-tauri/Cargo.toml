@@ -59,6 +59,7 @@ kass-writing-style = { path = "../../crates/kass-writing-style" }
 kass-captures = { path = "../../crates/kass-captures" }
 kass-dictionary = { path = "../../crates/kass-dictionary" }
 kass-insights = { path = "../../crates/kass-insights" }
+kass-models = { path = "../../crates/kass-models" }
 kass-palette = { path = "../../crates/kass-palette" }
 kass-pill = { path = "../../crates/kass-pill" }
 kass-onboarding = { path = "../../crates/kass-onboarding" }

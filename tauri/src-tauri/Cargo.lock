@@ -4138,6 +4138,7 @@ dependencies = [
  "kass-dictionary",
  "kass-i18n",
  "kass-insights",
+ "kass-models",
  "kass-onboarding",
  "kass-palette",
  "kass-pill",
@@ -4211,6 +4212,17 @@ dependencies = [
 
 [[package]]
 name = "kass-insights"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui-kit",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
+]
+
+[[package]]
+name = "kass-models"
 version = "0.1.0"
 dependencies = [
  "chrono",

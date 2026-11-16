@@ -11,6 +11,7 @@ pub mod data;
 mod downloads;
 mod insights;
 pub mod logs;
+mod models;
 mod reports;
 pub(crate) mod status;
 
@@ -23,6 +24,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use kass_captures::CapturesPage;
 use kass_insights::{InsightsPage, Link};
+use kass_models::ModelsPage;
 use kass_ui::{
     metrics, theme, AlertLevel, Sidebar, SidebarFooter, SidebarTab, TabAlert,
 };
@@ -160,7 +162,18 @@ impl Placement {
 
 /// Tabs of the rail the shell draws itself.
 fn is_native_tab(tab: &str) -> bool {
-    matches!(tab, "captures" | "insights" | "reports")
+    matches!(tab, "captures" | "insights" | "models" | "reports")
+}
+
+/// The model a `?model=` link asks the Models page to show.
+fn model_in(search: &str) -> Option<String> {
+    search
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("model="))
+        .map(|name| name.trim_matches('"'))
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 /// The tab of the rail a path belongs to: its first segment.
@@ -180,6 +193,9 @@ pub struct MainShell {
     insights: Entity<InsightsPage>,
     window: AnyWindowHandle,
     reports: Entity<reports::ReportsPage>,
+    models: Entity<ModelsPage>,
+    /// The search Models was last shown with; `None` while it's not showing.
+    models_shown: Option<String>,
     logo: Arc<Image>,
     restarting: bool,
     _asks: Entity<Asks>,
@@ -208,6 +224,8 @@ impl MainShell {
         let icons = Rc::new(insights::Icons::default());
         let asks = cx.new(|cx| Asks::new(data.clone(), window, cx));
         let downloads = cx.new(|cx| DownloadToasts::new(data.clone(), window, cx));
+        let host = Rc::new(models::ShellModels { data: data.clone() });
+        let models = cx.new(|cx| ModelsPage::new(api.clone(), window, cx).with_host(host));
         Self {
             settings: Settings::new(data.clone(), window, cx),
             captures: new_captures(&data, &icons, window, cx),
@@ -216,6 +234,8 @@ impl MainShell {
             icons,
             window: window.window_handle(),
             reports: cx.new(|_| reports::ReportsPage::default()),
+            models,
+            models_shown: None,
             data,
             location: Location {
                 path: "/captures".into(),
@@ -289,6 +309,27 @@ impl MainShell {
         if webview::place(MAIN_WINDOW_LABEL, placement.frame(window.viewport_size())) {
             self.placed = Some(placement);
         }
+    }
+
+    /// Models fetches and polls only while it's showing, and opens the model
+    /// a `?model=` link names.
+    fn follow_models(&mut self, cx: &mut Context<Self>) {
+        let shown =
+            (active_tab(&self.location.path) == "models").then(|| self.location.search.clone());
+        if shown == self.models_shown {
+            return;
+        }
+        let was_showing = self.models_shown.is_some();
+        self.models_shown = shown.clone();
+        self.models.update(cx, |page, cx| match shown {
+            Some(search) => {
+                page.show(model_in(&search), cx);
+                if !was_showing {
+                    page.refresh(cx);
+                }
+            }
+            None => page.hide(),
+        });
     }
 
     fn sidebar(&self, cx: &mut Context<Self>) -> Sidebar {
@@ -419,6 +460,7 @@ fn model_alerts(data: &ShellData) -> Option<TabAlert> {
 impl Render for MainShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.place_webview(window, cx);
+        self.follow_models(cx);
         let t = theme(cx);
         let (background, foreground, border, sans) =
             (t.background, t.foreground, t.border, t.sans_font());
@@ -435,6 +477,8 @@ impl Render for MainShell {
             self.captures.clone().into_any_element()
         } else if active_tab(&path) == "reports" {
             self.reports.clone().into_any_element()
+        } else if active_tab(&path) == "models" {
+            self.models.clone().into_any_element()
         } else {
             div().into_any_element()
         };
@@ -497,7 +541,7 @@ impl Render for MainShell {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_tab, Placement};
+    use super::{active_tab, model_in, Placement};
     use gpui_kit::{px, size};
     use wry::dpi::{LogicalPosition, LogicalSize};
 
@@ -512,7 +556,18 @@ mod tests {
         assert_eq!(Placement::of("/insights"), Placement::Hidden);
         assert_eq!(Placement::of("/reports"), Placement::Hidden);
         assert_eq!(Placement::of("/captures"), Placement::Hidden);
-        assert_eq!(Placement::of("/models"), Placement::Content);
+        assert_eq!(Placement::of("/models"), Placement::Hidden);
+    }
+
+    #[test]
+    fn model_links_name_a_model() {
+        assert_eq!(
+            model_in("?model=whisper-turbo").as_deref(),
+            Some("whisper-turbo")
+        );
+        assert_eq!(model_in("?x=1&model=qwen3-4b").as_deref(), Some("qwen3-4b"));
+        assert_eq!(model_in("?model="), None);
+        assert_eq!(model_in(""), None);
     }
 
     #[test]

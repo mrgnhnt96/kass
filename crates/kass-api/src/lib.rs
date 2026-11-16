@@ -15,7 +15,7 @@ mod sse;
 pub mod types;
 
 pub use address::{LOCAL_SERVER_URL, SERVER_PORT, answers_as_kass, normalize_server_address};
-pub use client::ApiClient;
+pub use client::{ApiClient, hugging_face_model_info};
 pub use error::{Error, Result};
 pub use mac::Mac;
 pub use sse::{CaptureEvent, SseCancel, SseEvent, SseReader, SseStream};
