@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["kass-api", "kass-i18n", "kass-ui"]
+members = ["kass-api", "kass-i18n", "kass-ui", "kass-dictionary"]
 
 [workspace.package]
 version = "0.1.0"

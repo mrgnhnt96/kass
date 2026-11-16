@@ -14,6 +14,8 @@ gpui_kit::assets::icon_assets!(
         SlidersHorizontal,
         CircleArrowUp,
         X,
+        Pencil,
+        Trash,
     ]
 );
 
