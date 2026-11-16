@@ -21,6 +21,7 @@ mod key_codes;
 mod keyboard_layout;
 mod keystroke_insert;
 mod login_item;
+mod onboarding;
 mod overlap;
 mod palette;
 mod report;
@@ -139,7 +140,7 @@ fn dictate_window_spec() -> Spec {
 fn onboarding_window_spec(cx: &App) -> Spec {
     Spec {
         label: ONBOARDING_WINDOW_LABEL,
-        query: Some("?view=onboarding"),
+        query: None,
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -152,7 +153,7 @@ fn onboarding_window_spec(cx: &App) -> Spec {
         },
         transparent: false,
         prepare: |_| {},
-        root: None,
+        root: Some(onboarding::root),
         // Its close button: the same as finish_onboarding(None).
         on_close: OnClose::Close(|| {
             let app = AppHandle;
@@ -163,9 +164,14 @@ fn onboarding_window_spec(cx: &App) -> Spec {
 }
 
 /// Show the first-run onboarding window (docs/plans/ONBOARDING.md), building
-/// it the first time, and hide the main window behind it.
-fn open_onboarding(app: AppHandle) -> Result<(), String> {
+/// it the first time, and hide the main window behind it. A new window picks
+/// up the step it was on with `resume` (the launch after a permission's
+/// quit), else starts over.
+fn open_onboarding(app: AppHandle, resume: bool) -> Result<(), String> {
     host::with_app(move |cx| {
+        if app.get_webview_window(ONBOARDING_WINDOW_LABEL).is_none() {
+            onboarding::start_over(!resume);
+        }
         let window = match webview::open(cx, onboarding_window_spec(cx)) {
             Ok(window) => window,
             Err(e) => {
