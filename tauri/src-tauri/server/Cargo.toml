@@ -12,7 +12,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
-kass-text = { path = "../text" }
 http-body-util = "0.1"
 libc = "0.2"
 rusqlite = { version = "0.37", features = ["bundled"] }
