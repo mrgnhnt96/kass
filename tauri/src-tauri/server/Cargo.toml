@@ -32,6 +32,8 @@ hound = "3.5"
 # learning corrections from reports (`learning`), and the text stages:
 # dictionary matching, names (`dictionary::matching`, `known_names`).
 kass-text = { path = "../text" }
+# Calibration examples' ids, as Python hashes them (`cleanup_inputs`).
+sha2 = "0.10"
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

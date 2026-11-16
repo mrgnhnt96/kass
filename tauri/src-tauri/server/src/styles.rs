@@ -15,6 +15,10 @@ use serde::Serialize;
 
 use crate::dictionary::store::{now, Sync};
 
+mod spoken;
+
+pub use spoken::spoken_style;
+
 pub const MAX_NAME_CHARS: usize = 40;
 /// Each style keeps its own prompt cache in the cleanup model.
 pub const MAX_STYLES: i64 = 6;
@@ -26,7 +30,7 @@ pub const PUNCTUATION_STYLES: [&str; 3] = ["standard", "casual", "learned"];
 pub const KASS_BUNDLE: &str = "com.mrgnhnt.kass";
 
 /// The one style a new install starts with, used before the worker made it.
-const MIGRATED_STYLE: &str = "personal";
+pub(crate) const MIGRATED_STYLE: &str = "personal";
 const MIGRATED_NAME: &str = "Personal";
 
 /// SQLAlchemy's `DateTime` on SQLite.
@@ -110,6 +114,11 @@ impl Snapshot {
             .iter()
             .find(|(bundle, _)| bundle == bundle_id)
             .map(|(_, style)| style.as_str())
+    }
+
+    /// `style_id`'s style, or the default for `None` or a deleted style.
+    pub fn resolve(&self, style_id: Option<&str>) -> &Style {
+        self.get(style_id).unwrap_or_else(|| self.default_style())
     }
 
     /// The style `bundle_id` is assigned to, or the default.
