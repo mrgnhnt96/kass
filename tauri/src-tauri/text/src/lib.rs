@@ -5,12 +5,14 @@
 //! Python functions and compares the results.
 
 pub mod content_check;
+pub mod correction_rules;
 pub mod dictation_edits;
 pub mod difflib;
 pub mod laughter;
 pub mod lexicon;
 pub mod phrase_seams;
 pub mod py;
+pub mod refinement;
 pub mod sentence_tail;
 pub mod spelling;
 pub mod spoken_case;
@@ -20,3 +22,4 @@ pub mod spoken_punctuation;
 pub mod text_merge;
 pub mod voice_commands;
 pub mod voice_edits;
+pub mod writing_style;
