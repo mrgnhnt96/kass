@@ -28,8 +28,9 @@ uuid = { version = "1", features = ["v4"] }
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-native"] }
 # The dictation's recording, written as it arrives (`stream::intake`).
 hound = "3.5"
-# difflib, to find written words among the words heard (`stream::prosody`), and
-# learning corrections from reports (`learning`).
+# difflib, to find written words among the words heard (`stream::prosody`),
+# learning corrections from reports (`learning`), and the text stages:
+# dictionary matching, names (`dictionary::matching`, `known_names`).
 kass-text = { path = "../text" }
 
 [dev-dependencies]

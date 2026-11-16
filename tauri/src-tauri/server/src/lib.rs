@@ -12,6 +12,7 @@ pub mod db;
 pub mod dictionary;
 mod events;
 pub mod learning;
+pub mod known_names;
 pub mod proxy;
 pub mod routes;
 pub mod settings;

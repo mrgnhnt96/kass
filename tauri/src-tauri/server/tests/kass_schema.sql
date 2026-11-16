@@ -1,4 +1,4 @@
--- The tables the dictionary and captures read and write, as the Python worker creates
+-- The tables the dictionary, captures and known names read and write, as the Python worker creates
 -- them in kass.db (backend/database/models.py), for tests.
 CREATE TABLE dictionary_entries (
 	id VARCHAR NOT NULL, 
@@ -91,3 +91,8 @@ CREATE TABLE capture_feedback (
 	FOREIGN KEY(capture_id) REFERENCES captures (id)
 );
 CREATE INDEX ix_capture_feedback_capture_id ON capture_feedback (capture_id);
+CREATE TABLE known_names (
+	name VARCHAR NOT NULL, 
+	last_seen_at DATETIME NOT NULL, 
+	PRIMARY KEY (name)
+);

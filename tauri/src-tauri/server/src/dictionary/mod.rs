@@ -9,10 +9,12 @@
 //! style, or to one app; a dictation merges its app's, its style's and the
 //! global ones, and the most specific wins.
 //!
-//! This module holds the rules; [`store`] reads and writes `kass.db`. How
-//! dictation applies a dictionary to text still runs in the Python worker,
-//! which re-reads the entries when this server tells it they changed.
+//! This module holds the rules; [`store`] reads and writes `kass.db`, and
+//! [`matching`] builds the dictionary a dictation applies to its text
+//! (kass-text). Dictations still run in the Python worker, which re-reads
+//! the entries when this server tells it they changed.
 
+pub mod matching;
 pub mod store;
 
 use chrono::NaiveDateTime;
