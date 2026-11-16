@@ -3,7 +3,6 @@ mod app_hide;
 mod app_icon;
 mod app_location;
 mod clipboard;
-mod commands;
 mod deep_link;
 mod dictate;
 mod dictation;
@@ -52,6 +51,9 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 pub const DICTATE_WINDOW_LABEL: &str = "dictate";
 const MAIN_WINDOW_LABEL: &str = "main";
+/// The origin Kass's requests carry, which the server allows. It is the one
+/// the app's web pages had, so servers on other Macs keep accepting it.
+const APP_ORIGIN: &str = "tauri://localhost";
 pub const ONBOARDING_WINDOW_LABEL: &str = "onboarding";
 const MAIN_WINDOW_WIDTH: f32 = 1200.0;
 const MAIN_WINDOW_HEIGHT: f32 = 800.0;
@@ -75,14 +77,11 @@ fn overlay_titlebar() -> Option<TitlebarOptions> {
 }
 
 /// The main window. It starts hidden so a login launch stays out of the way
-/// until the Dock icon is clicked; its page still runs while hidden (no
-/// background throttling): it starts the server and arms the global keys.
+/// until the Dock icon is clicked; the server and the global keys start
+/// without it (src/shell/launch.rs).
 fn main_window_spec(cx: &App) -> Spec {
     Spec {
         label: MAIN_WINDOW_LABEL,
-        // The page draws only the screens not yet in GPUI; the shell around
-        // them (src/shell) is native.
-        query: Some("?shell=native"),
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -95,12 +94,11 @@ fn main_window_spec(cx: &App) -> Spec {
             window_min_size: Some(size(px(800.0), px(600.0))),
             ..Default::default()
         },
-        transparent: false,
         prepare: |_| {},
         // Closing it hides it: Kass keeps running for dictation, and the
         // Dock icon brings it back. The server stops when Kass quits.
         on_close: OnClose::Hide,
-        root: Some(shell::root),
+        root: shell::root,
     }
 }
 
@@ -110,7 +108,6 @@ fn main_window_spec(cx: &App) -> Spec {
 fn dictate_window_spec() -> Spec {
     Spec {
         label: DICTATE_WINDOW_LABEL,
-        query: None,
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(-10_000.0), px(-10_000.0)),
@@ -131,17 +128,15 @@ fn dictate_window_spec() -> Spec {
             window_background: WindowBackgroundAppearance::Transparent,
             ..Default::default()
         },
-        transparent: true,
         prepare: prepare_pill,
         on_close: OnClose::Never,
-        root: Some(dictate::root),
+        root: dictate::root,
     }
 }
 
 fn onboarding_window_spec(cx: &App) -> Spec {
     Spec {
         label: ONBOARDING_WINDOW_LABEL,
-        query: None,
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -152,9 +147,8 @@ fn onboarding_window_spec(cx: &App) -> Spec {
             is_resizable: false,
             ..Default::default()
         },
-        transparent: false,
         prepare: |_| {},
-        root: Some(onboarding::root),
+        root: onboarding::root,
         // Its close button: the same as finish_onboarding(None).
         on_close: OnClose::Close(|| {
             let app = AppHandle;
@@ -189,8 +183,8 @@ fn open_onboarding(app: AppHandle, resume: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Close the onboarding window and bring the main window back, telling it
-/// with `onboarding:finished { show }` (a route to open, or null).
+/// Close the onboarding window and bring the main window back, on `show`
+/// (a route to open) if given.
 fn finish_onboarding(app: AppHandle, show: Option<String>) {
     if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
         // Not a close: that would come back through its close handler.
@@ -201,9 +195,9 @@ fn finish_onboarding(app: AppHandle, show: Option<String>) {
 }
 
 /// Give back what the onboarding window held: the microphone test and
-/// practice mode. Its React cleanup may never run, so this runs whenever the
-/// window goes away. The dictation gate is left to the main window, which
-/// sets it again after `onboarding:finished`.
+/// practice mode. Runs whenever the window goes away. The keys and the
+/// dictation gate go back to the main window's settings
+/// (`shell::resume_after_onboarding`).
 fn release_onboarding(app: &AppHandle) {
     dictation::mic::stop_preview(&app.state::<dictation::DictationState>());
     if let Some(mode) = app.try_state::<hotkey_monitor::ChordMode>() {
@@ -211,16 +205,23 @@ fn release_onboarding(app: &AppHandle) {
     }
 }
 
-/// Show and focus the main window and send it `onboarding:finished`.
+/// Show and focus the main window, on `show` if given, with the keys
+/// following its settings again.
 fn show_main_after_onboarding(app: &AppHandle, show: Option<String>) {
     if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = main.show();
         let _ = main.set_focus();
     }
-    let payload = serde_json::json!({ "show": show });
-    if let Err(e) = app.emit_to(MAIN_WINDOW_LABEL, "onboarding:finished", payload) {
-        eprintln!("Failed to emit onboarding:finished: {e}");
-    }
+    host::with_app(move |cx| {
+        shell::resume_after_onboarding(cx);
+        if let Some(route) = show {
+            let (path, search) = match route.split_once('?') {
+                Some((path, search)) => (path.to_string(), format!("?{search}")),
+                None => (route, String::new()),
+            };
+            shell::navigate(&path, &search, cx);
+        }
+    });
 }
 
 /// Whether the onboarding window exists.
@@ -318,7 +319,7 @@ fn display_containing(bounds: &[(f64, f64, f64, f64)], point: (f64, f64)) -> Opt
 /// must never take keyboard focus: it floats over the app being dictated
 /// into, and while it is key that app's window looks focused but every
 /// keystroke (the Enter after a paste, say) lands in the pill instead. Audio
-/// capture is native, so nothing in the web view needs key status.
+/// capture is native, so nothing in the pill needs key status.
 extern "C-unwind" fn pill_never_key(_this: &AnyObject, _sel: Sel) -> Bool {
     Bool::NO
 }
@@ -363,7 +364,7 @@ fn make_never_key(window: &NSWindow) {
     }
 }
 
-/// Set the pill up as Tauri's build had it, before its web view attaches:
+/// Set the pill up as Tauri's build had it, before its view attaches:
 /// never key, borderless, no shadow, over every Space and fullscreen app,
 /// and click-through until a take shows it.
 fn prepare_pill(window: &NSWindow) {
@@ -682,12 +683,12 @@ async fn start_worker(
                 eprintln!("DEV MODE: No server found on port {}", WORKER_PORT);
                 eprintln!();
                 eprintln!("Start the Python server in a separate terminal:");
-                eprintln!("  bun run dev:server");
+                eprintln!("  just dev-backend");
                 eprintln!("=================================================================");
                 eprintln!();
             }
 
-            return Err("Failed to start server. In dev mode, run 'bun run dev:server' in a separate terminal.".to_string());
+            return Err("Failed to start server. In dev mode, run 'just dev-backend' in a separate terminal.".to_string());
         }
     };
 
@@ -750,10 +751,10 @@ async fn start_worker(
                 eprintln!("DEV MODE: Server binary failed to start");
                 eprintln!();
                 eprintln!("Start the Python server in a separate terminal:");
-                eprintln!("  bun run dev:server");
+                eprintln!("  just dev-backend");
                 eprintln!("=================================================================");
                 eprintln!();
-                return Err("Dev mode: Start server manually with 'bun run dev:server'".to_string());
+                return Err("Dev mode: Start server manually with 'just dev-backend'".to_string());
             }
 
             #[cfg(not(debug_assertions))]
@@ -891,11 +892,11 @@ async fn start_worker(
                     eprintln!("DEV MODE: No bundled server binary available");
                     eprintln!();
                     eprintln!("Start the Python server in a separate terminal:");
-                    eprintln!("  bun run dev:server");
+                    eprintln!("  just dev-backend");
                     eprintln!("=================================================================");
                     eprintln!();
                     return Err(
-                        "Dev mode: Start server manually with 'bun run dev:server'".to_string()
+                        "Dev mode: Start server manually with 'just dev-backend'".to_string()
                     );
                 }
 
@@ -1109,11 +1110,6 @@ async fn restart_app(state: State<'_, ServerState>) -> Result<(), String> {
     Ok(())
 }
 
-/// Where the app runs from, so the UI can ask to move it into Applications.
-fn app_location() -> app_location::AppLocation {
-    app_location::location()
-}
-
 /// Move the app into `/Applications` and relaunch it from there. Stops the
 /// server first so the new copy can start its own on the same port.
 async fn move_to_applications(state: State<'_, ServerState>) -> Result<(), String> {
@@ -1161,11 +1157,6 @@ async fn restart_server(
 /// Value matches the reverse-DNS bundle id `focus_capture::capture_focus`
 /// writes into `FocusSnapshot::bundle_id`, and `identifier` in tauri.conf.json.
 const KASS_BUNDLE_ID: &str = "com.mrgnhnt.kass";
-
-/// The icon of the app with `bundle_id` as a PNG data URL, for Captures.
-fn app_icon(bundle_id: String) -> Option<String> {
-    app_icon::icon_data_url(&bundle_id)
-}
 
 /// Reports whether the process currently has macOS Accessibility trust.
 /// Used by the settings UI and the paste debug harness to decide whether
@@ -1289,30 +1280,6 @@ fn disable_hotkey(state: State<'_, HotkeyState>) -> Result<(), String> {
     Ok(())
 }
 
-/// Push a new chord configuration into the running `HotkeyMonitor`. Called
-/// by the chord-picker UI when the user edits the chord. No-ops when the
-/// monitor isn't spawned — the picker is gated behind the enable toggle, so
-/// this can only happen if the frontend races; the next `enable_hotkey` will
-/// pick up the saved chords.
-///
-/// Returns an error when a key name doesn't map to a `keytap::Key`, so the
-/// picker UI can surface "this key isn't supported" instead of silently
-/// dropping it from the chord.
-fn update_chord_bindings(
-    state: State<'_, HotkeyState>,
-    push_to_talk: Vec<String>,
-    toggle_to_talk: Vec<String>,
-    command: Option<Vec<String>>,
-) -> Result<(), String> {
-    let bindings =
-        build_chord_bindings(&push_to_talk, &toggle_to_talk, &command.unwrap_or_default())?;
-    let mut slot = state.monitor.lock().map_err(|e| e.to_string())?;
-    if let Some(monitor) = slot.as_mut() {
-        monitor.update_bindings(bindings);
-    }
-    Ok(())
-}
-
 /// Open the Privacy & Security → Accessibility pane in System Settings so
 /// the user can grant the permission. The URL scheme is stable across
 /// macOS 10.14–15.
@@ -1347,24 +1314,6 @@ fn open_input_monitoring_settings() -> Result<(), String> {
     host::open_external(url)
         .map_err(|e| format!("Failed to open Input Monitoring settings: {e}"))?;
     Ok(())
-}
-
-/// Deliver `text` into the UI that had focus when the chord fired.
-///
-/// Runs the insertion chain (`insert_chain.rs`): a verified Accessibility
-/// write first, then the steps that act on the frontmost app, ending with
-/// clipboard + ⌘V. Each step falls through only when it inserted nothing, and
-/// the log line shows what every step did and how long it took.
-///
-/// Skips (returns `false`) without touching anything when `focus.bundle_id`
-/// is Kass itself — native dictation inserts into our own webview
-/// through the DOM (`dictation::insert_in_app`). Errors when Accessibility
-/// is not trusted: every step needs it.
-async fn paste_final_text(
-    text: String,
-    focus: focus_capture::FocusSnapshot,
-) -> Result<bool, String> {
-    paste_final_text_with(text, focus, None).await
 }
 
 /// [`paste_final_text`] with a clipboard snapshot taken earlier, at dictation
@@ -1598,132 +1547,10 @@ pub(crate) fn type_over_selection(
     matches!(report.delivery(), insert_chain::Delivery::Inserted { .. })
 }
 
-/// Inspect the currently focused UI element. Returns the owning app's PID,
-/// bundle id, and AX role. Useful for sanity-checking the focus pipeline
-/// before committing to a paste.
-fn debug_capture_focus() -> Result<focus_capture::FocusSnapshot, String> {
-    focus_capture::capture_focus()
-}
-
-/// Full auto-paste rehearsal: snapshot the focus target now, sleep
-/// `drift_ms` so the user can deliberately switch to a different app
-/// (proving we don't paste into whichever window is frontmost when the
-/// transcribe finishes), then activate the captured PID, stage `text`,
-/// fire ⌘V, and restore the clipboard.
-async fn debug_focus_roundtrip(
-    text: String,
-    drift_ms: u64,
-    post_paste_delay_ms: u64,
-) -> Result<serde_json::Value, String> {
-    if !accessibility::is_trusted() {
-        return Err(
-            "Accessibility permission not granted. Open System Settings → Privacy & Security → Accessibility and enable Kass."
-                .into(),
-        );
-    }
-
-    let snapshot = focus_capture::capture_focus()?;
-
-    tokio::time::sleep(std::time::Duration::from_millis(drift_ms)).await;
-
-    focus_capture::activate_pid(snapshot.pid)?;
-    // Give AppKit a beat to process the activation before the synthetic
-    // Cmd+V arrives — without this the paste sometimes races ahead of the
-    // window-ordering animation and lands in the previous frontmost app.
-    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-
-    let clip = clipboard::save_clipboard()?;
-    let after_write = clipboard::write_text(&text)?;
-    synthetic_keys::send_paste()?;
-    tokio::time::sleep(std::time::Duration::from_millis(post_paste_delay_ms)).await;
-    let before_restore = clipboard::current_change_count()?;
-    clipboard::restore_clipboard(&clip)?;
-
-    Ok(serde_json::json!({
-        "focus": snapshot,
-        "change_count_after_write": after_write,
-        "change_count_before_restore": before_restore,
-        "clobbered_during_paste": before_restore != after_write,
-    }))
-}
-
-/// End-to-end smoke test for the auto-paste pipeline: save the user's
-/// clipboard, stage `text`, optionally wait `pre_paste_delay_ms` so the
-/// caller has time to focus the target app, synthesise ⌘V, wait
-/// `post_paste_delay_ms` for the target app to consume the event, and put
-/// the original clipboard back.
-///
-/// Short-circuits when Accessibility permission is missing — without it
-/// `CGEventPost` silently drops events, so running the full sequence
-/// would just clobber the clipboard with nothing to show for it.
-async fn debug_paste_text(
-    text: String,
-    pre_paste_delay_ms: u64,
-    post_paste_delay_ms: u64,
-) -> Result<serde_json::Value, String> {
-    if !accessibility::is_trusted() {
-        return Err(
-            "Accessibility permission not granted. Open System Settings → Privacy & Security → Accessibility and enable Kass, then try again."
-                .into(),
-        );
-    }
-
-    let snapshot = clipboard::save_clipboard()?;
-    let before = snapshot.change_count();
-    let after_write = clipboard::write_text(&text)?;
-
-    tokio::time::sleep(std::time::Duration::from_millis(pre_paste_delay_ms)).await;
-
-    synthetic_keys::send_paste()?;
-
-    tokio::time::sleep(std::time::Duration::from_millis(post_paste_delay_ms)).await;
-
-    let before_restore = clipboard::current_change_count()?;
-    clipboard::restore_clipboard(&snapshot)?;
-    let after_restore = clipboard::current_change_count()?;
-
-    Ok(serde_json::json!({
-        "change_count_before": before,
-        "change_count_after_write": after_write,
-        "change_count_before_restore": before_restore,
-        "change_count_after_restore": after_restore,
-        "clobbered_during_paste": before_restore != after_write,
-    }))
-}
-
-/// Manual smoke test for the clipboard snapshot/restore primitives used by
-/// the auto-paste pipeline. Stages `text` on the pasteboard, waits
-/// `hold_ms` so the caller can ⌘V into another app, then puts the original
-/// clipboard contents back. The return value reports the change-count deltas
-/// so the harness can verify no third party mutated the clipboard mid-paste.
-async fn debug_clipboard_roundtrip(
-    text: String,
-    hold_ms: u64,
-) -> Result<serde_json::Value, String> {
-    let snapshot = clipboard::save_clipboard()?;
-    let before = snapshot.change_count();
-    let item_count = snapshot.item_count();
-    let after_write = clipboard::write_text(&text)?;
-
-    tokio::time::sleep(std::time::Duration::from_millis(hold_ms)).await;
-
-    let before_restore = clipboard::current_change_count()?;
-    clipboard::restore_clipboard(&snapshot)?;
-    let after_restore = clipboard::current_change_count()?;
-
-    Ok(serde_json::json!({
-        "saved_items": item_count,
-        "change_count_before": before,
-        "change_count_after_write": after_write,
-        "change_count_before_restore": before_restore,
-        "change_count_after_restore": after_restore,
-        "clobbered_during_hold": before_restore != after_write,
-    }))
-}
-
 pub fn run() {
     app_location::carry_over_old_bundle();
     identifier_move::move_from_old_identifier(KASS_BUNDLE_ID);
+    prefs::adopt_old_page();
     let handle = AppHandle;
     handle.manage(updater::UpdaterState::default());
     handle.manage(ServerState {
@@ -1781,7 +1608,6 @@ pub fn run() {
             if let Err(error) = updater::install_pending(&app) {
                 eprintln!("Failed to install the downloaded update: {error}");
             }
-            webview::leak_all();
             async {}
         })
         .detach();
@@ -1796,7 +1622,7 @@ pub fn run() {
             Ok(_) => {}
             Err(e) => eprintln!("Failed to open the main window: {e}"),
         }
-        // Built hidden now, so its page listens before the first chord. It
+        // Built hidden now, so it's ready before the first chord. It
         // creates no keyboard tap and asks for no permission.
         if let Err(e) = webview::open(cx, dictate_window_spec()) {
             eprintln!("Failed to build the dictate pill: {e}");

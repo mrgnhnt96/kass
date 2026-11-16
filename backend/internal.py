@@ -9,8 +9,7 @@ applies without restarting the server.
 
 Add a name to INTERNAL_FEATURES and gate the feature with `enabled(name)`.
 To move it to beta, remove the name: every check still using it then raises,
-which shows what to change. The app keeps its own list in
-app/src/lib/internalFeatures.ts.
+which shows what to change.
 """
 
 from . import config

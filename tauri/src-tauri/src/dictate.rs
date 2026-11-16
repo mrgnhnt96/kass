@@ -10,7 +10,7 @@ use kass_pill::{DictatePill, LevelEvent, PillHost, StateEvent, StyleEvent};
 use serde::de::DeserializeOwned;
 
 use crate::dictation::{self, DictationState};
-use crate::host::{self, webview, AppHandle, Listener, Manager};
+use crate::host::{self, AppHandle, Listener, Manager};
 use crate::shell::{self, data::ShellData};
 use crate::DICTATE_WINDOW_LABEL;
 
@@ -129,7 +129,7 @@ fn configure(data: &Entity<ShellData>, cx: &mut App) {
         app.state::<DictationState>(),
         Some(config.server_url),
         config.fallback_url,
-        Some(webview::page_origin()),
+        Some(crate::APP_ORIGIN.into()),
         config.input_device_id,
         Some(config.device_known),
         Some(config.live_text),

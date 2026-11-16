@@ -1,23 +1,18 @@
 //! The app's own preferences: the theme and the beta `network` settings
 //! (share this Mac's server, use another Mac's). Saved in app data as
-//! `prefs.json`. The main window's page kept them in its localStorage
-//! before; it hands them over once with `prefs_adopt` and follows
-//! `prefs:changed` from then on.
+//! `prefs.json`. The main window's old web page kept them in its
+//! localStorage; they're carried over once, from WebKit's copy on disk
+//! ([`adopt_old_page`]).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-use crate::host::{self, AppHandle, Emitter, Manager};
+use crate::host::{self, AppHandle, Manager};
 use crate::updater::{self, Channel};
 use crate::ServerState;
-
-/// Sent to every window when a preference or [`away`] changes, with
-/// [`page_view`].
-pub const CHANGED_EVENT: &str = "prefs:changed";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -79,7 +74,7 @@ impl Prefs {
     }
 }
 
-/// What the page kept in its localStorage (app/src/stores).
+/// What the old page kept in its localStorage.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct PagePrefs {
@@ -151,13 +146,16 @@ pub fn change(f: impl FnOnce(&mut Prefs)) {
     replace(next);
 }
 
-/// Take the page's old values the first time it asks; answer with what
-/// counts now, as [`page_view`].
-pub fn adopt(page: PagePrefs) -> serde_json::Value {
+/// Carry over what the old web page kept in its localStorage, once: only
+/// until anything is saved here.
+pub fn adopt_old_page() {
+    if get().adopted {
+        return;
+    }
+    let page = old_page::read().unwrap_or_default();
     if let Some(next) = get().adopt(page) {
         replace(next);
     }
-    page_view()
 }
 
 pub fn away() -> bool {
@@ -177,20 +175,7 @@ pub fn set_away(away: bool) -> bool {
     true
 }
 
-/// The preferences as the page's stores hold them.
-pub fn page_view() -> serde_json::Value {
-    let prefs = get();
-    json!({
-        "theme": prefs.theme,
-        "shareOnNetwork": prefs.share_on_network,
-        "remoteServerUrl": prefs.remote_server_url,
-        "customModelsDir": prefs.custom_models_dir,
-        "sharedAway": away(),
-    })
-}
-
 fn changed() {
-    let _ = AppHandle.emit(CHANGED_EVENT, page_view());
     host::with_app(|cx| {
         if let Some(data) = crate::shell::try_shell_data(cx) {
             data.update(cx, |data, cx| data.follow_prefs(cx));
@@ -269,9 +254,87 @@ pub async fn set_models_dir(dir: Option<String>) -> Result<(), String> {
     result.map(drop)
 }
 
+/// WebKit's copy of the old page's localStorage: one SQLite file per
+/// origin, read with the system's `sqlite3`. Values are UTF-16LE JSON,
+/// as zustand's persist wrote them: `{"state": {...}, "version": n}`.
+mod old_page {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    use super::PagePrefs;
+
+    const KEYS: [&str; 2] = ["kass-server", "kass-ui"];
+
+    pub fn read() -> Option<PagePrefs> {
+        let db = find(&std::env::var_os("HOME")?)?;
+        let mut merged = serde_json::Map::new();
+        for key in KEYS {
+            if let Some(serde_json::Value::Object(state)) = value(&db, key) {
+                merged.extend(state);
+            }
+        }
+        serde_json::from_value(merged.into()).ok()
+    }
+
+    fn find(home: &std::ffi::OsStr) -> Option<PathBuf> {
+        let root = Path::new(home).join(format!(
+            "Library/WebKit/{}/WebsiteData/Default",
+            crate::KASS_BUNDLE_ID
+        ));
+        std::fs::read_dir(root)
+            .ok()?
+            .flatten()
+            .filter_map(|salted| std::fs::read_dir(salted.path()).ok())
+            .flatten()
+            .flatten()
+            .map(|origin| origin.path().join("LocalStorage/localstorage.sqlite3"))
+            .find(|db| db.is_file())
+    }
+
+    fn value(db: &Path, key: &str) -> Option<serde_json::Value> {
+        let out = Command::new("/usr/bin/sqlite3")
+            .arg("-readonly")
+            .arg(db)
+            .arg(format!(
+                "select hex(value) from ItemTable where key = '{key}'"
+            ))
+            .output()
+            .ok()?;
+        let json = decode(String::from_utf8_lossy(&out.stdout).trim())?;
+        serde_json::from_str::<serde_json::Value>(&json)
+            .ok()?
+            .get_mut("state")
+            .map(serde_json::Value::take)
+    }
+
+    /// Hex of UTF-16LE bytes to a string.
+    pub(super) fn decode(hex: &str) -> Option<String> {
+        let bytes = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+            .collect::<Option<Vec<u8>>>()?;
+        let units: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        String::from_utf16(&units).ok()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_what_webkit_kept() {
+        let hex: String = r#"{"a":1}"#
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .map(|b| format!("{b:02X}"))
+            .collect();
+        assert_eq!(old_page::decode(&hex).as_deref(), Some(r#"{"a":1}"#));
+        assert_eq!(old_page::decode("7B0"), None);
+    }
 
     fn page(theme: &str, share: bool, remote: Option<&str>) -> PagePrefs {
         PagePrefs {

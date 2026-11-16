@@ -3,12 +3,6 @@
   "productName": "Kass",
   "version": "0.10.0-beta.7",
   "identifier": "com.mrgnhnt.kass",
-  "build": {
-    "beforeDevCommand": "bun run dev",
-    "beforeBuildCommand": "bun run build",
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173"
-  },
   "bundle": {
     "active": true,
     "targets": "all",
@@ -29,35 +23,7 @@
       "gen/partial.plist": "./"
     }
   },
-  "app": {
-    "macOSPrivateApi": true,
-    "security": {
-      "csp": null,
-      "capabilities": ["default"]
-    },
-    "windows": [
-      {
-        "title": "",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 800,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false,
-        "devtools": true,
-        "userAgent": null,
-        "titleBarStyle": "Overlay",
-        "visible": false,
-        "backgroundThrottling": "disabled",
-        "dragDropEnabled": false
-      }
-    ],
-    "withGlobalTauri": true
-  },
   "plugins": {
-    "shell": {
-      "open": ".*"
-    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY4NjFDQjEzMzc1NTBCMzMKUldRekMxVTNFOHRoK0VLZ3FTRHUvUHJObHhrSXdXUGhmbklvRTRYaStjbjduRnFLYXV0ZjV0VlAK",
       "endpoints": ["https://github.com/mrgnhnt96/kass/releases/latest/download/latest.json"]

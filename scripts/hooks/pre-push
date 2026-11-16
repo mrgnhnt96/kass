@@ -10,12 +10,11 @@ the ones those commits add or change: from the remote's commit, or, for a
 branch the remote doesn't have yet, from where it left origin's default
 branch.
 
-Fixers run first: ruff (--fix, format) on backend Python, Biome (--write) on
-TS/JS/JSON/CSS/HTML, rustfmt on the desktop app's Rust. A hook can't change
-commits already made, so if a fixer changed anything the push stops with the
-files to commit. Then what no tool fixes fails the push with the tools'
-output, along with tsc for app/ and tauri/ and clippy for the Rust crate when
-their code is pushed.
+Fixers run first: ruff (--fix, format) on backend Python, rustfmt on the
+desktop app's Rust. A hook can't change commits already made, so if a fixer
+changed anything the push stops with the files to commit. Then what no tool
+fixes fails the push with the tools' output, along with clippy for the Rust
+crate when its code is pushed.
 
 The tools read the working tree, so an uncommitted edit to a pushed file is
 checked as it is on disk.
@@ -32,14 +31,10 @@ import sys
 from pathlib import Path
 
 NO_COMMIT = "0" * 40
-WEB_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".jsonc", ".css", ".html"}
 RUFF = "backend/venv/bin/ruff"
 # Ruff skips the files pyproject.toml excludes only when told to, if they are named.
 RUFF_FLAGS = ["--force-exclude"]
-BIOME = "node_modules/.bin/biome"
-TSC = "node_modules/.bin/tsc"
 CARGO_MANIFEST = "tauri/src-tauri/Cargo.toml"
-BIOME_FLAGS = ["--files-ignore-unknown=true", "--no-errors-on-unmatched"]
 
 
 def git(*args: str) -> str | None:
@@ -97,12 +92,11 @@ def main() -> int:
 
     files = pushed_files(sys.stdin.read().splitlines())
     python = [path for path in files if path.startswith("backend/") and path.endswith(".py")]
-    web = [path for path in files if Path(path).suffix in WEB_SUFFIXES]
     rust = [path for path in files if path.startswith("tauri/src-tauri/") and path.endswith(".rs")]
-    if not python and not web and not rust:
+    if not python and not rust:
         return 0
 
-    missing = [tool for tool, needed in ((RUFF, python), (BIOME, web)) if needed and not Path(tool).exists()]
+    missing = [RUFF] if python and not Path(RUFF).exists() else []
     if rust and shutil.which("cargo") is None:
         missing.append("cargo")
     if missing:
@@ -116,15 +110,13 @@ def main() -> int:
         if result.returncode != 0:
             failures.append(f"{label} failed:\n{(result.stdout + result.stderr).strip()}")
 
-    checked = python + web + rust
+    checked = python + rust
     before = {path: digest(path) for path in checked}
 
     # Fix first, so a push only fails on what no tool fixes.
     if python:
         step("ruff check --fix", [RUFF, "check", "--fix", "--quiet", *RUFF_FLAGS, *python])
         step("ruff format", [RUFF, "format", "--quiet", *RUFF_FLAGS, *python])
-    if web:
-        step("biome check --write", [BIOME, "check", "--write", *BIOME_FLAGS, *web])
     if rust:
         step("cargo fmt", ["cargo", "fmt", "--manifest-path", CARGO_MANIFEST, "--", *rust])
 
@@ -140,18 +132,12 @@ def main() -> int:
     if python:
         step("ruff check", [RUFF, "check", *RUFF_FLAGS, *python])
         step("ruff format --check", [RUFF, "format", "--check", *RUFF_FLAGS, *python])
-    if web:
-        step("biome check", [BIOME, "check", *BIOME_FLAGS, *web])
     if rust:
         # clippy reads every crate in the workspace; warnings fail, as in just check.
         step(
             "cargo clippy",
             ["cargo", "clippy", "--manifest-path", CARGO_MANIFEST, "--workspace", "--all-targets", "--quiet", "--", "-D", "warnings"],
         )
-    # tauri compiles app/src too, so app code is type-checked in both.
-    for package in ("app", "tauri"):
-        if any(path.startswith((f"{package}/", "app/src/")) for path in web):
-            step(f"tsc ({package})", [TSC, "-p", f"{package}/tsconfig.json", "--noEmit"])
     if not failures:
         return 0
     say("pre-push: this push has problems no tool fixes:")

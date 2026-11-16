@@ -52,9 +52,9 @@ die() {
   exit 1
 }
 
-# Tools installed by rustup and bun's installers live here, and a fresh
-# shell may not have them on PATH yet.
-export PATH="$HOME/.cargo/bin:$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
+# Tools installed by rustup's installer live here, and a fresh shell may
+# not have them on PATH yet.
+export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
@@ -91,17 +91,7 @@ fi
 if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1; then
   ok "Rust $(rustc --version | cut -d' ' -f2)"
 else
-  need "Rust (builds the app shell)" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-fi
-
-if command -v bun >/dev/null 2>&1; then
-  ok "Bun $(bun --version)"
-  bun=(bun)
-elif command -v npx >/dev/null 2>&1; then
-  ok "Bun (through npx)"
-  bun=(npx --yes bun@1.3.8)
-else
-  need "Bun (builds the interface)" "curl -fsSL https://bun.sh/install | bash"
+  need "Rust (builds the app)" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
 fi
 
 free_gb=$(df -g "$root" | awk 'NR == 2 { print $4 }')
@@ -143,10 +133,6 @@ fi
 stamp_of() { { "$@" || true; } 2>/dev/null | shasum | cut -d' ' -f1; }
 
 # ─── Dependencies ─────────────────────────────────────────────────────
-
-step "Installing interface dependencies"
-"${bun[@]}" install
-ok "JavaScript packages"
 
 step "Setting up the Python environment"
 python_stamp=$(stamp_of cat backend/requirements.txt scripts/setup-python.sh)

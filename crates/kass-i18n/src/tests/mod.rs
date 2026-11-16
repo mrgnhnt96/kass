@@ -1,6 +1,5 @@
 mod api;
 mod ftl;
-mod parity;
 
 use fluent_bundle::FluentResource;
 use fluent_syntax::ast::Entry;

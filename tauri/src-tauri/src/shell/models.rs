@@ -1,12 +1,11 @@
 //! The Models page's place in the shell: the models folder the page's store
 //! keeps (moved through a shell command, which restarts the server there),
-//! and what the rest of the window refetches when models or settings change.
+//! and the settings the shell shares with it.
 
 use gpui_kit::{App, Entity, Task};
 use kass_api::types::CaptureSettings;
 use kass_models::ModelsHost;
 
-use super::bridge;
 use super::data::ShellData;
 use crate::prefs;
 
@@ -34,10 +33,5 @@ impl ModelsHost for ShellModels {
             data.settings = Some(settings);
             cx.notify();
         });
-        bridge::invalidate(&[&["settings", "captures"], &["capture-readiness"]]);
-    }
-
-    fn models_changed(&self, _cx: &mut App) {
-        bridge::invalidate(&[&["modelStatus"], &["capture-readiness"]]);
     }
 }

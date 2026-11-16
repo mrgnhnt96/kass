@@ -9,3 +9,5 @@ common-confirm = Confirm
 common-loading = Loading…
 common-error = Error
 common-unknown-error = Unknown error
+common-server-failed = The server didn't start
+common-server-retry = Try again

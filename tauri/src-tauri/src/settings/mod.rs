@@ -1,7 +1,6 @@
-//! Settings in GPUI: the section list on the left and the pages rebuilt
-//! natively (General, Dictation, Command mode, Transcription & refinement,
-//! Writing style, Dictionary, Features, Logs). The sections still drawn by
-//! the page show in the web view to the right of the list.
+//! Settings in GPUI: the section list on the left and the section's page
+//! to its right (General, Dictation, Command mode, Transcription &
+//! refinement, Writing style, Dictionary, Features, Logs).
 
 mod chord;
 mod command_mode;
@@ -181,7 +180,7 @@ impl Settings {
                     )
                     .into_any_element()
             }
-            // The page's own section: the web view covers this.
+            // No section by that path.
             None => div().flex_1().into_any_element(),
         };
         div()

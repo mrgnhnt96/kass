@@ -1,12 +1,11 @@
-//! The app host: GPUI owns the macOS loop, and the React screens run in wry
-//! web views inside GPUI windows (docs/plans/GPUI_HOST.md).
+//! The app host: GPUI owns the macOS loop and draws every window
+//! (docs/plans/GPUI_HOST.md).
 //!
 //! This module gives the rest of the crate the small part of Tauri's API it
 //! used (`AppHandle`, managed state, events, paths, the async runtime), so
 //! moving off Tauri didn't touch dictation, hotkeys or text insertion.
 
 mod dispatch;
-pub mod ipc;
 pub mod menu;
 pub mod webview;
 
@@ -193,9 +192,8 @@ fn listeners() -> &'static Listeners {
     LISTENERS.get_or_init(Default::default)
 }
 
-/// Send `event` to the Rust listeners and to every web view. With a
-/// `target`, a web view's listeners for one window only hear it in that
-/// window; its listeners for any window hear it everywhere, as in Tauri.
+/// Send `event` to the Rust listeners. `target` names the window it's for,
+/// which listeners can read with [`Event::target`].
 pub(crate) fn emit_value(event: &str, payload: serde_json::Value, target: Option<String>) {
     let handlers: Vec<Handler> = listeners()
         .lock()
@@ -212,8 +210,6 @@ pub(crate) fn emit_value(event: &str, payload: serde_json::Value, target: Option
             });
         }
     }
-    let event = event.to_string();
-    main_async(move || webview::broadcast(&event, &payload, target.as_deref()));
 }
 
 pub trait Emitter {

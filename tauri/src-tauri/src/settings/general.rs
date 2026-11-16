@@ -19,7 +19,6 @@ use super::toast_error;
 use crate::host::{self, AppHandle, Manager};
 use crate::login_item::{self, Status as LoginStatus};
 use crate::prefs;
-use crate::shell::bridge;
 use crate::shell::data::{self, Health, ShellData};
 use crate::shell::status;
 use crate::updater::{self, UpdateStatus};
@@ -443,7 +442,6 @@ impl GeneralPage {
                             };
                             let _ = page.update(cx, |page, cx| {
                                 page.save(patch, window, cx);
-                                bridge::invalidate(&[&["captures"]]);
                             });
                         }),
                     },

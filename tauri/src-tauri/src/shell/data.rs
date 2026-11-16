@@ -12,7 +12,6 @@ use kass_api::types::{
 };
 use kass_api::{ApiClient, Mac, LOCAL_SERVER_URL};
 
-use super::bridge;
 use crate::dictation::capture::NativeInputDevice;
 use crate::host::{AppHandle, Manager};
 use crate::prefs::{self, Prefs};
@@ -61,6 +60,8 @@ pub struct ShellData {
     pub update: updater::UpdateStatus,
     pub channel: updater::Channel,
     pub version: String,
+    /// Why this Mac's server didn't start at launch.
+    pub startup_error: Option<String>,
     /// Unfinished onboarding was opened this launch.
     onboarding_checked: bool,
     _poll: Task<()>,
@@ -127,6 +128,7 @@ impl ShellData {
             update: updater::update_status(app.state::<updater::UpdaterState>()),
             channel,
             version: app.package_info().version,
+            startup_error: None,
             onboarding_checked: false,
             _poll: poll,
             _away: cx.spawn(check_away),
@@ -228,7 +230,7 @@ impl ShellData {
     }
 
     /// Change capture settings on the server. On success the new settings
-    /// show here and the page refetches its copy.
+    /// show here.
     pub fn update_settings(
         &mut self,
         patch: CaptureSettingsUpdate,
@@ -246,7 +248,6 @@ impl ShellData {
                 cx.notify();
             })
             .map_err(|e| e.to_string())?;
-            bridge::invalidate(&[&["settings", "captures"], &["capture-readiness"]]);
             Ok(())
         })
     }

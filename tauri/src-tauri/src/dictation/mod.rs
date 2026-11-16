@@ -6,7 +6,7 @@
 //! which flushes the last frame and sends `finish`. The final capture is
 //! pasted through `paste_final_text` into the target focused at chord start,
 //! unless provisional text was already written into it live (see [`live`]).
-//! The dictate webview only renders the pill from `dictation:state` events.
+//! The dictate window only renders the pill from `dictation:state` events.
 //!
 //! A command take ([`TakeMode::Command`], docs/plans/COMMAND_MODE.md) is the
 //! same take with an instruction for selected text: the selection is read
@@ -47,7 +47,7 @@ use serde_json::Value;
 use crate::focus_capture::FocusSnapshot;
 use crate::DICTATE_WINDOW_LABEL;
 use cancel::{CancelSwitch, Takes};
-use capture::{CaptureHooks, NativeInputDevice};
+use capture::CaptureHooks;
 use client::StreamClient;
 use live::{Finish, Live, LiveTarget};
 use paste_command::Plan;
@@ -68,7 +68,7 @@ const IN_APP_INSERT_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long a Kass window has to report its selection for a command take.
 const IN_APP_SELECTION_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// Where and how to capture. Pushed by the dictate webview, which owns the
+/// Where and how to capture. Pushed by the dictate window, which owns the
 /// server URL and capture settings.
 #[derive(Debug, Clone)]
 struct Config {
@@ -76,7 +76,7 @@ struct Config {
     /// This Mac's own server, standing by while another Mac's is in use
     /// (beta `network`): a take that can't reach that one moves here.
     fallback_url: Option<String>,
-    /// The webview's origin, sent only to a non-loopback server.
+    /// The app's origin, sent only to a non-loopback server.
     origin: Option<String>,
     input_device_id: Option<String>,
     /// Live text (docs/plans/STREAMING_INSERTION.md): type cleaned text into
@@ -438,15 +438,12 @@ fn pick_kass_window(windows: &[(String, bool)]) -> &str {
 /// Type `text` into the field focused in Kass's own window, for a
 /// shortcut take whose target is Kass (a correction, for example).
 /// Synthetic ⌘V and Accessibility insertion are aimed at other apps; the
-/// focused Kass window inserts through the DOM instead, so React sees
-/// the edit.
+/// focused Kass window inserts it itself.
 async fn insert_in_app(app: &AppHandle, take_id: u64, text: String) -> Result<bool, String> {
     let window = kass_window_label(app);
-    // A native box (the Dictionary's "When I say") takes it before the page.
-    if window == MAIN_WINDOW_LABEL
-        && crate::settings::dictionary::claim(take_id, text.clone()).await
-    {
-        return Ok(true);
+    // In the main window only the Dictionary's "When I say" box takes it.
+    if window == MAIN_WINDOW_LABEL {
+        return Ok(crate::settings::dictionary::claim(take_id, text).await);
     }
     let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
     let tx = Mutex::new(Some(tx));
@@ -579,6 +576,11 @@ fn read_selection(app: &AppHandle, take: &ActiveTake, focus: Option<FocusSnapsho
 /// Ask the focused Kass window for its selection, for a command take
 /// aimed at Kass (onboarding's rewrite step, for example). Blocking.
 fn selection_in_app(app: &AppHandle, take_id: u64) -> Result<String, &'static str> {
+    let window = kass_window_label(app);
+    // Only onboarding answers; the main window has no selection to give.
+    if window == MAIN_WINDOW_LABEL {
+        return command::decide_in_app(None);
+    }
     let (tx, rx) = std_mpsc::channel::<String>();
     let tx = Mutex::new(tx);
     let listener = app.listen("dictation:selection", move |event| {
@@ -596,7 +598,6 @@ fn selection_in_app(app: &AppHandle, take_id: u64) -> Result<String, &'static st
             let _ = tx.send(text.to_string());
         }
     });
-    let window = kass_window_label(app);
     let payload = serde_json::json!({ "take": take_id });
     let reply = match app.emit_to(window.as_str(), "dictation:selection-request", payload) {
         Ok(()) => rx.recv_timeout(IN_APP_SELECTION_TIMEOUT).ok(),
@@ -1177,7 +1178,7 @@ impl TakeEnv for AppEnv {
 // Commands
 // ========================================================================
 
-/// Push the server URL, webview origin and saved microphone to Rust.
+/// Push the server URL, app origin and saved microphone to Rust.
 #[allow(clippy::too_many_arguments)]
 pub fn dictation_configure(
     state: crate::host::State<'_, DictationState>,
@@ -1225,7 +1226,7 @@ pub fn dictation_set_away(state: crate::host::State<'_, DictationState>, away: b
     state.away.store(away, Ordering::Relaxed);
 }
 
-/// Remember the chosen microphone across launches. The webview only learns
+/// Remember the chosen microphone across launches. The app only learns
 /// the setting once the server is up (~30 s after launch); without this the
 /// first take after launch used the macOS default input instead.
 pub fn restore(app: &AppHandle) {
@@ -1304,13 +1305,6 @@ pub fn show_hud(app: &AppHandle) {
     // dictating into stops receiving keystrokes. This orders it into the
     // active Space (incl. a foreign app's fullscreen Space) without focus.
     crate::force_order_front(&window);
-}
-
-/// Native microphones, with ids suitable for `input_device_id`.
-pub async fn list_input_devices() -> Result<Vec<NativeInputDevice>, String> {
-    crate::host::async_runtime::spawn_blocking(capture::list_input_devices)
-        .await
-        .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]

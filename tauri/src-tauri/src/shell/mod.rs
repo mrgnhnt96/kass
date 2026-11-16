@@ -1,15 +1,13 @@
-//! The main window's frame in GPUI: the title bar strip, the left rail, the
-//! settings navigation and the status line. The screens not yet rebuilt in
-//! GPUI still come from the page, in a web view placed over the content
-//! area; the native ones (src/settings, Captures, Insights, Reports) hide it.
-//! App-wide dialogs and toasts (asks, downloads) draw over every screen.
+//! The main window in GPUI: the title bar strip, the left rail, the screen
+//! showing and the status line. App-wide dialogs and toasts (asks,
+//! downloads) draw over every screen.
 
 mod asks;
-pub mod bridge;
 mod captures;
 pub mod data;
 mod downloads;
 mod insights;
+mod launch;
 pub mod logs;
 mod models;
 mod reports;
@@ -19,7 +17,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::WindowExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use kass_captures::CapturesPage;
@@ -28,17 +25,21 @@ use kass_models::ModelsPage;
 use kass_ui::{
     metrics, theme, AlertLevel, Sidebar, SidebarFooter, SidebarTab, TabAlert,
 };
-use wry::dpi::{LogicalPosition, LogicalSize};
-use wry::Rect;
 
-use crate::host::{self, webview, AppHandle, Listener, Manager};
+use crate::host::{self, AppHandle, Listener, Manager};
 use crate::settings::{self, Settings};
 use crate::updater::{self, UpdateStatus};
-use crate::{ServerState, MAIN_WINDOW_LABEL};
+use crate::ServerState;
 use asks::Asks;
-use bridge::Location;
-use data::ShellData;
+use data::{Health, ShellData};
 use downloads::DownloadToasts;
+
+/// A screen of the main window, like `/models` with `?model=whisper-turbo`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Location {
+    pub path: String,
+    pub search: String,
+}
 
 /// The strip the traffic lights sit in, above everything else.
 pub(crate) const TITLEBAR: f32 = 48.;
@@ -48,6 +49,8 @@ pub(crate) const RAIL: f32 = 68.;
 struct ShellGlobal {
     data: Entity<ShellData>,
     view: Option<WeakEntity<MainShell>>,
+    /// Where to go once the main window opens.
+    pending: Option<Location>,
 }
 
 impl Global for ShellGlobal {}
@@ -56,7 +59,13 @@ impl Global for ShellGlobal {}
 pub fn init(cx: &mut App) {
     logs::init(cx);
     let data = cx.new(ShellData::new);
-    cx.set_global(ShellGlobal { data, view: None });
+    cx.set_global(ShellGlobal {
+        data: data.clone(),
+        view: None,
+        pending: None,
+    });
+    launch::init(&data, cx);
+    crate::deep_link::deliver(cx);
     AppHandle.listen("update:status", |_| {
         host::with_app(|cx| {
             let data = shell_data(cx);
@@ -69,6 +78,11 @@ pub fn shell_data(cx: &App) -> Entity<ShellData> {
     cx.global::<ShellGlobal>().data.clone()
 }
 
+/// Onboarding closed: the main window keeps the keys again.
+pub fn resume_after_onboarding(cx: &mut App) {
+    launch::resume(cx);
+}
+
 /// [`shell_data`], or `None` before [`init`].
 pub fn try_shell_data(cx: &App) -> Option<Entity<ShellData>> {
     Some(cx.try_global::<ShellGlobal>()?.data.clone())
@@ -77,7 +91,11 @@ pub fn try_shell_data(cx: &App) -> Option<Entity<ShellData>> {
 /// What GPUI draws in the main window.
 pub fn root(window: &mut Window, cx: &mut App) -> AnyView {
     let view = cx.new(|cx| MainShell::new(window, cx));
-    cx.global_mut::<ShellGlobal>().view = Some(view.downgrade());
+    let global = cx.global_mut::<ShellGlobal>();
+    global.view = Some(view.downgrade());
+    if let Some(location) = global.pending.take() {
+        view.update(cx, |shell, cx| shell.go(location, cx));
+    }
     view.into()
 }
 
@@ -90,79 +108,29 @@ pub fn showing(path: &str, cx: &App) -> bool {
     view(cx).is_some_and(|view| view.read(cx).location.path.trim_end_matches('/') == path)
 }
 
-/// Show `path`: the page's router follows, and the shell shows it now.
+/// Show `path` (with `search`, like `?model=whisper-turbo`).
 pub fn navigate(path: &str, search: &str, cx: &mut App) {
-    let mut search = search.to_string();
-    if let Some(view) = view(cx) {
-        search = view.update(cx, |shell, cx| {
-            shell.go(
-                Location {
-                    path: path.to_string(),
-                    search,
-                },
-                cx,
-            );
-            shell.location.search.clone()
-        });
-    }
-    bridge::navigate(path, &search);
-}
-
-/// The page's router moved (`shell_location`).
-pub fn set_location(location: Location) {
-    host::with_app(move |cx| {
-        if let Some(view) = view(cx) {
-            view.update(cx, |shell, cx| {
-                if shell.location != location {
-                    shell.go(location, cx);
-                }
-            });
+    let location = Location {
+        path: moved(path).to_string(),
+        search: search.to_string(),
+    };
+    match view(cx) {
+        Some(view) => view.update(cx, |shell, cx| shell.go(location, cx)),
+        None if cx.has_global::<ShellGlobal>() => {
+            cx.global_mut::<ShellGlobal>().pending = Some(location);
         }
-    });
-}
-
-/// Where the web view goes, for the screen that's showing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Placement {
-    /// A native screen: no web view.
-    Hidden,
-    /// Right of the rail.
-    Content,
-    /// Right of the settings navigation.
-    Settings,
-}
-
-impl Placement {
-    fn of(path: &str) -> Self {
-        if settings::Page::of(path).is_some() || is_native_tab(active_tab(path)) {
-            Self::Hidden
-        } else if settings::is_settings(path) {
-            Self::Settings
-        } else {
-            Self::Content
-        }
-    }
-
-    fn frame(self, size: Size<Pixels>) -> Option<Rect> {
-        let left = match self {
-            Self::Hidden => return None,
-            Self::Content => RAIL,
-            Self::Settings => RAIL + settings::NAV_WIDTH,
-        };
-        // Below the title strip and the 1px line under it; above the status line.
-        let top = TITLEBAR + 1.;
-        let width = (f32::from(size.width) - left).max(0.);
-        let height = (f32::from(size.height) - top - status::HEIGHT).max(0.);
-        Some(Rect {
-            position: LogicalPosition::new(f64::from(left), f64::from(top)).into(),
-            size: LogicalSize::new(f64::from(width), f64::from(height)).into(),
-        })
+        None => {}
     }
 }
 
-/// Tabs of the rail the shell draws itself.
-fn is_native_tab(tab: &str) -> bool {
-    matches!(tab, "captures" | "insights" | "models" | "reports")
+/// Where a path from an older link or a bare `kass://` now leads.
+fn moved(path: &str) -> &str {
+    match path.trim_end_matches('/') {
+        "" => "/captures",
+        "/settings/captures" => "/settings/dictation",
+        "/settings/server" => "/settings",
+        _ => path,
+    }
 }
 
 /// The model a `?model=` link asks the Models page to show.
@@ -184,7 +152,6 @@ fn active_tab(path: &str) -> &str {
 pub struct MainShell {
     data: Entity<ShellData>,
     location: Location,
-    placed: Option<Placement>,
     settings: Settings,
     captures: Entity<CapturesPage>,
     /// The server the Captures page was made for; it starts over on another.
@@ -241,10 +208,9 @@ impl MainShell {
                 path: "/captures".into(),
                 search: String::new(),
             },
-            placed: None,
             logo: Arc::new(Image::from_bytes(
                 ImageFormat::Png,
-                include_bytes!("../../../../app/src/assets/kass-logo.png").to_vec(),
+                include_bytes!("../../../assets/kass-logo.png").to_vec(),
             )),
             restarting: false,
             _asks: asks,
@@ -254,13 +220,6 @@ impl MainShell {
     }
 
     fn go(&mut self, location: Location, cx: &mut Context<Self>) {
-        let on_dictionary =
-            |location: &Location| location.path.trim_end_matches('/') == settings::dictionary::PATH;
-        // The page's own screens (Captures) cache the dictionary the native
-        // page changed.
-        if on_dictionary(&self.location) && !on_dictionary(&location) {
-            bridge::invalidate(&[&["dictionary"]]);
-        }
         self.location = location;
         self.follow_link(cx);
         cx.notify();
@@ -282,7 +241,6 @@ impl MainShell {
                 };
                 // Dropped once followed, so the same link works again.
                 self.location.search.clear();
-                bridge::navigate(&self.location.path, "");
                 let (page, window) = (self.captures.downgrade(), self.window);
                 cx.defer(move |cx| {
                     let _ = window.update(cx, |_, window, cx| {
@@ -291,23 +249,6 @@ impl MainShell {
                 });
             }
             _ => {}
-        }
-    }
-
-    /// Put the web view where the screen showing needs it. It keeps its
-    /// margins as the window resizes, so this runs only when they change.
-    /// A dialog hides it: GPUI draws under the web view.
-    fn place_webview(&mut self, window: &mut Window, cx: &mut App) {
-        let placement = if window.has_active_dialog(cx) {
-            Placement::Hidden
-        } else {
-            Placement::of(&self.location.path)
-        };
-        if self.placed == Some(placement) {
-            return;
-        }
-        if webview::place(MAIN_WINDOW_LABEL, placement.frame(window.viewport_size())) {
-            self.placed = Some(placement);
         }
     }
 
@@ -459,14 +400,20 @@ fn model_alerts(data: &ShellData) -> Option<TabAlert> {
 
 impl Render for MainShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.place_webview(window, cx);
         self.follow_models(cx);
         let t = theme(cx);
         let (background, foreground, border, sans) =
             (t.background, t.foreground, t.border, t.sans_font());
         let path = self.location.path.clone();
 
-        let content: AnyElement = if settings::is_settings(&path) {
+        let data = self.data.read(cx);
+        let failed = match (&data.startup_error, &data.health) {
+            (Some(error), Health::Offline) => Some(error.clone()),
+            _ => None,
+        };
+        let content: AnyElement = if let Some(error) = failed {
+            launch::failure(&error, cx)
+        } else if settings::is_settings(&path) {
             let search = self.location.search.clone();
             self.settings
                 .render(&path, &search, window, cx)
@@ -541,23 +488,7 @@ impl Render for MainShell {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_tab, model_in, Placement};
-    use gpui_kit::{px, size};
-    use wry::dpi::{LogicalPosition, LogicalSize};
-
-    #[test]
-    fn native_screens_hide_the_web_view() {
-        assert_eq!(Placement::of("/settings"), Placement::Hidden);
-        assert_eq!(Placement::of("/settings/"), Placement::Hidden);
-        assert_eq!(Placement::of("/settings/transcription"), Placement::Hidden);
-        assert_eq!(Placement::of("/settings/logs"), Placement::Hidden);
-        assert_eq!(Placement::of("/settings/dictionary"), Placement::Hidden);
-        assert_eq!(Placement::of("/settings/dictation"), Placement::Hidden);
-        assert_eq!(Placement::of("/insights"), Placement::Hidden);
-        assert_eq!(Placement::of("/reports"), Placement::Hidden);
-        assert_eq!(Placement::of("/captures"), Placement::Hidden);
-        assert_eq!(Placement::of("/models"), Placement::Hidden);
-    }
+    use super::{active_tab, model_in, moved};
 
     #[test]
     fn model_links_name_a_model() {
@@ -571,15 +502,12 @@ mod tests {
     }
 
     #[test]
-    fn the_web_view_fills_what_the_frame_leaves() {
-        let frame = Placement::Settings
-            .frame(size(px(1200.), px(800.)))
-            .unwrap();
-        let position: LogicalPosition<f64> = frame.position.to_logical(1.);
-        let extent: LogicalSize<f64> = frame.size.to_logical(1.);
-        assert_eq!((position.x, position.y), (288., 49.));
-        assert_eq!((extent.width, extent.height), (912., 721.));
-        assert!(Placement::Hidden.frame(size(px(1200.), px(800.))).is_none());
+    fn old_links_lead_where_the_screens_are_now() {
+        assert_eq!(moved("/"), "/captures");
+        assert_eq!(moved(""), "/captures");
+        assert_eq!(moved("/settings/captures"), "/settings/dictation");
+        assert_eq!(moved("/settings/server"), "/settings");
+        assert_eq!(moved("/models"), "/models");
     }
 
     #[test]
