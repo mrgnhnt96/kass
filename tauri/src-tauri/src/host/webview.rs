@@ -10,8 +10,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use gpui_kit::{
-    div, AnyWindowHandle, App, AppContext as _, Context, IntoElement, Render, Styled, Window,
-    WindowOptions,
+    div, AnyView, AnyWindowHandle, App, AppContext as _, Context, IntoElement, ParentElement,
+    Render, Styled, Window, WindowOptions,
 };
 use objc2::rc::Retained;
 use objc2::{msg_send, MainThreadMarker};
@@ -216,15 +216,41 @@ pub struct Spec {
     /// Runs on the new NSWindow before the web view attaches to it.
     pub prepare: fn(&NSWindow),
     pub on_close: OnClose,
+    /// What GPUI draws under the web view. `None` draws nothing: the web view
+    /// covers the window. A window with a root places its web view with
+    /// [`place`].
+    pub root: Option<fn(&mut Window, &mut App) -> AnyView>,
 }
 
-/// GPUI draws nothing in these windows; the web view covers them.
-struct Host;
+struct Host {
+    root: Option<AnyView>,
+}
 
 impl Render for Host {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().size_full()
+        div().size_full().children(self.root.clone())
     }
+}
+
+/// Show the web view of window `label` over `frame` (in window points, from
+/// the top left), or hide it with `None`. Main thread only. The web view keeps
+/// its margins as the window resizes, so call this when the frame's margins
+/// change, not on every resize. False when the window has no web view yet.
+pub(crate) fn place(label: &str, frame: Option<Rect>) -> bool {
+    let mut placed = false;
+    with_webview(label, |webview| {
+        placed = true;
+        match frame {
+            Some(frame) => {
+                let _ = webview.set_bounds(frame);
+                let _ = webview.set_visible(true);
+            }
+            None => {
+                let _ = webview.set_visible(false);
+            }
+        }
+    });
+    placed
 }
 
 /// Open the window `spec` describes, or return it when it's open already.
@@ -239,6 +265,7 @@ pub fn open(cx: &mut App, spec: Spec) -> Result<WebviewWindow> {
         transparent,
         prepare,
         on_close,
+        root,
     } = spec;
     let mut failed = None;
     gpui_kit::open_window(options, cx, |window, cx| {
@@ -286,7 +313,8 @@ pub fn open(cx: &mut App, spec: Spec) -> Result<WebviewWindow> {
             }
             OnClose::Never => false,
         });
-        cx.new(|_| Host)
+        let root = root.map(|build| build(window, cx));
+        cx.new(|_| Host { root })
     })
     .map_err(|e| Error(e.to_string()))?;
     match failed {

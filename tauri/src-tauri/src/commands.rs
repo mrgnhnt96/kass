@@ -43,6 +43,21 @@ pub fn dispatch(_label: &str, cmd: &str, args: Value) -> Answer {
             crate::dictate_chip_space(app, arg(a, "show")?);
             Ok(Value::Null)
         }),
+        "shell_location" => now(|| {
+            crate::shell::set_location(crate::shell::bridge::Location {
+                path: arg(a, "path")?,
+                search: arg::<Option<String>>(a, "search")?.unwrap_or_default(),
+            });
+            Ok(Value::Null)
+        }),
+        "shell_sync" => now(|| {
+            crate::shell::set_synced(arg(a, "synced")?);
+            Ok(Value::Null)
+        }),
+        "shell_command_result" => now(|| {
+            crate::shell::bridge::answered(arg(a, "id")?, arg(a, "error")?);
+            Ok(Value::Null)
+        }),
         "start_server" | "restart_server" => {
             let restart = cmd == "restart_server";
             let parsed = (|| {
