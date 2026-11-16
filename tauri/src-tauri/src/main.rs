@@ -683,12 +683,12 @@ async fn start_worker(
                 eprintln!("DEV MODE: No server found on port {}", WORKER_PORT);
                 eprintln!();
                 eprintln!("Start the Python server in a separate terminal:");
-                eprintln!("  just dev-backend");
+                eprintln!("  cargo xtask dev-backend");
                 eprintln!("=================================================================");
                 eprintln!();
             }
 
-            return Err("Failed to start server. In dev mode, run 'just dev-backend' in a separate terminal.".to_string());
+            return Err("Failed to start server. In dev mode, run 'cargo xtask dev-backend' in a separate terminal.".to_string());
         }
     };
 
@@ -751,10 +751,12 @@ async fn start_worker(
                 eprintln!("DEV MODE: Server binary failed to start");
                 eprintln!();
                 eprintln!("Start the Python server in a separate terminal:");
-                eprintln!("  just dev-backend");
+                eprintln!("  cargo xtask dev-backend");
                 eprintln!("=================================================================");
                 eprintln!();
-                return Err("Dev mode: Start server manually with 'just dev-backend'".to_string());
+                return Err(
+                    "Dev mode: Start server manually with 'cargo xtask dev-backend'".to_string(),
+                );
             }
 
             #[cfg(not(debug_assertions))]
@@ -892,11 +894,12 @@ async fn start_worker(
                     eprintln!("DEV MODE: No bundled server binary available");
                     eprintln!();
                     eprintln!("Start the Python server in a separate terminal:");
-                    eprintln!("  just dev-backend");
+                    eprintln!("  cargo xtask dev-backend");
                     eprintln!("=================================================================");
                     eprintln!();
                     return Err(
-                        "Dev mode: Start server manually with 'just dev-backend'".to_string()
+                        "Dev mode: Start server manually with 'cargo xtask dev-backend'"
+                            .to_string(),
                     );
                 }
 
@@ -996,7 +999,7 @@ async fn free_api_port() -> Result<(), String> {
                 return Err(format!(
                     "A Kass server started by hand is on port {SERVER_PORT} (PID {pid}). \
                      The app serves that port itself now: stop it and run the Python \
-                     worker on {WORKER_PORT} instead (just dev-backend)."
+                     worker on {WORKER_PORT} instead (cargo xtask dev-backend)."
                 ));
             }
         }

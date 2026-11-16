@@ -1,4 +1,4 @@
-# dmgbuild settings for Kass's DMG. scripts/build-dmg.sh passes the app
+# dmgbuild settings for Kass's DMG. cargo xtask dmg passes the app
 # and the repo root in with -D.
 #
 # The icon positions match tauri/assets/dmg/background.html, which draws

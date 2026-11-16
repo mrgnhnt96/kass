@@ -29,13 +29,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check version matches tag
-        run: ./scripts/set-version.sh --check "${GITHUB_REF_NAME#v}"
-
-      # scripts/release.sh wrote this version into every file before tagging.
-      - name: Check version
-        run: ./scripts/set-version.sh --check "${GITHUB_REF_NAME#v}"
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -49,13 +42,19 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./tauri/src-tauri -> target"
+          workspaces: |
+            ./tauri/src-tauri -> target
+            ./crates -> target
+
+      # cargo xtask release wrote this version into every file before tagging.
+      - name: Check version matches tag
+        run: cargo xtask set-version --check "${GITHUB_REF_NAME#v}"
 
       - name: Install Python dependencies
-        run: ./scripts/setup-python.sh
+        run: cargo xtask setup-python
 
       - name: Build Python server
-        run: ./scripts/build-server.sh
+        run: cargo xtask build-server
 
       # The Developer ID certificate goes in a keychain of its own that lives
       # only for this run.
@@ -96,7 +95,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          ./scripts/build-local-app.sh
+          cargo xtask build-app
           app=tauri/src-tauri/target/release/bundle/macos/Kass.app
           xcrun stapler validate "$app"
           spctl --assess --type execute --verbose=2 "$app"
@@ -108,7 +107,7 @@ jobs:
         id: dmg
         run: |
           name="Kass-${GITHUB_REF_NAME#v}-macos-arm64"
-          ./scripts/build-dmg.sh tauri/src-tauri/target/release/bundle/macos/Kass.app "$name.dmg"
+          cargo xtask dmg tauri/src-tauri/target/release/bundle/macos/Kass.app "$name.dmg"
           echo "file=$name.dmg" >> "$GITHUB_OUTPUT"
 
       # The DMG gets its own signature and notarization ticket, so the
@@ -193,7 +192,7 @@ jobs:
           fi
           current=$(gh release download channels --pattern beta.json --output - 2>/dev/null \
             | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])' || true)
-          if [ -n "$current" ] && [ "$(./scripts/newest-version.py "$current" "$version")" != "$version" ]; then
+          if [ -n "$current" ] && [ "$(cargo xtask newest-version "$current" "$version")" != "$version" ]; then
             echo "beta.json stays on $current, newer than $version."
             exit 0
           fi

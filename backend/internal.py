@@ -2,7 +2,7 @@
 Internal features: they ship in every release but only run on the developer's
 own builds, before they're ready for beta users.
 
-scripts/install.sh writes an empty `internal` file into the data dir, so
+`cargo xtask install` writes an empty `internal` file into the data dir, so
 every build installed from a checkout has them and the release DMG doesn't.
 Delete the file to turn them off. It's read on every check, so the change
 applies without restarting the server.

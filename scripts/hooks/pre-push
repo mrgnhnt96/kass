@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lint and format the files a push changes, and nothing else.
 
-Installed by `just setup-hooks`, which points git's core.hooksPath at
+Installed by `cargo xtask setup-hooks`, which points git's core.hooksPath at
 scripts/hooks. Skip once with `SKIP=1 git push`.
 
 Git writes one line per pushed ref on stdin:
@@ -100,7 +100,7 @@ def main() -> int:
     if rust and shutil.which("cargo") is None:
         missing.append("cargo")
     if missing:
-        say(f"pre-push: {', '.join(missing)} not found. Run `just setup`, or push with SKIP=1.")
+        say(f"pre-push: {', '.join(missing)} not found. Run `cargo xtask setup`, or push with SKIP=1.")
         return 1
 
     failures: list[str] = []
@@ -133,7 +133,7 @@ def main() -> int:
         step("ruff check", [RUFF, "check", *RUFF_FLAGS, *python])
         step("ruff format --check", [RUFF, "format", "--check", *RUFF_FLAGS, *python])
     if rust:
-        # clippy reads every crate in the workspace; warnings fail, as in just check.
+        # clippy reads every crate in the workspace; warnings fail, as in cargo xtask check.
         step(
             "cargo clippy",
             ["cargo", "clippy", "--manifest-path", CARGO_MANIFEST, "--workspace", "--all-targets", "--quiet", "--", "-D", "warnings"],

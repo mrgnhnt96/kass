@@ -26,13 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Every version string has to agree; fail now rather than after the build.
-      - name: Check version
-        id: version
-        run: |
-          ./scripts/set-version.sh --check
-          echo "version=$(jq -r .version tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -46,10 +39,19 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./tauri/src-tauri -> target"
+          workspaces: |
+            ./tauri/src-tauri -> target
+            ./crates -> target
+
+      # Every version string has to agree; fail now rather than after the build.
+      - name: Check version
+        id: version
+        run: |
+          cargo xtask set-version --check
+          echo "version=$(jq -r .version tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
 
       - name: Install Python dependencies
-        run: ./scripts/setup-python.sh
+        run: cargo xtask setup-python
 
       # With a Whisper model downloaded, phrase seams judge words by its
       # vocabulary rather than the system word list, and the tests expect
@@ -65,7 +67,7 @@ jobs:
         run: backend/venv/bin/python -m pytest backend/tests -q -k "not test_hf_progress_tracker"
 
       - name: Build Python server
-        run: ./scripts/build-server.sh
+        run: cargo xtask build-server
 
       # CI has no stable signing identity, so sign ad-hoc. macOS treats each
       # ad-hoc build as a new app, so privacy grants don't carry across
@@ -73,7 +75,7 @@ jobs:
       - name: Build app
         env:
           KASS_SIGNING_IDENTITY: "-"
-        run: ./scripts/build-local-app.sh
+        run: cargo xtask build-app
 
       # ditto keeps the symlinks and extended attributes the signature needs;
       # upload-artifact's own zip would drop them.
