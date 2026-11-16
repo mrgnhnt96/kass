@@ -3,6 +3,7 @@
 mod button;
 mod dialog;
 mod input;
+pub mod keys;
 mod select;
 mod setting;
 mod sidebar;

@@ -8,6 +8,7 @@ mod command_mode;
 mod dictation;
 mod features;
 mod general;
+mod hud_preview;
 mod logs;
 mod transcription;
 mod writing_style;

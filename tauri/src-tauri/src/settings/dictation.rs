@@ -14,6 +14,7 @@ use kass_ui::{
 };
 
 use super::chord::{chord_keys, default_chord, open_chord_picker};
+use super::hud_preview::HudPreview;
 use super::toast_error;
 use crate::shell::data::{self, ShellData};
 
@@ -101,6 +102,7 @@ pub struct DictationPage {
     /// The microphones in the dropdown, to tell when the list changes.
     mics: Vec<(String, String)>,
     volume: Entity<SliderState>,
+    preview: Entity<HudPreview>,
     /// The volume last saved, to keep the slider on it.
     saved_volume: f64,
     /// A download you asked for is on its way to the server.
@@ -128,25 +130,33 @@ impl DictationPage {
         });
 
         let subscriptions = vec![
-            cx.subscribe_in(&mic, window, |this, _, event: &SelectEvent<_>, window, cx| {
-                if let SelectEvent::Confirm(Some(id)) = event {
-                    let id: &String = id;
-                    let input_device_id = (id != DEFAULT_MIC).then(|| id.clone());
-                    this.save(
-                        CaptureSettingsUpdate {
-                            input_device_id: Some(input_device_id),
-                            ..Default::default()
-                        },
-                        window,
-                        cx,
-                    );
-                }
-            }),
-            cx.subscribe_in(&volume, window, |this, _, event: &SliderEvent, window, cx| {
-                if let SliderEvent::Release(value) = event {
-                    this.set_volume(value.start(), window, cx);
-                }
-            }),
+            cx.subscribe_in(
+                &mic,
+                window,
+                |this, _, event: &SelectEvent<_>, window, cx| {
+                    if let SelectEvent::Confirm(Some(id)) = event {
+                        let id: &String = id;
+                        let input_device_id = (id != DEFAULT_MIC).then(|| id.clone());
+                        this.save(
+                            CaptureSettingsUpdate {
+                                input_device_id: Some(input_device_id),
+                                ..Default::default()
+                            },
+                            window,
+                            cx,
+                        );
+                    }
+                },
+            ),
+            cx.subscribe_in(
+                &volume,
+                window,
+                |this, _, event: &SliderEvent, window, cx| {
+                    if let SliderEvent::Release(value) = event {
+                        this.set_volume(value.start(), window, cx);
+                    }
+                },
+            ),
             cx.observe_in(&data, window, |this, _, window, cx| {
                 this.sync(window, cx);
                 cx.notify();
@@ -158,6 +168,7 @@ impl DictationPage {
             mic,
             mics,
             volume,
+            preview: cx.new(HudPreview::new),
             saved_volume,
             starting_download: false,
             checking: None,
@@ -175,9 +186,15 @@ impl DictationPage {
     }
 
     fn mic_options(mics: &[(String, String)]) -> SelectOptions<String> {
-        std::iter::once(SelectOption::new(DEFAULT_MIC.to_string(), t(format!("{D}-input-device-default"))))
-            .chain(mics.iter().map(|(id, name)| SelectOption::new(id.clone(), name.clone())))
-            .collect()
+        std::iter::once(SelectOption::new(
+            DEFAULT_MIC.to_string(),
+            t(format!("{D}-input-device-default")),
+        ))
+        .chain(
+            mics.iter()
+                .map(|(id, name)| SelectOption::new(id.clone(), name.clone())),
+        )
+        .collect()
     }
 
     /// The saved microphone, or the default when it's gone.
@@ -221,7 +238,9 @@ impl DictationPage {
     }
 
     fn save(&mut self, patch: CaptureSettingsUpdate, window: &mut Window, cx: &mut Context<Self>) {
-        let task = self.data.update(cx, |data, cx| data.update_settings(patch, cx));
+        let task = self
+            .data
+            .update(cx, |data, cx| data.update_settings(patch, cx));
         cx.spawn_in(window, async move |_, _| {
             if let Err(e) = task.await {
                 eprintln!("[settings] save failed: {e}");
@@ -361,9 +380,12 @@ impl DictationPage {
                             name = model.display_name.as_str()
                         )),
                     ),
-                    Err(e) => {
-                        toast_error(t(format!("{READY}-download-failed")), &e.to_string(), window, cx)
-                    }
+                    Err(e) => toast_error(
+                        t(format!("{READY}-download-failed")),
+                        &e.to_string(),
+                        window,
+                        cx,
+                    ),
                 }
                 cx.notify();
             });
@@ -414,8 +436,18 @@ impl DictationPage {
                 rows.push(self.model_row("llm", readiness.llm, &downloads, cx));
             }
         }
-        rows.push(self.permission_row(Permission::InputMonitoring, input_monitoring, IconName::Keyboard, cx));
-        rows.push(self.permission_row(Permission::Accessibility, accessibility, IconName::Accessibility, cx));
+        rows.push(self.permission_row(
+            Permission::InputMonitoring,
+            input_monitoring,
+            IconName::Keyboard,
+            cx,
+        ));
+        rows.push(self.permission_row(
+            Permission::Accessibility,
+            accessibility,
+            IconName::Accessibility,
+            cx,
+        ));
         let t_ = theme(cx);
         Some(
             div()
@@ -447,7 +479,10 @@ impl DictationPage {
         let description = if model.ready {
             t(format!("{READY}-{gate}-ready"))
         } else if let Some(mb) = model.size_mb {
-            tr!(&format!("{READY}-{gate}-missing-with-size"), size = gigabytes(mb))
+            tr!(
+                &format!("{READY}-{gate}-missing-with-size"),
+                size = gigabytes(mb)
+            )
         } else {
             t(format!("{READY}-{gate}-missing"))
         };
@@ -462,17 +497,31 @@ impl DictationPage {
         };
         let this = cx.entity().downgrade();
         let ready = model.ready;
-        let title = tr!(&format!("{READY}-{gate}-label"), name = model.display_name.as_str());
+        let title = tr!(
+            &format!("{READY}-{gate}-label"),
+            name = model.display_name.as_str()
+        );
         let action = Button::new(SharedString::from(format!("download-{gate}")))
             .small()
-            .icon(if downloading { IconName::LoaderCircle } else { IconName::Download })
+            .icon(if downloading {
+                IconName::LoaderCircle
+            } else {
+                IconName::Download
+            })
             .label(label)
             .disabled(downloading || self.starting_download)
             .on_click(move |_, window, cx| {
                 let model = model.clone();
                 let _ = this.update(cx, |this, cx| this.download(model, window, cx));
             });
-        checklist_row(IconName::Cpu, title, description, ready, action.into_any_element(), cx)
+        checklist_row(
+            IconName::Cpu,
+            title,
+            description,
+            ready,
+            action.into_any_element(),
+            cx,
+        )
     }
 
     fn permission_row(
@@ -542,7 +591,10 @@ impl DictationPage {
                             .text_size(metrics::TEXT_XS)
                             .line_height(px(19.5))
                             .text_color(t_.muted_foreground)
-                            .child(marked_path(&t(format!("{p}-body")), t_.foreground.opacity(0.85))),
+                            .child(marked_path(
+                                &t(format!("{p}-body")),
+                                t_.foreground.opacity(0.85),
+                            )),
                     )
                     .child(
                         div()
@@ -568,8 +620,9 @@ impl DictationPage {
                                         t(format!("{p}-recheck"))
                                     })
                                     .on_click(move |_, window, cx| {
-                                        let _ = this
-                                            .update(cx, |this, cx| this.recheck(permission, window, cx));
+                                        let _ = this.update(cx, |this, cx| {
+                                            this.recheck(permission, window, cx)
+                                        });
                                     }),
                             ),
                     )
@@ -693,15 +746,18 @@ fn checklist_row(
         .p(px(14.))
         .rounded(metrics::RADIUS_LG)
         .border_1()
-        .when(ready, |row| row.border_color(t_.accent.opacity(0.2)).bg(t_.accent.opacity(0.05)))
-        .when(!ready, |row| row.border_color(t_.border).bg(t_.muted.opacity(0.2)))
-        .child(
-            div().mt(px(2.)).child(if ready {
-                icon(IconName::CircleCheck, 20., t_.accent)
-            } else {
-                icon(IconName::Circle, 20., t_.muted_foreground.opacity(0.5))
-            }),
-        )
+        .when(ready, |row| {
+            row.border_color(t_.accent.opacity(0.2))
+                .bg(t_.accent.opacity(0.05))
+        })
+        .when(!ready, |row| {
+            row.border_color(t_.border).bg(t_.muted.opacity(0.2))
+        })
+        .child(div().mt(px(2.)).child(if ready {
+            icon(IconName::CircleCheck, 20., t_.accent)
+        } else {
+            icon(IconName::Circle, 20., t_.muted_foreground.opacity(0.5))
+        }))
         .child(
             div()
                 .flex_1()
@@ -749,13 +805,16 @@ impl Render for DictationPage {
                 data.accessibility,
             )
         };
+        self.preview
+            .update(cx, |preview, _| preview.set_enabled(hotkey));
         let this = cx.entity().downgrade();
-        let hotkey_toggle = Toggle::new("hotkey-enabled")
-            .checked(hotkey)
-            .on_change(move |on, window, cx| {
-                let on = *on;
-                let _ = this.update(cx, |this, cx| this.set_hotkey(on, window, cx));
-            });
+        let hotkey_toggle =
+            Toggle::new("hotkey-enabled")
+                .checked(hotkey)
+                .on_change(move |on, window, cx| {
+                    let on = *on;
+                    let _ = this.update(cx, |this, cx| this.set_hotkey(on, window, cx));
+                });
 
         let shortcut = SettingSection::new(t(format!("{D}-section-shortcut")))
             .child(
@@ -789,12 +848,23 @@ impl Render for DictationPage {
                     .action(div().w(px(240.)).child(select(&self.mic, cx))),
             )
             .child(
+                SettingRow::new(t(format!("{D}-preview-title")))
+                    .description(t(format!("{D}-preview-description")))
+                    .action(self.preview.clone()),
+            )
+            .child(
                 SettingRow::new(t(format!("{D}-sound-cues-title")))
                     .description(t(format!("{D}-sound-cues-description")))
-                    .action(self.toggle("sound-cues", sound_cues, false, |v| CaptureSettingsUpdate {
-                        sound_cues: Some(v),
-                        ..Default::default()
-                    }, cx)),
+                    .action(self.toggle(
+                        "sound-cues",
+                        sound_cues,
+                        false,
+                        |v| CaptureSettingsUpdate {
+                            sound_cues: Some(v),
+                            ..Default::default()
+                        },
+                        cx,
+                    )),
             )
             .child(
                 SettingRow::new(t(format!("{D}-sound-cue-volume-title")))
@@ -813,10 +883,16 @@ impl Render for DictationPage {
                     .child(row_layout(
                         t(format!("{D}-auto-paste-title")),
                         t(format!("{D}-auto-paste-description")),
-                        self.toggle("auto-paste", auto_paste, !hotkey, |v| CaptureSettingsUpdate {
-                            allow_auto_paste: Some(v),
-                            ..Default::default()
-                        }, cx),
+                        self.toggle(
+                            "auto-paste",
+                            auto_paste,
+                            !hotkey,
+                            |v| CaptureSettingsUpdate {
+                                allow_auto_paste: Some(v),
+                                ..Default::default()
+                            },
+                            cx,
+                        ),
                         cx,
                     ))
                     .when(!accessibility, |row| {
@@ -826,12 +902,16 @@ impl Render for DictationPage {
             .child(
                 SettingRow::new(t(format!("{D}-voice-edits-title")))
                     .description(t(format!("{D}-voice-edits-description")))
-                    .action(self.toggle("voice-edits", voice_edits, !hotkey, |v| {
-                        CaptureSettingsUpdate {
+                    .action(self.toggle(
+                        "voice-edits",
+                        voice_edits,
+                        !hotkey,
+                        |v| CaptureSettingsUpdate {
                             voice_edits: Some(v),
                             ..Default::default()
-                        }
-                    }, cx)),
+                        },
+                        cx,
+                    )),
             );
 
         div()
@@ -846,7 +926,8 @@ impl Render for DictationPage {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{gigabytes, missing_models, percent};
+    use kass_api::types::{ActiveDownloadTask, ModelReadiness};
 
     fn model(name: &str, ready: bool) -> ModelReadiness {
         ModelReadiness {
@@ -865,7 +946,10 @@ mod tests {
         assert_eq!(missing_models(Some(&stt), Some(&llm)), vec!["Whisper"]);
         assert_eq!(missing_models(Some(&stt), None), vec!["Whisper"]);
         let llm = model("Qwen", false);
-        assert_eq!(missing_models(Some(&stt), Some(&llm)), vec!["Whisper", "Qwen"]);
+        assert_eq!(
+            missing_models(Some(&stt), Some(&llm)),
+            vec!["Whisper", "Qwen"]
+        );
     }
 
     #[test]
@@ -884,6 +968,7 @@ mod tests {
             progress: Some(42.4),
             current: None,
             total: None,
+            filename: None,
         };
         assert_eq!(percent(&task), Some(42));
         task.progress = None;

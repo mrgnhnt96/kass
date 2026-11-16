@@ -12,10 +12,11 @@ use block2::RcBlock;
 use futures_util::StreamExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use kass_ui::keys::{is_modifier, keycaps, sort_chord};
+use kass_ui::{close_dialog, dialog_footer, dialog_header, metrics, open_dialog, theme, Button};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType};
-use kass_ui::{close_dialog, dialog_footer, dialog_header, metrics, open_dialog, theme, Button};
 
 /// The chords dictation starts with: the right ⌘ and ⌥, plus Space for
 /// hands-free.
@@ -27,81 +28,11 @@ pub fn default_chord(toggle: bool) -> Vec<String> {
     keys
 }
 
-/// Where a key sorts in a chord: modifiers first (⌃ ⌥ ⇧ ⌘), the rest after.
-fn rank(key: &str) -> u8 {
-    match key {
-        "ControlLeft" | "ControlRight" => 0,
-        "Alt" | "AltGr" => 1,
-        "ShiftLeft" | "ShiftRight" => 2,
-        "MetaLeft" | "MetaRight" => 3,
-        "Function" => 4,
-        "CapsLock" => 5,
-        _ => 99,
-    }
-}
-
-/// `keys` in the order shortcuts are written: modifiers, then the key.
-pub fn sorted(keys: &[String]) -> Vec<String> {
-    let mut keys = keys.to_vec();
-    keys.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.cmp(b)));
-    keys
-}
-
-/// Whether two chords are the same keys, in any order.
-pub fn same_chord(a: &[String], b: &[String]) -> bool {
-    sorted(a) == sorted(b)
-}
-
-/// What a key's cap says.
-pub fn label(key: &str) -> String {
-    let glyph = match key {
-        "MetaLeft" | "MetaRight" => "⌘",
-        "Alt" | "AltGr" => "⌥",
-        "ControlLeft" | "ControlRight" => "⌃",
-        "ShiftLeft" | "ShiftRight" => "⇧",
-        "CapsLock" => "⇪",
-        "Function" => "fn",
-        "Tab" => "⇥",
-        "Return" => "↵",
-        "Backspace" => "⌫",
-        "Delete" => "⌦",
-        "Escape" => "Esc",
-        "UpArrow" => "↑",
-        "DownArrow" => "↓",
-        "LeftArrow" => "←",
-        "RightArrow" => "→",
-        _ => {
-            for prefix in ["Key", "Digit", "Num"] {
-                if let Some(rest) = key.strip_prefix(prefix) {
-                    if rest.len() == 1 {
-                        return rest.to_string();
-                    }
-                }
-            }
-            return key.to_string();
-        }
-    };
-    glyph.to_string()
-}
-
-/// "L" or "R" for a modifier that has two keys.
-pub fn side(key: &str) -> Option<&'static str> {
-    match key {
-        "MetaRight" | "AltGr" | "ControlRight" | "ShiftRight" => Some("R"),
-        "MetaLeft" | "Alt" | "ControlLeft" | "ShiftLeft" => Some("L"),
-        _ => None,
-    }
-}
-
-fn is_modifier(key: &str) -> bool {
-    rank(key) < 99
-}
-
 /// A chord as keycaps, small for a settings row or large for the picker,
-/// each modifier badged with its side.
+/// or "Not set" when it has no keys.
 pub fn chord_keys(keys: &[String], large: bool, cx: &App) -> AnyElement {
-    let t = theme(cx);
     if keys.is_empty() {
+        let t = theme(cx);
         return div()
             .font_family(t.mono_font.clone())
             .text_size(metrics::TEXT_XS)
@@ -109,57 +40,7 @@ pub fn chord_keys(keys: &[String], large: bool, cx: &App) -> AnyElement {
             .child(kass_i18n::t("captures-chord-not-set"))
             .into_any_element();
     }
-    div()
-        .flex()
-        .items_center()
-        .gap(px(if large { 8. } else { 4. }))
-        .children(keys.iter().map(|key| {
-            let cap = div()
-                .relative()
-                .flex()
-                .items_center()
-                .justify_center()
-                .border_1()
-                .border_color(t.input)
-                .bg(t.secondary)
-                .font_family(t.mono_font.clone())
-                .text_color(t.foreground);
-            let cap = if large {
-                cap.min_w(px(40.))
-                    .rounded(metrics::RADIUS_LG)
-                    .border_b(px(3.))
-                    .px(px(14.))
-                    .py(px(8.))
-                    .text_size(metrics::TEXT_LG)
-                    .line_height(metrics::LINE_LG)
-            } else {
-                cap.min_w(px(28.))
-                    .rounded(px(5.))
-                    .border_b(px(2.))
-                    .px(px(8.))
-                    .py(px(4.))
-                    .text_size(metrics::TEXT_XS)
-                    .line_height(metrics::LINE_XS)
-            };
-            cap.child(label(key)).when_some(side(key), |cap, side| {
-                let offset = px(if large { -7. } else { -6. });
-                cap.child(
-                    div()
-                        .absolute()
-                        .top(offset)
-                        .right(offset)
-                        .px(px(if large { 4. } else { 2. }))
-                        .py(px(1.))
-                        .rounded(metrics::RADIUS_SM)
-                        .bg(t.accent)
-                        .text_color(t.accent_foreground)
-                        .text_size(px(if large { 9. } else { 8. }))
-                        .line_height(px(if large { 9. } else { 8. }))
-                        .child(side),
-                )
-            })
-        }))
-        .into_any_element()
+    keycaps(keys, large, cx).into_any_element()
 }
 
 /// One key event from the picker's monitor.
@@ -332,7 +213,7 @@ impl Capture {
         let fresh = self.pressed.is_empty();
         self.pressed.push(key.to_string());
         self.pressed_any = true;
-        let candidate = sorted(&self.pressed);
+        let candidate = sort_chord(&self.pressed);
         if fresh || candidate.len() >= self.captured.len() {
             self.captured = candidate;
         }
@@ -358,7 +239,7 @@ impl Capture {
         if self.pressed.is_empty() {
             self.captured.clone()
         } else {
-            sorted(&self.pressed)
+            sort_chord(&self.pressed)
         }
     }
 
@@ -412,7 +293,9 @@ impl KeyMonitor {
                         .charactersIgnoringModifiers()
                         .map(|s| s.to_string())
                         .filter(|s| !s.trim().is_empty() && !s.chars().any(char::is_control));
-                    send(KeyEvent::Unsupported(typed.unwrap_or_else(|| format!("0x{code:02X}"))));
+                    send(KeyEvent::Unsupported(
+                        typed.unwrap_or_else(|| format!("0x{code:02X}")),
+                    ));
                 }
                 None => {}
             }
@@ -420,7 +303,8 @@ impl KeyMonitor {
         });
         let mask = NSEventMask::KeyDown | NSEventMask::KeyUp | NSEventMask::FlagsChanged;
         // SAFETY: the handler returns the event it was given or null.
-        let monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &block) };
+        let monitor =
+            unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &block) };
         Self(monitor)
     }
 }
@@ -491,7 +375,8 @@ pub fn open_chord_picker(
     cx: &mut App,
 ) {
     let on_save: OnSave = Rc::new(on_save);
-    let picker = cx.new(|cx| ChordPicker::new(title.into(), description.into(), initial, on_save, cx));
+    let picker =
+        cx.new(|cx| ChordPicker::new(title.into(), description.into(), initial, on_save, cx));
     open_dialog(window, cx, move |_, _| picker.clone().into_any_element());
 }
 
@@ -505,7 +390,11 @@ impl Render for ChordPicker {
             .flex()
             .flex_col()
             .gap(px(18.))
-            .child(dialog_header(self.title.clone(), Some(self.description.clone()), cx))
+            .child(dialog_header(
+                self.title.clone(),
+                Some(self.description.clone()),
+                cx,
+            ))
             .child(
                 div()
                     .min_h(px(110.))
@@ -570,40 +459,10 @@ impl Render for ChordPicker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{default_chord, flags_events, key_for_code, Capture, KeyEvent};
 
     fn keys(names: &[&str]) -> Vec<String> {
         names.iter().map(|k| k.to_string()).collect()
-    }
-
-    #[test]
-    fn sorts_modifiers_first() {
-        assert_eq!(
-            sorted(&keys(&["Space", "MetaRight", "AltGr", "ControlLeft"])),
-            keys(&["ControlLeft", "AltGr", "MetaRight", "Space"])
-        );
-        assert_eq!(sorted(&keys(&["KeyB", "KeyA"])), keys(&["KeyA", "KeyB"]));
-    }
-
-    #[test]
-    fn same_chord_ignores_order() {
-        assert!(same_chord(&keys(&["AltGr", "MetaRight"]), &default_chord(false)));
-        assert!(!same_chord(&keys(&["Alt", "MetaRight"]), &default_chord(false)));
-        assert!(!same_chord(&default_chord(true), &default_chord(false)));
-    }
-
-    #[test]
-    fn labels_and_sides() {
-        assert_eq!(label("MetaRight"), "⌘");
-        assert_eq!(label("AltGr"), "⌥");
-        assert_eq!(label("KeyK"), "K");
-        assert_eq!(label("Digit7"), "7");
-        assert_eq!(label("Num7"), "7");
-        assert_eq!(label("F5"), "F5");
-        assert_eq!(label("Space"), "Space");
-        assert_eq!(side("AltGr"), Some("R"));
-        assert_eq!(side("Alt"), Some("L"));
-        assert_eq!(side("Space"), None);
     }
 
     #[test]
@@ -633,9 +492,15 @@ mod tests {
     #[test]
     fn modifier_flags_tell_sides_apart() {
         // Right ⌘ down: its device bit is set.
-        assert_eq!(flags_events(0x36, 0x0010 | 0x10_0000), vec![KeyEvent::Down("MetaRight")]);
+        assert_eq!(
+            flags_events(0x36, 0x0010 | 0x10_0000),
+            vec![KeyEvent::Down("MetaRight")]
+        );
         // Left ⌘ let go while the right one is still held.
-        assert_eq!(flags_events(0x37, 0x0010 | 0x10_0000), vec![KeyEvent::Up("MetaLeft")]);
+        assert_eq!(
+            flags_events(0x37, 0x0010 | 0x10_0000),
+            vec![KeyEvent::Up("MetaLeft")]
+        );
         assert_eq!(
             flags_events(0x39, 0),
             vec![KeyEvent::Down("CapsLock"), KeyEvent::Up("CapsLock")]

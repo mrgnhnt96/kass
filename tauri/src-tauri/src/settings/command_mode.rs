@@ -12,7 +12,9 @@ use kass_ui::{
     theme, Button, SettingRow, SettingSection, Toast, ToastKind,
 };
 
-use super::chord::{chord_keys, default_chord, open_chord_picker, same_chord};
+use kass_ui::keys::same_chord;
+
+use super::chord::{chord_keys, default_chord, open_chord_picker};
 use super::toast_error;
 use crate::shell::data::ShellData;
 
@@ -30,7 +32,11 @@ pub fn chord_taken(keys: &[String], push_to_talk: &[String], toggle: &[String]) 
 }
 
 /// The transforms with the one at `index` replaced, or `transform` added.
-pub fn upsert(transforms: &[Transform], index: Option<usize>, transform: Transform) -> Vec<Transform> {
+pub fn upsert(
+    transforms: &[Transform],
+    index: Option<usize>,
+    transform: Transform,
+) -> Vec<Transform> {
     let mut next = transforms.to_vec();
     match index.and_then(|i| next.get_mut(i)) {
         Some(slot) => *slot = transform,
@@ -72,7 +78,9 @@ impl CommandModePage {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let task = self.data.update(cx, |data, cx| data.update_settings(patch, cx));
+        let task = self
+            .data
+            .update(cx, |data, cx| data.update_settings(patch, cx));
         cx.spawn_in(window, async move |_, cx| {
             let result = task.await;
             let _ = cx.update(|window, cx| match result {
@@ -109,7 +117,12 @@ impl CommandModePage {
         let settings = self.data.read(cx).settings.as_ref();
         let (ptt, toggle) = settings.map_or_else(
             || (default_chord(false), default_chord(true)),
-            |s| (s.chord_push_to_talk_keys.clone(), s.chord_toggle_to_talk_keys.clone()),
+            |s| {
+                (
+                    s.chord_push_to_talk_keys.clone(),
+                    s.chord_toggle_to_talk_keys.clone(),
+                )
+            },
         );
         if !keys.is_empty() && chord_taken(&keys, &ptt, &toggle) {
             show_toast(
@@ -208,8 +221,9 @@ impl CommandModePage {
                                 .small()
                                 .label(t(format!("{P}-chord-turn-off")))
                                 .on_click(move |_, window, cx| {
-                                    let _ = turn_off
-                                        .update(cx, |this, cx| this.set_chord(Vec::new(), window, cx));
+                                    let _ = turn_off.update(cx, |this, cx| {
+                                        this.set_chord(Vec::new(), window, cx)
+                                    });
                                 }),
                         )
                     })
@@ -277,7 +291,8 @@ impl CommandModePage {
                             .small()
                             .label(t(format!("{P}-transforms-edit")))
                             .on_click(move |_, window, cx| {
-                                let _ = edit.update(cx, |this, cx| this.edit(Some(index), window, cx));
+                                let _ =
+                                    edit.update(cx, |this, cx| this.edit(Some(index), window, cx));
                             }),
                     )
                     .child(
@@ -286,7 +301,8 @@ impl CommandModePage {
                             .small()
                             .label(t(format!("{P}-transforms-delete")))
                             .on_click(move |_, window, cx| {
-                                let _ = delete.update(cx, |this, cx| this.delete(index, window, cx));
+                                let _ =
+                                    delete.update(cx, |this, cx| this.delete(index, window, cx));
                             }),
                     ),
             )
@@ -362,7 +378,9 @@ impl TransformEditor {
                 .placeholder(t(format!("{P}-dialog-instruction-placeholder")))
         });
         if let Some(existing) = &existing {
-            name.update(cx, |state, cx| state.set_value(existing.name.clone(), window, cx));
+            name.update(cx, |state, cx| {
+                state.set_value(existing.name.clone(), window, cx)
+            });
             instruction.update(cx, |state, cx| {
                 state.set_value(existing.instruction.clone(), window, cx)
             });
@@ -373,16 +391,20 @@ impl TransformEditor {
                     cx.notify();
                 }
             }),
-            cx.subscribe_in(&instruction, window, |_, state, event: &InputEvent, window, cx| {
-                if matches!(event, InputEvent::Change) {
-                    let text = state.read(cx).value();
-                    if let Some((at, _)) = text.char_indices().nth(MAX_INSTRUCTION) {
-                        let clipped = text[..at].to_string();
-                        state.update(cx, |state, cx| state.set_value(clipped, window, cx));
+            cx.subscribe_in(
+                &instruction,
+                window,
+                |_, state, event: &InputEvent, window, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        let text = state.read(cx).value();
+                        if let Some((at, _)) = text.char_indices().nth(MAX_INSTRUCTION) {
+                            let clipped = text[..at].to_string();
+                            state.update(cx, |state, cx| state.set_value(clipped, window, cx));
+                        }
+                        cx.notify();
                     }
-                    cx.notify();
-                }
-            }),
+                },
+            ),
         ];
         name.update(cx, |state, cx| state.focus(window, cx));
         Self {
@@ -431,7 +453,11 @@ impl Render for TransformEditor {
             .flex()
             .flex_col()
             .gap_4()
-            .child(dialog_header(title, Some(t(format!("{P}-dialog-description")).into()), cx))
+            .child(dialog_header(
+                title,
+                Some(t(format!("{P}-dialog-description")).into()),
+                cx,
+            ))
             .child(
                 div()
                     .flex()
@@ -480,7 +506,8 @@ impl Render for TransformEditor {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{chord_taken, default_chord, upsert};
+    use kass_api::types::Transform;
 
     fn keys(names: &[&str]) -> Vec<String> {
         names.iter().map(|k| k.to_string()).collect()
@@ -499,8 +526,16 @@ mod tests {
         let ptt = default_chord(false);
         let toggle = default_chord(true);
         assert!(chord_taken(&keys(&["AltGr", "MetaRight"]), &ptt, &toggle));
-        assert!(chord_taken(&keys(&["Space", "AltGr", "MetaRight"]), &ptt, &toggle));
-        assert!(!chord_taken(&keys(&["ControlRight", "AltGr"]), &ptt, &toggle));
+        assert!(chord_taken(
+            &keys(&["Space", "AltGr", "MetaRight"]),
+            &ptt,
+            &toggle
+        ));
+        assert!(!chord_taken(
+            &keys(&["ControlRight", "AltGr"]),
+            &ptt,
+            &toggle
+        ));
     }
 
     #[test]
