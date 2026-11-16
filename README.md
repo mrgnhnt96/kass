@@ -51,19 +51,20 @@ Requires an Apple Silicon Mac. Download the latest DMG from [Releases](https://g
 Built in Rust with GPUI, with a bundled FastAPI server running Whisper and Qwen3 on MLX.
 
 ```bash
-brew install just
-just setup     # Python venv, dependencies and the pre-push hook
-just dev       # backend + desktop app
-just check     # lint and format
-just test      # backend tests
-just install   # build and install to /Applications
+cargo xtask setup     # Python venv, dependencies and the pre-push hook
+cargo xtask dev       # backend + desktop app
+cargo xtask check     # lint and format
+cargo xtask test      # backend and app tests
+cargo xtask install   # build and install to /Applications
 ```
+
+Run them from the repo root; `cargo xtask --help` lists every command (crates/xtask).
 
 You'll need [Rust](https://rustup.rs), [Python 3.12](https://python.org), Xcode and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). See [Build from source](https://kass.mrgnhnt.com/docs/build-from-source/) for signing and details.
 
 `git push` runs a pre-push hook (`scripts/hooks/pre-push`) that lints and formats only the files the push changes. If it fixes anything, it stops the push and lists the files: commit them and push again. `SKIP=1 git push` skips it once.
 
-To release, move the Unreleased notes in [CHANGELOG.md](CHANGELOG.md) under the new version, commit, and run `tb release cut v<version>` from a clean `main` (it runs `scripts/release.sh` and records the release on the task board).
+To release, move the Unreleased notes in [CHANGELOG.md](CHANGELOG.md) under the new version, commit, and run `tb release cut v<version>` from a clean `main` (it runs `scripts/release.sh`, which runs `cargo xtask release`, and records the release on the task board).
 
 To try a feature before it's public, run `tb release cut v0.7.0-beta.1` from a clean `main`. Betas are published as prereleases: the website and the public update skip them, and only copies with **Settings › General › Beta updates** on install them. Betas keep their notes under Unreleased until the public release.
 

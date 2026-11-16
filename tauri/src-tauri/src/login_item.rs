@@ -11,7 +11,7 @@
 //! this happened, so turning it off afterwards sticks.
 //!
 //! Only the installed app registers (a `.app` in `/Applications`, where
-//! `just install` puts it; see `app_location`). A dev build runs a bare binary from
+//! `cargo xtask install` puts it; see `app_location`). A dev build runs a bare binary from
 //! `target/`, and registering that would leave a stale login item behind.
 //!
 //! A login launch keeps the main window hidden (`launched_at_login`); the

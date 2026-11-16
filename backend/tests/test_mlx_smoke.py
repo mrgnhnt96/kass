@@ -1,7 +1,7 @@
 """
 Smoke test for the MLX backend dependencies on Apple Silicon.
 
-Guards the `--no-deps` install of mlx-audio/mlx-lm done by `just setup-python`
+Guards the `--no-deps` install of mlx-audio/mlx-lm done by `cargo xtask setup-python`
 and release.yml: those packages skip their declared dependencies (transformers
 >=5.x conflict), so a missing transitive dep only surfaces at import time.
 This test fails fast if the MLX STT/LLM entry points the backend uses stop

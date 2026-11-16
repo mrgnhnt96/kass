@@ -1,0 +1,4 @@
+# cargo xtask <command>, from the repo root: Kass's development commands
+# (crates/xtask). cargo xtask --help lists them.
+[alias]
+xtask = "run --quiet --manifest-path crates/Cargo.toml --package xtask --"

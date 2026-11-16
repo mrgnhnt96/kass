@@ -23,7 +23,7 @@ jinja2>=3.1.0
 #
 #   pip install --no-deps mlx-lm==0.31.1 mlx-audio==0.4.1
 #
-# (the setup-python recipe in the justfile does this). The runtime deps their
+# (cargo xtask setup-python does this). The runtime deps their
 # code paths need are listed in this file.
 
 # Audio processing

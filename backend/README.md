@@ -5,8 +5,8 @@ FastAPI server powering Kass dictation: Whisper speech-to-text followed by a loc
 ## Running
 
 ```bash
-# Via justfile (recommended)
-just dev-backend
+# From the repo root (recommended)
+cargo xtask dev-backend
 
 # Standalone
 python -m backend.main --host 127.0.0.1 --port 17494
@@ -93,11 +93,11 @@ Default location is the OS-specific app data directory. Override with `--data-di
 Linting and formatting are enforced by [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml`. See `STYLE_GUIDE.md` for conventions.
 
 ```bash
-just check-python       # lint + format check
-just fix-python         # auto-fix lint issues + reformat
-just test               # run pytest
+cargo xtask check-python   # lint + format check
+cargo xtask fix            # auto-fix lint issues + reformat
+cargo xtask test           # run pytest, then the app's Rust tests
 ```
 
 ## Dependencies
 
-Runtime dependencies are in `requirements.txt`. mlx-lm and mlx-audio are installed separately with `--no-deps` (see the note in that file). Dev tools (ruff, pytest) are installed automatically by `just setup-python`.
+Runtime dependencies are in `requirements.txt`. mlx-lm and mlx-audio are installed separately with `--no-deps` (see the note in that file). Dev tools (ruff, pytest) are installed automatically by `cargo xtask setup-python`.

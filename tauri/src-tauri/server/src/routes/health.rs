@@ -20,7 +20,7 @@ use crate::AppState;
 /// Below this much free disk, Settings warns that recordings may fail.
 const LOW_DISK_MB: f64 = 500.0;
 
-/// scripts/install.sh writes this into the data dir: a build from a
+/// cargo xtask install writes this into the data dir: a build from a
 /// checkout, which shows internal features (backend/internal.py).
 const INTERNAL_MARKER: &str = "internal";
 
