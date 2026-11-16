@@ -837,8 +837,6 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(include_str!("../tests/kass_schema.sql"))
             .unwrap();
-        conn.execute_batch(include_str!("../tests/styles_schema.sql"))
-            .unwrap();
         conn.execute(
             "INSERT INTO writing_styles (id, name, position, is_default, punctuation_style, capitalize_first, \
              smart_cleanup, preserve_technical, description, created_at, updated_at) \

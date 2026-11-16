@@ -52,8 +52,6 @@ fn database() -> PathBuf {
     let path = std::env::temp_dir().join(format!("kass-styles-{}.db", uuid::Uuid::new_v4()));
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute_batch(include_str!("kass_schema.sql")).unwrap();
-    conn.execute_batch(include_str!("styles_schema.sql"))
-        .unwrap();
     conn.execute_batch(
         "INSERT INTO writing_styles (id, name, position, is_default, punctuation_style,
              capitalize_first, smart_cleanup, preserve_technical)
