@@ -91,16 +91,25 @@ def test_turning_it_off_uses_stock_models_and_stock_built_personal_ones(learning
 
 
 def test_the_setting_switches_adapters_right_away(learning, shipped, monkeypatch):
-    from backend.services.settings import update_capture_settings
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
 
+    from backend.routes.settings import router
+    from backend.tests.settings_rows import save_settings
+
+    app = FastAPI()
+    app.include_router(router)
+    worker = TestClient(app)
     reloads = []
     monkeypatch.setattr(manager, "_reload_speech", lambda: reloads.append(True))
     with manager.database_session.SessionLocal() as db:
-        update_capture_settings(db, {"shared_adapters": False})
+        save_settings(db, shared_adapters=False)
+    assert worker.post("/worker/shared-adapters/switched", json={"enabled": False}).json() == {"ok": True}
     assert manager.voice_adapter("turbo") is None
     assert reloads
     with manager.database_session.SessionLocal() as db:
-        update_capture_settings(db, {"shared_adapters": True})
+        save_settings(db, shared_adapters=True)
+    worker.post("/worker/shared-adapters/switched", json={"enabled": True})
     assert manager.voice_adapter("turbo") == str(shipped / "voice-turbo")
 
 

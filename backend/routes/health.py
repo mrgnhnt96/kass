@@ -1,7 +1,6 @@
 """Health and infrastructure endpoints."""
 
 import asyncio
-import contextlib
 import os
 import resource
 import signal
@@ -10,7 +9,7 @@ import time
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from .. import config, internal, models
+from .. import models
 from ..database import get_db
 from ..services import transcribe
 from ..services.task_queue import create_background_task
@@ -93,73 +92,3 @@ async def health(db: Session = Depends(get_db)):
         # macOS reports the peak resident size in bytes.
         peak_memory_mb=round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2),
     )
-
-
-@router.get("/health/filesystem", response_model=models.FilesystemHealthResponse)
-async def filesystem_health():
-    """Check filesystem health: directory existence, write permissions, and disk space."""
-    import shutil
-
-    dirs_to_check = {
-        "captures": config.get_captures_dir(),
-        "data": config.get_data_dir(),
-    }
-
-    checks: list[models.DirectoryCheck] = []
-    all_ok = True
-
-    for _label, dir_path in dirs_to_check.items():
-        exists = dir_path.exists()
-        writable = False
-        error = None
-        if exists:
-            probe = dir_path / ".kass_probe"
-            try:
-                probe.write_text("ok")
-                probe.unlink()
-                writable = True
-            except PermissionError:
-                error = "Permission denied"
-            except OSError as e:
-                error = str(e)
-            finally:
-                with contextlib.suppress(Exception):
-                    probe.unlink(missing_ok=True)
-        else:
-            error = "Directory does not exist"
-
-        if not exists or not writable:
-            all_ok = False
-
-        checks.append(
-            models.DirectoryCheck(
-                path=str(dir_path.resolve()),
-                exists=exists,
-                writable=writable,
-                error=error,
-            )
-        )
-
-    disk_free_mb = None
-    disk_total_mb = None
-    try:
-        usage = shutil.disk_usage(str(config.get_data_dir()))
-        disk_free_mb = round(usage.free / (1024 * 1024), 1)
-        disk_total_mb = round(usage.total / (1024 * 1024), 1)
-        if disk_free_mb < 500:
-            all_ok = False
-    except OSError:
-        all_ok = False
-
-    return models.FilesystemHealthResponse(
-        healthy=all_ok,
-        disk_free_mb=disk_free_mb,
-        disk_total_mb=disk_total_mb,
-        directories=checks,
-    )
-
-
-@router.get("/internal")
-async def internal_build():
-    """Whether this is an internal build, so internal features show (backend/internal.py)."""
-    return {"internal": internal.is_internal()}

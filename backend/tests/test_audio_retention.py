@@ -18,7 +18,8 @@ from backend.database.migrations import run_migrations
 from backend.database.models import Base, Capture, CaptureFeedback
 from backend.services import captures, history_retention, known_names, personal_examples, styles
 from backend.services.capture_stream import StreamingCapture
-from backend.services.settings import get_capture_settings, update_capture_settings
+from backend.services.settings import get_capture_settings
+from backend.tests.settings_rows import save_settings
 
 NOW = datetime.utcnow()
 
@@ -35,13 +36,13 @@ def storage(tmp_path, monkeypatch):
     with make() as db:
         styles.ensure_styles(db)
         # Retention confirmed, 30 days: the sweep may delete.
-        update_capture_settings(db, {"history_retention_days": 30})
+        save_settings(db, history_retention_days=30)
     return make
 
 
 def choose(storage, discard):
     with storage() as db:
-        update_capture_settings(db, {"discard_audio": discard})
+        save_settings(db, discard_audio=discard)
 
 
 def add(storage, capture_id, days_ago, corrected=False):

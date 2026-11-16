@@ -3,7 +3,6 @@
 from sqlalchemy import create_engine, inspect, text
 
 from backend.database.migrations import _migrate_capture_settings
-from backend.models import CaptureSettingsUpdate
 
 
 def test_microphone_migration_preserves_existing_settings_and_is_idempotent():
@@ -24,11 +23,6 @@ def test_microphone_migration_preserves_existing_settings_and_is_idempotent():
         ) == (0, "usb")
 
 
-def test_resetting_microphone_is_distinct_from_omitting_the_setting():
-    assert CaptureSettingsUpdate().model_dump(exclude_unset=True) == {}
-    assert CaptureSettingsUpdate(input_device_id=None).model_dump(exclude_unset=True) == {"input_device_id": None}
-
-
 def test_sound_cues_are_on_at_half_volume_after_upgrading(tmp_path):
     from sqlalchemy import create_engine, text
 
@@ -42,16 +36,6 @@ def test_sound_cues_are_on_at_half_volume_after_upgrading(tmp_path):
     with engine.connect() as connection:
         row = connection.execute(text("SELECT sound_cues, sound_cue_volume FROM capture_settings")).one()
         assert tuple(row) == (1, 0.5)
-
-
-def test_sound_cue_volume_is_between_silent_and_full():
-    import pytest
-    from pydantic import ValidationError
-
-    assert CaptureSettingsUpdate(sound_cue_volume=0.25).sound_cue_volume == 0.25
-    for volume in (-0.1, 1.5):
-        with pytest.raises(ValidationError):
-            CaptureSettingsUpdate(sound_cue_volume=volume)
 
 
 def test_live_text_is_off_until_turned_on(tmp_path):
@@ -100,9 +84,6 @@ def test_new_installs_start_with_onboarding():
     from backend.models import CaptureSettingsResponse
 
     assert CaptureSettingsResponse.model_fields["onboarding_completed"].default is False
-    assert CaptureSettingsUpdate(onboarding_completed=True).model_dump(exclude_unset=True) == {
-        "onboarding_completed": True
-    }
 
 
 def test_free_space_is_measured_where_the_cache_will_be(tmp_path):

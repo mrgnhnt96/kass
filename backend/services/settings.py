@@ -3,12 +3,9 @@ Server-side user settings — singleton rows persisted in SQLite so every
 client window, API consumer, and headless flow reads the same preferences.
 
 Capture/refine defaults live here: ``get_capture_settings`` lazily creates
-the row with defaults and ``update_capture_settings`` accepts a partial
-payload.
+the row with defaults. The Rust server's ``PUT /settings/captures`` changes
+it (tauri/src-tauri/server/src/settings.rs).
 """
-
-from datetime import date, timedelta
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -35,47 +32,6 @@ def _get_or_create_capture_row(db: Session) -> DBCaptureSettings:
     return row
 
 
-def _apply_patch(row: Any, patch: dict[str, Any]) -> None:
-    """Apply a partial update to a settings row.
-
-    Values explicitly set to ``None`` are honored only for columns where the
-    schema allows it — clearing ``input_device_id`` works, but a
-    ``None`` for a non-nullable field is dropped rather than crashing the
-    request. Unknown keys are ignored.
-    """
-    columns = type(row).__table__.columns
-    for key, value in patch.items():
-        col = columns.get(key)
-        if col is None:
-            continue
-        if value is None and not col.nullable:
-            continue
-        setattr(row, key, value)
-
-
 def get_capture_settings(db: Session) -> DBCaptureSettings:
     """Return the capture settings row, creating it with defaults if missing."""
     return _get_or_create_capture_row(db)
-
-
-def update_capture_settings(db: Session, patch: dict[str, Any]) -> DBCaptureSettings:
-    """Apply ``patch``. Raises ValueError for transforms that can't be saved."""
-    if patch.get("command_transforms") is not None:
-        from .commands import normalize_transforms
-
-        patch = {**patch, "command_transforms": normalize_transforms(patch["command_transforms"])}
-    if patch.get("history_retention_days") is not None:
-        # Choosing a window, in Settings or when asked, lets the sweep delete.
-        patch = {**patch, "history_retention_confirmed": True}
-    row = _get_or_create_capture_row(db)
-    if patch.get("share_usage") and not row.share_usage:
-        # Turned back on: the days it was off are never sent (usage_report.py).
-        patch = {**patch, "usage_sent_through": (date.today() - timedelta(days=1)).isoformat()}
-    _apply_patch(row, patch)
-    db.commit()
-    db.refresh(row)
-    if patch.get("shared_adapters") is not None:
-        from .shared_adapters import switched
-
-        switched(row.shared_adapters)
-    return row

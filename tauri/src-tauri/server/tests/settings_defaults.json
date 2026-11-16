@@ -1,0 +1,49 @@
+{
+  "stt_model": "turbo",
+  "language": "auto",
+  "auto_refine": true,
+  "llm_model": "0.6B",
+  "smart_cleanup": true,
+  "self_correction": true,
+  "preserve_technical": true,
+  "punctuation_style": "standard",
+  "allow_auto_paste": true,
+  "live_text": false,
+  "voice_edits": true,
+  "expressive": true,
+  "sound_cues": true,
+  "sound_cue_volume": 0.5,
+  "input_device_id": null,
+  "hotkey_enabled": false,
+  "chord_push_to_talk_keys": [
+    "MetaRight",
+    "AltGr"
+  ],
+  "chord_toggle_to_talk_keys": [
+    "MetaRight",
+    "AltGr",
+    "Space"
+  ],
+  "chord_command_keys": [
+    "MetaRight",
+    "ShiftRight"
+  ],
+  "command_transforms": [
+    {
+      "id": "polish",
+      "name": "Polish",
+      "instruction": "Fix grammar, spelling and punctuation, and smooth out awkward phrasing so it reads well. Keep my words, tone and meaning, and don't add anything new."
+    },
+    {
+      "id": "prompt-engineer",
+      "name": "Prompt Engineer",
+      "instruction": "Rewrite this as a clear, well-structured prompt for an AI assistant: the goal, the relevant context, any constraints, and the output I expect. Keep every requirement I mentioned and don't invent new ones."
+    }
+  ],
+  "history_retention_days": 30,
+  "history_retention_confirmed": false,
+  "onboarding_completed": false,
+  "discard_audio": false,
+  "share_usage": true,
+  "shared_adapters": true
+}

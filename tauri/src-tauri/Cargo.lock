@@ -2297,6 +2297,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

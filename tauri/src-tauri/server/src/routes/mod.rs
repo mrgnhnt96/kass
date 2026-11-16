@@ -10,6 +10,7 @@ pub mod health;
 pub mod links;
 pub mod llm;
 pub mod models;
+mod request;
 pub mod settings;
 pub mod styles;
 pub mod sync;
