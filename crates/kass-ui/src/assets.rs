@@ -27,6 +27,8 @@ gpui_kit::assets::icon_assets!(
         Mail,
         MessageCircle,
         Send,
+        Lock,
+        RotateCcw,
     ]
 );
 

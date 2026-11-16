@@ -3552,6 +3552,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kass-onboarding"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kass-palette"
 version = "0.1.0"
 dependencies = [
