@@ -4135,6 +4135,7 @@ dependencies = [
  "kass-i18n",
  "kass-server",
  "kass-ui",
+ "kass-writing-style",
  "keytap",
  "minisign-verify",
  "notify-rust",
@@ -4167,6 +4168,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kass-dictionary"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui-kit",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
+]
+
+[[package]]
 name = "kass-i18n"
 version = "0.1.0"
 dependencies = [
@@ -4192,7 +4204,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "tower",
@@ -4216,6 +4228,19 @@ name = "kass-ui"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
+ "serde_json",
+]
+
+[[package]]
+name = "kass-writing-style"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui-kit",
+ "kass-api",
+ "kass-dictionary",
+ "kass-i18n",
+ "kass-ui",
  "serde_json",
 ]
 

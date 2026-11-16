@@ -315,7 +315,10 @@ impl Render for MainShell {
         let path = self.location.path.clone();
 
         let content: AnyElement = if settings::is_settings(&path) {
-            self.settings.render(&path, window, cx).into_any_element()
+            let search = self.location.search.clone();
+            self.settings
+                .render(&path, &search, window, cx)
+                .into_any_element()
         } else {
             div().into_any_element()
         };

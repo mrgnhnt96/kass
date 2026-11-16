@@ -37,6 +37,7 @@ export const nativeShell = readFlag();
 const NATIVE_PAGES = [
   '/settings',
   '/settings/transcription',
+  '/settings/writing-style',
   '/settings/features',
   '/settings/logs',
 ];
