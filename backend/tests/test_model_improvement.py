@@ -431,21 +431,20 @@ def test_real_child_is_killed_on_recording_and_never_promoted(storage, monkeypat
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("pending", "retrain", "adapter", "rules_change", "learned", "started"),
+    ("rules_changed", "retrain", "adapter", "started"),
     [
-        (False, False, True, False, False, False),
-        # A report is learned from at the next idle minute.
-        (True, False, False, True, True, False),
+        (False, False, True, False),
+        # The server learned new rules and the worker reloaded them.
+        (True, False, False, False),
         # New rules invalidate the adapter tested with the old ones: retest it.
-        (True, False, True, True, True, True),
-        (True, False, True, False, True, False),
+        (True, False, True, True),
         # A withdrawn report may be in the active adapter's training data.
-        (True, True, True, False, False, True),
-        (False, True, False, False, False, False),
+        (False, True, True, True),
+        (False, True, False, False),
     ],
 )
-async def test_idle_tick_learns_reports_soon_and_retests_the_adapter(
-    storage, tmp_path, monkeypatch, pending, retrain, adapter, rules_change, learned, started
+async def test_idle_tick_retests_the_adapter_after_new_rules(
+    storage, tmp_path, monkeypatch, rules_changed, retrain, adapter, started
 ):
     import asyncio
     import time
@@ -461,22 +460,13 @@ async def test_idle_tick_learns_reports_soon_and_retests_the_adapter(
         await real_sleep(0)
 
     learning = manager.correction_learning
-
-    def run_job():
-        calls.append("learn")
-        if rules_change:
-            learning._state = {"rules": [{"id": "new"}]}
-
     monkeypatch.setattr(manager.asyncio, "sleep", sleep)
     monkeypatch.setattr(manager, "_last_attempt", time.monotonic())
     monkeypatch.setattr(manager, "_active", {"llm": {"path": "adapter"}} if adapter else {})
     monkeypatch.setattr(manager, "start", lambda: calls.append("start"))
-    monkeypatch.setattr(learning, "initialize", lambda: None)
-    monkeypatch.setattr(learning, "run_job", run_job)
-    monkeypatch.setattr(learning, "_pending", pending)
+    monkeypatch.setattr(learning, "_rules_changed", rules_changed)
     monkeypatch.setattr(learning, "_retrain", retrain)
     with pytest.raises(asyncio.CancelledError):
         await manager.periodic_job()
-    assert ("learn" in calls) is learned
     assert ("start" in calls) is started
     assert not learning.take_retrain()

@@ -10,6 +10,7 @@ def register_routers(app: FastAPI) -> None:
     from .commands import router as commands_router
     from .dictionary import router as dictionary_router
     from .health import router as health_router
+    from .learning import router as learning_router
     from .llm import router as llm_router
     from .models import router as models_router
     from .settings import router as settings_router
@@ -26,6 +27,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(capture_stream_router)
     app.include_router(captures_router)
     app.include_router(captures_worker_router)
+    app.include_router(learning_router)
     app.include_router(commands_router)
     app.include_router(models_router)
     app.include_router(settings_router)

@@ -600,7 +600,7 @@ def test_deleting_a_voice_edit_withdraws_the_fix_it_filed(learning_db, monkeypat
     from backend.services.voice_edits import learn_from
 
     relearned = []
-    monkeypatch.setattr(correction_learning, "request_run", lambda retrain=False: relearned.append(retrain))
+    monkeypatch.setattr(correction_learning, "request_retrain", lambda: relearned.append(True))
     _edit_capture(learning_db)
     learn_from(
         Planned(

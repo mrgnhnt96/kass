@@ -3,15 +3,9 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from backend import config
-from backend.database.models import Base, Capture
-from backend.models import CaptureFeedbackCreate
 from backend.services import correction_learning as learning
-from backend.services.capture_feedback import save_feedback
-from backend.services.captures import get_capture
 from backend.services.correction_rules import Example
 from backend.services.refinement import RefinementFlags, prepare_refinement, refine_transcript
 from backend.services.spoken_punctuation import (
@@ -164,46 +158,23 @@ def test_a_mark_word_goes_back_to_a_word_where_the_speaker_says_so():
 
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
-    engine = create_engine(f"sqlite:///{tmp_path}/test.db")
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine)
     monkeypatch.setattr(config, "get_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(learning.database_session, "SessionLocal", factory)
     monkeypatch.setattr(learning, "_state", None)
     monkeypatch.setattr(learning, "_path", None)
     monkeypatch.setattr(learning, "_compiled", ())
     monkeypatch.setattr(learning, "_punctuation", ({}, frozenset()))
-    yield factory
-    engine.dispose()
+    return tmp_path
 
 
-def _report(factory, capture_id, refined, expected):
-    with factory() as db:
-        db.add(
-            Capture(
-                id=capture_id,
-                audio_path="unused.wav",
-                source="dictation",
-                transcript_raw=refined,
-                transcript_refined=refined,
-            )
-        )
-        db.commit()
-        save_feedback(
-            capture_id,
-            CaptureFeedbackCreate(target="refined", expected_text=expected, snapshot=get_capture(capture_id, db)),
-            db,
-        )
+def test_learned_marks_reload_and_apply_to_the_next_dictation(storage):
+    import json
 
-
-def test_learned_marks_persist_and_apply_to_the_next_dictation(storage, monkeypatch):
-    _report(storage, "a", "That's great bang.", "That's great!")
-    _report(storage, "b", "We won bang.", "We won!")
-    learning.run_job()
+    # The server learns them from the reports and saves them for the worker.
+    marks = learn([_example(1, "That's great bang.", "That's great!"), _example(2, "We won bang.", "We won!")])
+    state = {**learning._empty(), "punctuation": marks}
+    (storage / "correction-learning.json").write_text(json.dumps(state))
+    learning.reload()
     assert learning.learned_punctuation() == ({"bang": "!"}, frozenset())
-    monkeypatch.setattr(learning, "_state", None)
-    monkeypatch.setattr(learning, "_punctuation", ({}, frozenset()))
-    learning.initialize()
     assert prepare_refinement("Nice work bang", RefinementFlags())[0] == "Nice work!"
 
 

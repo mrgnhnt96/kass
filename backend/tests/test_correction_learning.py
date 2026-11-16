@@ -185,7 +185,6 @@ def storage(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr(config, "get_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(learning.database_session, "SessionLocal", factory)
     monkeypatch.setattr(learning, "_state", None)
     monkeypatch.setattr(learning, "_path", None)
     monkeypatch.setattr(learning, "_compiled", ())
@@ -212,62 +211,36 @@ def storage(tmp_path, monkeypatch):
     engine.dispose()
 
 
-def test_job_persists_reloads_and_rollback_is_not_reactivated(storage, monkeypatch):
-    result = learning.run_job()
-    assert result["active_rules"] == 1
-    assert result["revision"] == 1
-    assert learning.run_job()["revision"] == 1
-    monkeypatch.setattr(learning, "_state", None)
-    monkeypatch.setattr(learning, "_compiled", ())
+def learn(examples=None):
+    """Save rules learned from ``examples`` as the server does, and reload them."""
+    import json
+
+    selected, metrics = rules.evaluate(examples or samples(), [], every_report=True)
+    state = {**learning._empty(), "revision": 1, "rules": selected, "metrics": metrics, "outcome": "updated"}
+    (config.get_data_dir() / "correction-learning.json").write_text(json.dumps(state))
+    return learning.reload()
+
+
+def test_reload_reads_the_servers_rules_and_notes_a_change(storage, monkeypatch):
+    monkeypatch.setattr(learning, "_rules_changed", False)
     learning.initialize()
-    assert learning.apply_learned_corrections(samples()[0].original) == samples()[0].expected
-    assert learning.rollback()["active_rules"] == 0
-    assert learning.run_job()["active_rules"] == 0
-    # Re-evaluation after additional feedback still respects the withdrawal.
-    learning._state["fingerprint"] = None
-    assert learning.run_job()["active_rules"] == 0
-    with pytest.raises(ValueError, match="No previous"):
-        learning.rollback()
-
-
-def test_new_report_withdraws_conflicting_rule(storage):
-    learning.run_job()
-    with storage() as db:
-        text = "Please use voice box today outside."
-        db.add(
-            Capture(
-                id="new",
-                audio_path="unused.wav",
-                transcript_raw=text,
-                transcript_refined=text.replace("voice box", "Voicebox"),
-            )
-        )
-        db.commit()
-        save_feedback(
-            "new", CaptureFeedbackCreate(target="refined", expected_text=text, snapshot=get_capture("new", db)), db
-        )
-    assert learning.run_job()["active_rules"] == 0
-
-
-def test_atomic_write_failure_keeps_active_cache(storage, monkeypatch):
-    learning.initialize()
-
-    def fail(*args):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(learning.os, "fsync", fail)
-    with pytest.raises(OSError, match="disk full"):
-        learning.run_job()
-    assert learning.status()["active_rules"] == 0
-    assert learning.status()["evaluated_report_ids"] == []
     assert learning.apply_learned_corrections(samples()[0].original) == samples()[0].original
+    status = learn()
+    assert status["active_rules"] == 1
+    assert status["revision"] == 1
+    assert learning.apply_learned_corrections(samples()[0].original) == samples()[0].expected
+    assert learning.take_rules_changed()
+    assert not learning.take_rules_changed()
+    # The same rules again: nothing for the adapter to retest.
+    learn()
+    assert not learning.take_rules_changed()
 
 
 @pytest.mark.asyncio
 async def test_future_refinement_uses_rules_without_changing_prompt_or_raw(storage, monkeypatch):
     from backend.services import captures
 
-    learning.run_job()
+    learn()
     model = AsyncMock(return_value=("Please use voice box today at lunch.", "4B"))
     monkeypatch.setattr(captures, "refine_transcript", model)
     with storage() as db:
@@ -279,80 +252,17 @@ async def test_future_refinement_uses_rules_without_changing_prompt_or_raw(stora
     model.assert_awaited_once_with("please use voice box today at lunch", RefinementFlags(), model_size=None)
 
 
-def test_raw_reports_also_supply_candidates(storage):
-    from backend.database.models import CaptureFeedback
-
-    with storage() as db:
-        for row in db.query(CaptureFeedback).all():
-            row.target = "raw"
-        db.commit()
-    assert learning.run_job()["active_rules"] == 1
-
-
 def test_corrupt_state_falls_back_to_no_rules(storage):
     (config.get_data_dir() / "correction-learning.json").write_text("{broken")
     assert learning.status()["active_rules"] == 0
-
-
-def test_learning_http_controls(storage, monkeypatch):
-    from backend.services.model_improvement import manager
-
-    monkeypatch.setattr(manager, "start", lambda: {"can_rollback": False})
-    monkeypatch.setattr(manager, "status", lambda: {"can_rollback": False})
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    from backend.routes.captures import router
-
-    app = FastAPI()
-    app.include_router(router)
-    with TestClient(app) as client:
-        assert client.get("/capture/learning").json()["active_rules"] == 0
-        result = client.post("/capture/learning/run")
-        assert result.status_code == 200
-        assert result.json()["active_rules"] == 1
-        assert client.post("/capture/learning/rollback").json()["active_rules"] == 0
-        assert client.post("/capture/learning/rollback").status_code == 409
+    assert learning.reload()["active_rules"] == 0
 
 
 def test_numeric_changes_and_long_live_inputs_are_not_applied(storage):
     assert rules.candidate(rules.Example("1", "1", "Meet at 15 today.", "Meet at 50 today.", None)) is None
-    learning.run_job()
+    learn()
     text = samples()[0].original * 200
     assert learning.apply_learned_corrections(text) == text
-
-
-def test_status_identifies_only_reports_evaluated_by_a_completed_job(storage, monkeypatch):
-    from backend.database.models import CaptureFeedback
-
-    assert learning.status()["evaluated_report_ids"] == []
-    with storage() as db:
-        reports = db.query(CaptureFeedback).all()
-        expected_ids = {row.id for row in reports}
-    assert set(learning.run_job()["evaluated_report_ids"]) == expected_ids
-    with storage() as db:
-        pending = save_feedback(
-            "0",
-            CaptureFeedbackCreate(target="refined", expected_text="Another correction", snapshot=get_capture("0", db)),
-            db,
-        )
-    assert pending.id not in learning.status()["evaluated_report_ids"]
-    monkeypatch.setattr(learning, "_state", None)
-    assert set(learning.status()["evaluated_report_ids"]) == expected_ids
-    assert pending.id in learning.run_job()["evaluated_report_ids"]
-
-
-def test_legacy_state_waits_for_a_new_evaluation(storage, monkeypatch):
-    import json
-
-    learning.run_job()
-    path = config.get_data_dir() / "correction-learning.json"
-    state = json.loads(path.read_text())
-    report_ids = state.pop("evaluated_report_ids")
-    path.write_text(json.dumps(state))
-    monkeypatch.setattr(learning, "_state", None)
-    assert learning.status()["evaluated_report_ids"] == []
-    assert learning.run_job()["evaluated_report_ids"] == report_ids
 
 
 def report(storage, capture_id, original, expected, source="manual"):
@@ -368,92 +278,14 @@ def report(storage, capture_id, original, expected, source="manual"):
         )
 
 
-def test_withdrawn_support_drops_the_rule_without_blocking_it(storage):
-    from backend.database.models import CaptureFeedback
-    from backend.services.capture_feedback import withdraw_feedback
-
-    assert learning.run_job()["active_rules"] == 1
-    with storage() as db:
-        row = db.query(CaptureFeedback).filter(CaptureFeedback.capture_id == "0").one()
-        assert withdraw_feedback("0", row.id, db)
-    assert learning.pending()
-    assert learning.run_job()["active_rules"] == 0
-    assert not learning.pending()
-    assert learning.apply_learned_corrections(samples()[1].original) == samples()[1].original
-    assert learning._state["blocked"] == []
-    # Reported again, it is learned again.
-    report(storage, "again", "Please use voice box today at noon.", "Please use Voicebox today at noon.")
-    assert learning.run_job()["active_rules"] == 1
-
-
-def test_withdrawing_a_contradiction_lifts_its_block(storage):
-    from backend.services.capture_feedback import withdraw_feedback
-
-    learning.run_job()
-    text = "Please use voice box today outside."
-    with storage() as db:
-        db.add(
-            Capture(
-                id="new",
-                audio_path="unused.wav",
-                transcript_raw=text,
-                transcript_refined=text.replace("voice box", "Voicebox"),
-            )
-        )
-        db.commit()
-        contradiction = save_feedback(
-            "new",
-            CaptureFeedbackCreate(
-                target="refined", expected_text=text, snapshot=get_capture("new", db), source="voice_fix"
-            ),
-            db,
-        )
-    assert learning.run_job()["active_rules"] == 0
-    assert learning._state["blocked_by"] == {learning._state["blocked"][0]: [contradiction.id]}
-    with storage() as db:
-        assert withdraw_feedback("new", contradiction.id, db)
-    assert learning.run_job()["active_rules"] == 1
-    assert learning._state["blocked"] == []
-
-
-def test_rollback_block_outlives_withdrawals(storage):
-    from backend.database.models import CaptureFeedback
-    from backend.services.capture_feedback import withdraw_feedback
-
-    learning.run_job()
-    learning.rollback()
-    with storage() as db:
-        row = db.query(CaptureFeedback).filter(CaptureFeedback.capture_id == "0").one()
-        withdraw_feedback("0", row.id, db)
-    report(storage, "again", "Please use voice box today at noon.", "Please use Voicebox today at noon.")
-    assert learning.run_job()["active_rules"] == 0
-
-
 def test_only_a_withdrawal_asks_for_the_adapter_to_retrain(storage, monkeypatch):
     from backend.services.capture_feedback import withdraw_feedback
 
     monkeypatch.setattr(learning, "_retrain", False)
     saved = report(storage, "again", "Please use voice box today at noon.", "Please use Voicebox today at noon.")
-    assert learning.pending()
     assert not learning.take_retrain()
     with storage() as db:
         assert not withdraw_feedback("other", saved.id, db)
         assert withdraw_feedback("again", saved.id, db)
     assert learning.take_retrain()
     assert not learning.take_retrain()
-
-
-def test_the_newest_reports_teach_at_once(storage):
-    from datetime import datetime
-
-    from backend.database.models import CaptureFeedback
-
-    for i in range(6):
-        report(storage, f"old{i}", f"Old text {i}.", f"Totally new {i}.")
-    with storage() as db:
-        db.query(CaptureFeedback).filter(CaptureFeedback.capture_id.like("old%")).update(
-            {"created_at": datetime(2020, 1, 1)}, synchronize_session=False
-        )
-        db.commit()
-    # The three matching reports are the newest third, and still teach.
-    assert learning.run_job()["active_rules"] == 1
