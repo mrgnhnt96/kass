@@ -389,33 +389,21 @@ def test_flags_keep_old_snapshots_equal():
     assert RefinementFlags.from_dict({"smart_cleanup": True}) == RefinementFlags()
 
 
-def test_style_endpoints(storage, monkeypatch):
+def test_worker_style_routes(storage, monkeypatch):
     from backend.routes.styles import router
-    from backend.services import llm
+    from backend.services import correction_notes, llm, personal_examples, teach, writing_style
 
     monkeypatch.setattr(llm, "get_llm_model", lambda: Backend(tokens=1000))
     seed(storage)
     with storage() as db:
         db.add(CaptureSettings(id=1, llm_model="4B"))
-        db.add(
-            Capture(
-                id="w",
-                audio_path="a.wav",
-                transcript_raw="hi",
-                app_bundle_id="net.whatsapp.WhatsApp",
-                app_name="WhatsApp",
-                app_category="public.app-category.social-networking",
-            )
-        )
-        db.add(
-            CaptureFeedback(
-                capture_id="w",
-                target="refined",
-                expected_text="Hi.",
-                snapshot=json.dumps({"transcript_raw": "hi", "app_bundle_id": "net.whatsapp.WhatsApp"}),
-            )
-        )
         db.commit()
+    calls = []
+    monkeypatch.setattr(personal_examples, "invalidate", lambda: calls.append("examples"))
+    monkeypatch.setattr(writing_style, "forget_style", lambda style: calls.append(("habits", style)))
+    monkeypatch.setattr(teach, "forget_style", lambda style: calls.append(("teach", style)))
+    monkeypatch.setattr(correction_notes, "forget_style", lambda style: calls.append(("notes", style)))
+    monkeypatch.setattr(writing_style, "refresh_feedback", lambda db: calls.append("regroup"))
 
     def override():
         with storage() as db:
@@ -426,41 +414,21 @@ def test_style_endpoints(storage, monkeypatch):
     app.dependency_overrides[get_db] = override
     client = TestClient(app)
 
-    listing = client.get("/writing-styles").json()
-    assert [s["id"] for s in listing["styles"]] == ["personal"]
-    assert listing["max_styles"] == 6
+    state = client.post("/worker/styles/state").json()
     # 1000 prompt tokens and a dictation round up to 1280 cached tokens on 4B.
-    assert listing["cache_mb_per_style"] == round(1280 * 147456 / 1e6)
-    assert listing["apps"] == [
-        {
-            "bundle_id": "net.whatsapp.WhatsApp",
-            "name": "WhatsApp",
-            "style_id": "personal",
-            "confirmed": False,
-            "count": 1,
-            "corrections": 1,
-            "suggested_style_id": "personal",
-        }
-    ]
-    confirmed = client.post(
-        "/writing-styles/apps/confirm", json={"apps": [{"bundle_id": "net.whatsapp.WhatsApp", "app_name": "WhatsApp"}]}
-    ).json()
-    assert confirmed["apps"][0]["confirmed"] is True
-    assert confirmed["apps"][0]["style_id"] == "personal"
-    chat = client.post("/writing-styles", json={"name": "Chat"}).json()["id"]
-    listing = client.put(
-        "/writing-styles/apps/net.whatsapp.WhatsApp", json={"style_id": chat, "corrections": "leave"}
-    ).json()
-    assert listing["apps"][0]["style_id"] == chat
-    assert listing["apps"][0]["confirmed"] is True
-    assert listing["apps"][0]["corrections"] == 0
-    assert client.put("/writing-styles/apps/x", json={"style_id": "missing"}).status_code == 404
-    assert client.put("/writing-styles/apps/x", json={"style_id": chat, "corrections": "drop"}).status_code == 422
-    described = client.patch(f"/writing-styles/{chat}", json={"description": "  Informal.\nNo greetings.  "})
-    assert described.json()["description"] == "Informal.\nNo greetings."
-    assert client.patch(f"/writing-styles/{chat}", json={"description": "x" * 601}).status_code == 400
-    assert client.delete("/writing-styles/personal").status_code == 400
-    assert client.delete(f"/writing-styles/{chat}").status_code == 204
+    assert state == {"cache_mb_per_style": round(1280 * 147456 / 1e6), "teaching_style": None}
+
+    # The server wrote a style: the worker sees it once told.
+    styles.snapshot()
+    with storage() as db:
+        db.add(WritingStyle(id="chat", name="Chat", position=1, is_default=False, punctuation_style="standard"))
+        db.commit()
+    assert client.post("/worker/styles/changed", json={}).json() == {"ok": True}
+    assert [style.id for style in styles.snapshot().styles] == ["personal", "chat"]
+    assert calls == []
+
+    client.post("/worker/styles/changed", json={"examples": True, "deleted": "chat", "regroup": True})
+    assert calls == ["examples", ("habits", "chat"), ("teach", "chat"), ("notes", "chat"), "regroup"]
 
 
 def test_a_style_description_goes_into_only_its_own_cleanup_prompt(storage):

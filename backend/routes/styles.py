@@ -1,21 +1,53 @@
-"""Writing styles and the apps assigned to them (docs/plans/PER_APP_STYLE.md)."""
+"""What the Rust server needs from the worker for writing styles (docs/plans/PER_APP_STYLE.md).
+
+The ``/writing-styles`` routes and the style and app rows in kass.db live in
+the Rust server. The worker keeps reading those rows for dictation, keeps what
+each style learned, and hears from the server what to reload or regroup.
+"""
 
 import logging
-from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import models
 from ..database import get_db
 from ..services import styles as styles_service
-from ..services.captures import list_capture_apps, target_app
 
-router = APIRouter(prefix="/writing-styles", tags=["writing-style"])
+router = APIRouter(prefix="/worker/styles", tags=["worker"])
 logger = logging.getLogger(__name__)
 
 
-def _cache_mb(db: Session, snapshot) -> int | None:
+class StylesChanged(BaseModel):
+    # Apps moved or the default changed: regroup the examples by style.
+    examples: bool = False
+    # A style that was deleted: forget what it learned.
+    deleted: str | None = None
+    # Recount each style's corrections into its learned habits.
+    regroup: bool = False
+
+
+@router.post("/changed")
+def changed(request: StylesChanged, db: Session = Depends(get_db)):
+    styles_service.invalidate()
+    if request.examples:
+        from ..services import personal_examples
+
+        personal_examples.invalidate()
+    if request.deleted:
+        from ..services import correction_notes, teach, writing_style
+
+        writing_style.forget_style(request.deleted)
+        teach.forget_style(request.deleted)
+        correction_notes.forget_style(request.deleted)
+    if request.regroup:
+        from ..services import writing_style
+
+        writing_style.refresh_feedback(db)
+    return {"ok": True}
+
+
+def _cache_mb(db: Session) -> int | None:
     """What one style's cached prompt takes in the cleanup model, in MB: the
     largest current style's, since a style's prompt grows as it learns."""
     from ..services.refinement import style_cache_bytes
@@ -23,7 +55,7 @@ def _cache_mb(db: Session, snapshot) -> int | None:
 
     saved = get_capture_settings(db)
     sizes = []
-    for style in snapshot.styles:
+    for style in styles_service.snapshot().styles:
         try:
             sizes.append(style_cache_bytes(styles_service.flags_for(style, saved), saved.llm_model))
         except Exception:
@@ -32,96 +64,8 @@ def _cache_mb(db: Session, snapshot) -> int | None:
     return round(max(sizes) / 1e6) if sizes else None
 
 
-def _listing(db: Session) -> models.WritingStylesResponse:
-    """Every style, and every app with captures or an assignment, with the style it uses."""
-    snapshot = styles_service.snapshot()
-    counted = {app.app_bundle_id: app for app in list_capture_apps(db).apps}
-    corrections = styles_service.app_corrections(db)
-    apps = [
-        models.StyledApp(
-            bundle_id=app.app_bundle_id,
-            name=app.app_name or snapshot.app_names.get(app.app_bundle_id),
-            style_id=snapshot.for_app(app.app_bundle_id).id,
-            confirmed=app.app_bundle_id in snapshot.apps,
-            count=app.count,
-            corrections=corrections.get(app.app_bundle_id, 0),
-            suggested_style_id=app.suggested_style_id,
-        )
-        for app in counted.values()
-    ]
-    apps += [
-        models.StyledApp(
-            bundle_id=bundle_id,
-            name=snapshot.app_names.get(bundle_id),
-            style_id=snapshot.for_app(bundle_id).id,
-            confirmed=True,
-            corrections=corrections.get(bundle_id, 0),
-        )
-        for bundle_id in snapshot.apps
-        if bundle_id not in counted
-    ]
-    return models.WritingStylesResponse(
-        styles=[models.WritingStyleModel(**asdict(style)) for style in snapshot.styles],
-        apps=apps,
-        max_styles=styles_service.MAX_STYLES,
-        cache_mb_per_style=_cache_mb(db, snapshot),
-    )
-
-
-@router.get("", response_model=models.WritingStylesResponse)
-async def list_styles(db: Session = Depends(get_db)):
-    return _listing(db)
-
-
-@router.post("", response_model=models.WritingStyleModel)
-async def create_style(request: models.WritingStyleCreate, db: Session = Depends(get_db)):
-    try:
-        return asdict(styles_service.create_style(db, request.name))
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@router.patch("/{style_id}", response_model=models.WritingStyleModel)
-async def update_style(style_id: str, request: models.WritingStyleUpdate, db: Session = Depends(get_db)):
-    try:
-        style = styles_service.update_style(db, style_id, request.model_dump(exclude_none=True))
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    if style is None:
-        raise HTTPException(status_code=404, detail="Style not found")
-    return asdict(style)
-
-
-@router.delete("/{style_id}", status_code=204)
-async def delete_style(style_id: str, db: Session = Depends(get_db)):
-    try:
-        deleted = styles_service.delete_style(db, style_id)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Style not found")
-
-
-@router.post("/apps/confirm", response_model=models.WritingStylesResponse)
-async def confirm_apps(request: models.AppsConfirm, db: Session = Depends(get_db)):
-    """Keep every listed new app in the style it already uses."""
-    apps = [target_app(app.bundle_id, app.app_name) for app in request.apps]
-    styles_service.confirm_apps(db, [(bundle, name) for bundle, name in apps if bundle])
-    return _listing(db)
-
-
-@router.put("/apps/{bundle_id}", response_model=models.WritingStylesResponse)
-async def assign_app(bundle_id: str, request: models.AppStyleAssign, db: Session = Depends(get_db)):
-    """Use ``style_id`` for an app; this also confirms a new app's style.
-
-    ``corrections`` says whether the app's corrections come along or stay
-    teaching the style it leaves.
-    """
-    bundle, name = target_app(bundle_id, request.app_name)
-    if bundle is None:
-        raise HTTPException(status_code=400, detail="Name an app")
-    try:
-        styles_service.assign_app(db, bundle, name, request.style_id, request.corrections)
-    except KeyError as error:
-        raise HTTPException(status_code=404, detail="Style not found") from error
-    return _listing(db)
+@router.post("/state")
+def state(db: Session = Depends(get_db)):
+    """What only the worker knows: each style's prompt cache size, and the
+    style a teach session is open on, which Kass's own window uses meanwhile."""
+    return {"cache_mb_per_style": _cache_mb(db), "teaching_style": styles_service.teaching_style()}
