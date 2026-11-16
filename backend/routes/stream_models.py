@@ -103,6 +103,10 @@ class KeepResident(BaseModel):
     stt: bool = True
 
 
+class SpeechModel(BaseModel):
+    configured: str
+
+
 def _keep_alignment(alignment) -> str | None:
     global _next_alignment
     if alignment is None:
@@ -363,6 +367,14 @@ async def command_rewrite(request: CommandRewrite):
     except Exception as error:
         return _failed(error)
     return {"text": text, "model": model}
+
+
+@router.post("/speech-model")
+async def speech_model(request: SpeechModel):
+    """The Whisper model a dictation with ``configured`` set runs: a trained one replaces it while active."""
+    from ..services.model_improvement.manager import speech_model as active_speech_model
+
+    return {"model": active_speech_model(request.configured)}
 
 
 @router.post("/keep-resident")

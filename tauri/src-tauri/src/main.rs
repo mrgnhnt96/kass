@@ -1011,6 +1011,22 @@ async fn free_api_port() -> Result<(), String> {
     Ok(())
 }
 
+/// Silero's voice detector, as the worker's bundle carries it, or the repo's
+/// copy in dev.
+fn voice_model(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("kass-server/_internal/backend/assets/silero_vad.onnx"));
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../backend/assets/silero_vad.onnx");
+    bundled
+        .into_iter()
+        .chain(cfg!(debug_assertions).then_some(repo))
+        .find(|path| path.is_file())
+}
+
 /// Serve Kass's API on `SERVER_PORT`, in front of the worker: to this Mac
 /// only, or to other Macs on the network too while `share` is on. One
 /// already listening for the right Macs, standing in for the same server,
@@ -1045,6 +1061,7 @@ async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<
         worker: (std::net::Ipv4Addr::LOCALHOST, WORKER_PORT).into(),
         database: data_dir.join("kass.db"),
         shared_server: shared_server.clone(),
+        voice_model: voice_model(app),
     })
     .await;
     let mut api = state.api.lock().unwrap();

@@ -511,6 +511,7 @@ async fn report(
         source: request.source,
         replaces: request.replaces,
         seen: capture,
+        filed_by: None,
     };
     let sync = state.sync;
     let saved = state

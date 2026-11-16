@@ -87,6 +87,7 @@ impl Kass {
             worker: start_worker(worker).await,
             database: database.clone(),
             shared_server: shared_server.map(str::to_string),
+            voice_model: None,
         })
         .await
         .unwrap();

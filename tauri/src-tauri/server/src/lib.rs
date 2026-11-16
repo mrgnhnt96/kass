@@ -1,10 +1,10 @@
 //! Kass's HTTP and WebSocket API, served by the app on port 17493.
 //!
-//! The Python model worker still answers every route: this server proxies
-//! each request and the `/captures/stream` WebSocket to it unchanged, so
-//! routes can move here one group at a time (`routes/`). Each group's module
-//! lists its paths; a ported route swaps `proxy::to_worker()` for a handler
-//! of its own.
+//! Routes move here from the Python model worker one group at a time
+//! (`routes/`); any path not served here is proxied to the worker
+//! unchanged. Each group's module lists its paths; a ported route swaps
+//! `proxy::to_worker()` for a handler of its own. Streamed dictation
+//! (`/captures/stream`) runs here and calls the worker only for its models.
 
 pub mod captures;
 pub mod cleanup_inputs;
@@ -12,8 +12,8 @@ mod cors;
 pub mod db;
 pub mod dictionary;
 mod events;
-pub mod learning;
 pub mod known_names;
+pub mod learning;
 pub mod proxy;
 pub mod routes;
 pub mod settings;
@@ -23,6 +23,7 @@ mod worker;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use axum::serve::ListenerExt;
 use tokio::net::TcpListener;
@@ -42,6 +43,9 @@ pub struct Config {
     /// this Mac's Kass is the one in use. While standing in, every change
     /// is recorded to send to the shared Kass (`sync_changes`).
     pub shared_server: Option<String>,
+    /// Silero's voice detector (`silero_vad.onnx`), for streamed dictation.
+    /// Without it every take counts as speech and no pause ends a phrase.
+    pub voice_model: Option<PathBuf>,
 }
 
 /// What every route handler can reach.
@@ -51,6 +55,13 @@ pub struct AppState {
     pub db: db::Db,
     pub sync: dictionary::store::Sync,
     events: events::Events,
+    /// Each app's dictionary, built once per change.
+    pub dictionaries: Arc<dictionary::matching::Dictionaries>,
+    pub known_names: Arc<known_names::KnownNames>,
+    /// Silero, shared by every dictation.
+    pub voice: Option<Arc<stream::speech::VoiceModel>>,
+    /// Streamed dictations running, and the results of finished ones.
+    pub streams: Arc<stream::Streams>,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -94,6 +105,14 @@ pub async fn start(config: Config) -> Result<Running, String> {
                 .is_some_and(|url| !url.trim().trim_end_matches('/').is_empty()),
         },
         events: events::Events::default(),
+        dictionaries: Arc::default(),
+        known_names: Arc::default(),
+        voice: config.voice_model.as_deref().and_then(|path| {
+            stream::speech::VoiceModel::load(path)
+                .map_err(|error| eprintln!("[server] {error}; every take counts as speech"))
+                .ok()
+        }),
+        streams: Arc::default(),
     };
     let listener = TcpListener::bind(config.listen)
         .await

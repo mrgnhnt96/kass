@@ -237,8 +237,8 @@ impl Intake {
     }
 
     /// Add one binary frame: a little-endian u32 sequence number and sample
-    /// offset, then 16-bit PCM.
-    pub fn append(&mut self, frame: &[u8]) -> Result<(), String> {
+    /// offset, then 16-bit PCM. Returns its samples.
+    pub fn append(&mut self, frame: &[u8]) -> Result<Vec<i16>, String> {
         if frame.len() < 10 || frame.len() > MAX_FRAME_BYTES || !(frame.len() - 8).is_multiple_of(2)
         {
             return Err("Invalid PCM frame size".into());
@@ -271,7 +271,7 @@ impl Intake {
         self.samples += count;
         self.sequence += 1;
         if self.backlogged {
-            return Ok(());
+            return Ok(pcm);
         }
         let rate = i64::from(self.rate);
         if (self.pending.len() + pcm.len()) as i64 > rate * 60 {
@@ -281,7 +281,7 @@ impl Intake {
             self.degraded_reason = Some(FELL_BEHIND);
             self.pending = Vec::new();
             self.cuts.clear();
-            return Ok(());
+            return Ok(pcm);
         }
         self.pending.extend_from_slice(&pcm);
         self.peak_backlog = self
@@ -295,7 +295,7 @@ impl Intake {
             self.cuts.push(self.samples);
             self.last_cut = self.samples;
         }
-        Ok(())
+        Ok(pcm)
     }
 
     /// A sound Kass played during the take (the style cue), between two
@@ -356,7 +356,7 @@ impl Intake {
 
     /// The window's audio, to send to recognition.
     pub fn pcm(&self, window: &Window) -> &[i16] {
-        &self.pending[..window.size as usize]
+        &self.pending[..(window.size as usize).min(self.pending.len())]
     }
 
     /// Move past a recognized window. A window cut at the 20 s limit keeps
@@ -371,7 +371,9 @@ impl Intake {
         } else {
             window.size
         };
-        self.pending.drain(..advance as usize);
+        // Recognition falling behind may have emptied the backlog meanwhile.
+        let drained = (advance.max(0) as usize).min(self.pending.len());
+        self.pending.drain(..drained);
         self.covered = self.covered.max(self.offset + window.size);
         self.offset += advance;
     }
@@ -427,6 +429,12 @@ impl Intake {
     /// Audio not yet recognized.
     pub fn pending(&self) -> &[i16] {
         &self.pending
+    }
+
+    /// Recognition fell a minute behind: the take is recognized whole at
+    /// finish.
+    pub fn backlogged(&self) -> bool {
+        self.backlogged
     }
 
     pub fn peak_backlog(&self) -> f64 {

@@ -353,6 +353,18 @@ pub async fn command_rewrite(
     Ok((answer.text, answer.model))
 }
 
+/// The Whisper model a dictation set to `configured` runs: a model trained
+/// on the user's voice stands in for it while active.
+pub async fn speech_model(proxy: &Proxy, configured: &str) -> Answer<String> {
+    #[derive(Deserialize)]
+    struct Model {
+        model: String,
+    }
+    let body = json!({ "configured": configured });
+    let answer: Model = call_json(proxy, "/worker/speech-model", &body, QUICK_TIMEOUT).await?;
+    Ok(answer.model)
+}
+
 /// Read back whatever of the loaded models macOS paged out.
 pub async fn keep_resident(proxy: &Proxy, reason: &str, llm: bool, stt: bool) -> Answer<()> {
     let body = json!({ "reason": reason, "llm": llm, "stt": stt });

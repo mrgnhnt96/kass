@@ -135,6 +135,77 @@ impl Changes {
     }
 }
 
+/// A capture a dictation made, as its session saves it.
+#[derive(Clone, Debug, Default)]
+pub struct NewCapture {
+    pub id: String,
+    pub audio_path: String,
+    pub source: String,
+    pub language: Option<String>,
+    pub duration_ms: i64,
+    pub transcript_raw: String,
+    pub transcript_refined: Option<String>,
+    pub stt_model: Option<String>,
+    pub llm_model: Option<String>,
+    /// JSON, as the worker saved it.
+    pub refinement_flags: Option<String>,
+    pub refinement_review: Option<String>,
+    pub app_bundle_id: Option<String>,
+    pub app_name: Option<String>,
+    pub app_category: Option<String>,
+    pub command_selection: Option<String>,
+    pub command_instruction: Option<String>,
+    pub command_transform: Option<String>,
+    pub style_id: Option<String>,
+    pub teaches_style_id: Option<String>,
+}
+
+/// Save a new capture, and return it as stored.
+pub fn insert_capture(
+    conn: &mut Connection,
+    new: &NewCapture,
+    sync: Sync,
+) -> rusqlite::Result<Capture> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let at = now();
+    tx.execute(
+        "INSERT INTO captures (id, audio_path, source, language, duration_ms, transcript_raw, \
+         transcript_refined, stt_model, llm_model, refinement_flags, refinement_review, \
+         app_bundle_id, app_name, app_category, command_selection, command_instruction, \
+         command_transform, style_id, teaches_style_id, audio_deleted, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+        params![
+            new.id,
+            new.audio_path,
+            new.source,
+            new.language,
+            new.duration_ms,
+            new.transcript_raw,
+            new.transcript_refined,
+            new.stt_model,
+            new.llm_model,
+            new.refinement_flags,
+            new.refinement_review,
+            new.app_bundle_id,
+            new.app_name,
+            new.app_category,
+            new.command_selection,
+            new.command_instruction,
+            new.command_transform,
+            new.style_id,
+            new.teaches_style_id,
+            new.audio_path.is_empty(),
+            stored(at),
+        ],
+    )?;
+    let mut changes = Changes::default();
+    changes.changed("capture", &new.id);
+    changes.record(&tx, sync, at)?;
+    let capture = get(&tx, &new.id)?.expect("the capture was just saved");
+    tx.commit()?;
+    Ok(capture)
+}
+
 // -- reports ------------------------------------------------------------------
 
 /// One `capture_feedback` row.
@@ -192,6 +263,23 @@ fn get_report(conn: &Connection, report_id: &str) -> rusqlite::Result<Option<Rep
     .optional()
 }
 
+/// The capture's newest report of `target`: its text as corrected so far.
+pub fn latest_report(
+    conn: &Connection,
+    capture_id: &str,
+    target: &str,
+) -> rusqlite::Result<Option<Report>> {
+    conn.query_row(
+        &format!(
+            "SELECT {REPORT_COLUMNS} FROM capture_feedback WHERE capture_id = ?1 AND target = ?2 \
+             ORDER BY created_at DESC, id DESC LIMIT 1"
+        ),
+        [capture_id, target],
+        report,
+    )
+    .optional()
+}
+
 /// A report to keep, checked against the capture it corrects.
 pub struct NewReport {
     pub capture_id: String,
@@ -203,6 +291,8 @@ pub struct NewReport {
     pub replaces: Option<String>,
     /// The capture as the request's checks read it.
     pub seen: Capture,
+    /// The voice edit capture that filed it, which takes it back when deleted.
+    pub filed_by: Option<String>,
 }
 
 /// Why a report wasn't kept.
@@ -266,8 +356,8 @@ pub fn save_report(
         created_at: Some(at),
     };
     tx.execute(
-        "INSERT INTO capture_feedback (id, capture_id, target, expected_text, notes, snapshot, source, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO capture_feedback (id, capture_id, target, expected_text, notes, snapshot, source, created_at, filed_by) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             row.id,
             row.capture_id,
@@ -276,7 +366,8 @@ pub fn save_report(
             row.notes,
             row.snapshot,
             row.source,
-            stored(at)
+            stored(at),
+            new.filed_by
         ],
     )?;
     changes.changed("feedback", &row.id);
@@ -413,6 +504,7 @@ mod tests {
             source: "manual".into(),
             replaces: None,
             seen: get(conn, "take").unwrap().unwrap(),
+            filed_by: None,
         }
     }
 
