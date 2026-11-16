@@ -7,13 +7,16 @@ use std::fs;
 use std::path::Path;
 
 use kass_text::content_check::{self, Verdict};
+use kass_text::correction_rules::{self, Rule, Rules};
 use kass_text::lexicon::{self, WordData};
 use kass_text::phrase_seams::{self, Names};
+use kass_text::refinement::{self, Flags};
 use kass_text::spoken_punctuation::{self as punctuation, Example, Learned};
 use kass_text::voice_edits::{self, Declined, Instruction, Planned, Word};
+use kass_text::writing_style::{self, Counts, Habits, Profile};
 use kass_text::{
-    dictation_edits, laughter, sentence_tail, spoken_case, spoken_cleanup, spoken_corrections,
-    text_merge, voice_commands,
+    dictation_edits, laughter, sentence_tail, spelling, spoken_case, spoken_cleanup,
+    spoken_corrections, text_merge, voice_commands,
 };
 use serde_json::{json, Map, Value};
 
@@ -71,6 +74,46 @@ fn verdict_value(verdict: &Verdict) -> Value {
 
 fn learned_value(learned: &Learned) -> Value {
     json!({"aliases": learned.aliases, "kept": learned.kept})
+}
+
+fn pairs(value: &Value) -> Vec<(String, String)> {
+    value.as_array().map_or_else(Vec::new, |pairs| {
+        pairs
+            .iter()
+            .map(|pair| {
+                (
+                    pair[0].as_str().unwrap().to_string(),
+                    pair[1].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    })
+}
+
+fn shared_pairs(args: &Value, examples: &[Value]) -> Vec<(String, String)> {
+    match args["examples"].as_u64() {
+        Some(index) => pairs(&examples[index as usize]),
+        None => pairs(&args["examples"]),
+    }
+}
+
+fn flags(args: &Value) -> Flags {
+    Flags::from_json(&args["flags"])
+}
+
+fn profile(args: &Value) -> Profile {
+    Profile::from_json(&args["profile"])
+}
+
+fn rules(value: &Value) -> Rules {
+    Rules::new(
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|rule| Rule::from_json(rule).expect("a valid rule"))
+            .collect(),
+    )
 }
 
 /// Python counts offsets in characters; kass-text in bytes.
@@ -327,6 +370,105 @@ fn call(function: &str, args: &Value, examples: &[Value]) -> Option<Value> {
                 text(args, "after")
             ))
         }
+        "content_check.check_refinement" => {
+            let (kept, verdict) = content_check::check_refinement(
+                text(args, "said"),
+                text(args, "refined"),
+                &flags(args),
+                &shared_pairs(args, examples),
+                opt_text(args, "retractable").unwrap_or(""),
+                learned(args).as_ref(),
+            );
+            json!([kept, verdict_value(&verdict)])
+        }
+
+        "spelling.join_spelling" => json!(spelling::join_spelling(text(args, "text"))),
+        "spelling.respell" => json!(spelling::respell(text(args, "text"))),
+
+        "refinement.collapse_repetitive_artifacts" => {
+            json!(refinement::collapse_repetitive_artifacts(
+                text(args, "text"),
+                args["min_run"]
+                    .as_u64()
+                    .map_or(refinement::REPETITION_RUN_THRESHOLD, |run| run as usize),
+            ))
+        }
+        "refinement.strip_stt_artifacts" => {
+            json!(refinement::strip_stt_artifacts(text(args, "text")))
+        }
+        "refinement.prepare_refinement" => json!(refinement::prepare_refinement(
+            text(args, "transcript"),
+            &flags(args),
+            learned(args).as_ref(),
+        )),
+        "refinement.keep_said_punctuation" => json!(refinement::keep_said_punctuation(
+            text(args, "said"),
+            text(args, "text"),
+            learned(args).as_ref(),
+        )),
+        "refinement.build_refinement_prompt" => json!(refinement::build_refinement_prompt(
+            &flags(args),
+            &profile(args),
+            text(args, "description"),
+            args["personal"].as_bool().unwrap_or(false),
+            opt_text(args, "notes"),
+        )),
+        "refinement.refinement_examples" => json!(refinement::refinement_examples(
+            &flags(args),
+            &profile(args),
+            &pairs(&args["personal"]),
+        )),
+        "refinement._without_final_period" => {
+            json!(refinement::without_final_period(text(args, "text")))
+        }
+        "refinement.style_first_word" => json!(refinement::style_first_word(
+            text(args, "text"),
+            &flags(args),
+            &names(args),
+        )),
+        "refinement._cache_key" => json!(refinement::cache_key(
+            &flags(args),
+            args["use_personal_examples"].as_bool().unwrap_or(true),
+            !args["correction_notes"].is_null(),
+        )),
+        "refinement._prompt" => json!(refinement::prompt(
+            &flags(args),
+            &profile(args),
+            text(args, "description"),
+            &pairs(&args["personal"]),
+            opt_text(args, "notes"),
+        )),
+
+        "writing_style.observe" => writing_style::observe(
+            text(args, "shown"),
+            text(args, "written"),
+            args["deliberate"].as_bool().unwrap_or(true),
+        )
+        .to_json(),
+        "writing_style.decide" => {
+            writing_style::decide(&Counts::from_json(&args["counts"])).to_json()
+        }
+        "writing_style.summary" => {
+            json!(writing_style::summary(&Habits::from_json(&args["habits"])))
+        }
+        "writing_style.apply_style" => json!(writing_style::apply_style(
+            text(args, "text"),
+            &Habits::from_json(&args["habits"]),
+        )),
+        "writing_style.habits" => profile(args).habits().to_json(),
+        "writing_style.is_ready" => json!(profile(args).is_ready()),
+        "writing_style.prompt_section" => json!(profile(args).prompt_section()),
+        "writing_style.prompt_example" => json!(profile(args).prompt_example()),
+        "writing_style.apply_learned" => json!(profile(args).apply_learned(text(args, "text"))),
+        "writing_style._as_spoken" => json!(writing_style::as_spoken(text(args, "text"))),
+
+        "correction_rules.words" => json!(correction_rules::words(text(args, "text"))),
+        "correction_rules.apply_rules" => {
+            json!(rules(&args["compiled"]).apply(text(args, "text"), opt_text(args, "language")))
+        }
+        "correction_learning.apply_learned_corrections" => json!(rules(&args["rules"])
+            .apply_learned_corrections(text(args, "text"), opt_text(args, "language"))),
+
         "voice_edits.opening" => json!(voice_edits::opening(text(args, "text"))),
         "voice_edits.parse" => match voice_edits::parse(text(args, "said")) {
             None => Value::Null,

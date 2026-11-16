@@ -27,10 +27,16 @@ sys.path.insert(0, str(ROOT))
 
 from backend.services import (  # noqa: E402
     content_check,
+    correction_learning,
+    correction_notes,
+    correction_rules,
     dictation_edits,
     laughter,
+    personal_examples,
     phrase_seams,
+    refinement,
     sentence_tail,
+    spelling,
     spoken_case,
     spoken_cleanup,
     spoken_corrections,
@@ -38,6 +44,7 @@ from backend.services import (  # noqa: E402
     text_merge,
     voice_commands,
     voice_edits,
+    writing_style,
 )
 
 OUT = Path(__file__).with_name("python.json")
@@ -62,6 +69,12 @@ TESTS = [
     "test_capture_stream_provisional.py",
     "test_refinement_prompt.py",
     "test_refinement_collapse.py",
+    "test_refinement_samples.py",
+    "test_capture_stream_style.py",
+    "test_writing_style.py",
+    "test_writing_styles.py",
+    "test_spelling.py",
+    "test_correction_learning.py",
 ]
 
 
@@ -103,13 +116,86 @@ def _verdict(verdict):
     return verdict.to_dict()
 
 
+def _flags(flags):
+    return flags.to_dict()
+
+
+def _pairs(examples):
+    return None if examples is None else [list(pair) for pair in examples]
+
+
+def _rules(compiled):
+    return [rule for rule, _ in compiled]
+
+
+# What a function reads besides its arguments, recorded with them: kass-text
+# takes it as arguments instead.
+
+
+def _learned_punctuation(*_args, **_kwargs):
+    return {"learned": _learned(refinement._learned_punctuation())}
+
+
+def _style_of(args, kwargs):
+    return args[0] if args else kwargs.get("style")
+
+
+def _profile(style):
+    return _value(writing_style._profile(style))
+
+
+def _style_profile(*args, **kwargs):
+    return {"profile": _profile(_style_of(args, kwargs))}
+
+
+def _text_style_profile(text, style=None):
+    return {"profile": _profile(style)}
+
+
+def _flags_profile(flags, *_args, **_kwargs):
+    return {"profile": _profile(flags.style)}
+
+
+def _prompt_state(flags, *_args, **_kwargs):
+    return {
+        "profile": _profile(flags.style),
+        "description": refinement._style_description(flags.style),
+    }
+
+
+def _personal_state(flags, use_personal_examples, extra_examples, correction_notes_):
+    personal, notes = [], None
+    if use_personal_examples:
+        personal = personal_examples.for_prompt(flags.style, extra=extra_examples)
+        notes = correction_notes.prompt_section(flags.style, correction_notes_)
+    return {**_prompt_state(flags), "personal": _pairs(personal), "notes": notes}
+
+
+def _learned_rules(*_args, **_kwargs):
+    return {"rules": _rules(correction_learning._compiled)}
+
+
+def _check_state(said, refined, flags, examples=None, retractable=""):
+    shown = content_check._shown_examples() if examples is None else examples
+    return {**_learned_punctuation(), "examples": _pairs(shown)}
+
+
 # How each recorded function's arguments are written, by position (missing
-# ones keep their default) and keyword.
+# ones keep their default) and keyword, and what else it reads.
 SIGNATURES = {
-    (spoken_punctuation, "apply_spoken_punctuation"): (["text", ("learned", _learned)], {}),
-    (spoken_punctuation, "keep_spoken_punctuation"): (["said", "text", ("learned", _learned)], {}),
+    (spoken_punctuation, "apply_spoken_punctuation"): (
+        ["text", ("learned", _learned)],
+        {},
+    ),
+    (spoken_punctuation, "keep_spoken_punctuation"): (
+        ["said", "text", ("learned", _learned)],
+        {},
+    ),
     (spoken_punctuation, "period_after_closers"): (["text"], {}),
-    (spoken_punctuation, "learn"): ([("examples", lambda examples: [_example(e) for e in examples])], {}),
+    (spoken_punctuation, "learn"): (
+        [("examples", lambda examples: [_example(e) for e in examples])],
+        {},
+    ),
     (spoken_case, "apply_spoken_case"): (["text"], {}),
     (spoken_cleanup, "apply_spoken_cleanup"): (["text"], {}),
     (spoken_corrections, "apply_spoken_corrections"): (["text"], {}),
@@ -121,7 +207,10 @@ SIGNATURES = {
     (phrase_seams, "continue_phrase"): (["phrase", "earlier", ("names", sorted)], {}),
     (phrase_seams, "continues_sentence"): (["before"], {}),
     (phrase_seams, "match_raw_start"): (["text", "raw"], {}),
-    (phrase_seams, "continue_after_seam"): (["before", "phrase", "earlier", ("names", sorted)], {}),
+    (phrase_seams, "continue_after_seam"): (
+        ["before", "phrase", "earlier", ("names", sorted)],
+        {},
+    ),
     (phrase_seams, "keep_raw_capitals"): (["text", "raw", ("names", sorted)], {}),
     (phrase_seams, "close_phrase"): (["text"], {}),
     (phrase_seams, "join_phrases"): (["previous", "phrase", "raw_phrase", "style"], {}),
@@ -129,9 +218,85 @@ SIGNATURES = {
     (text_merge, "take_back"): (["before", "removed", "newer"], {}),
     (laughter, "is_laughter"): (["text"], {}),
     (laughter, "join_laughter"): (["text"], {}),
-    (content_check, "check"): (["said", "cleaned", "allow_retractions", "retractable"], {}),
-    (content_check, "_copied_example"): (["said", "cleaned", ("examples", lambda e: [list(p) for p in e])], {}),
-    (content_check, "summarize_reviews"): ([("verdicts", lambda v: [_verdict(x) for x in v])], {}),
+    (content_check, "check"): (
+        ["said", "cleaned", "allow_retractions", "retractable"],
+        {},
+    ),
+    (content_check, "_copied_example"): (
+        ["said", "cleaned", ("examples", lambda e: [list(p) for p in e])],
+        {},
+    ),
+    (content_check, "summarize_reviews"): (
+        [("verdicts", lambda v: [_verdict(x) for x in v])],
+        {},
+    ),
+    (content_check, "check_refinement"): (
+        [
+            "said",
+            "refined",
+            ("flags", _flags),
+            ("examples", lambda _: None),
+            "retractable",
+        ],
+        {},
+        _check_state,
+    ),
+    (spelling, "join_spelling"): (["text"], {}),
+    (spelling, "respell"): (["text"], {}),
+    (refinement, "collapse_repetitive_artifacts"): (["text", "min_run"], {}),
+    (refinement, "strip_stt_artifacts"): (["text"], {}),
+    (refinement, "prepare_refinement"): (
+        ["transcript", ("flags", _flags)],
+        {},
+        _learned_punctuation,
+    ),
+    (refinement, "keep_said_punctuation"): (["said", "text"], {}, _learned_punctuation),
+    (refinement, "build_refinement_prompt"): (
+        [("flags", _flags), "personal", "notes"],
+        {},
+        _prompt_state,
+    ),
+    (refinement, "refinement_examples"): (
+        [("flags", _flags), ("personal", _pairs)],
+        {},
+        _flags_profile,
+    ),
+    (refinement, "_without_final_period"): (["text"], {}),
+    (refinement, "style_first_word"): (
+        ["text", ("flags", _flags), ("names", sorted)],
+        {},
+    ),
+    (refinement, "_cache_key"): (
+        [("flags", _flags), "use_personal_examples", "correction_notes"],
+        {},
+    ),
+    (refinement, "_prompt"): (
+        [
+            ("flags", _flags),
+            "use_personal_examples",
+            ("extra_examples", _pairs),
+            "correction_notes",
+        ],
+        {},
+        _personal_state,
+    ),
+    (writing_style, "observe"): (["shown", "written", "deliberate"], {}),
+    (writing_style, "decide"): (["counts"], {}),
+    (writing_style, "summary"): (["habits"], {}),
+    (writing_style, "apply_style"): (["text", "habits"], {}),
+    (writing_style, "habits"): (["style"], {}, _style_profile),
+    (writing_style, "is_ready"): (["style"], {}, _style_profile),
+    (writing_style, "prompt_section"): (["style"], {}, _style_profile),
+    (writing_style, "prompt_example"): (["style"], {}, _style_profile),
+    (writing_style, "apply_learned"): (["text", "style"], {}, _text_style_profile),
+    (writing_style, "_as_spoken"): (["text"], {}),
+    (correction_rules, "words"): (["text"], {}),
+    (correction_rules, "apply_rules"): (["text", ("compiled", _rules), "language"], {}),
+    (correction_learning, "apply_learned_corrections"): (
+        ["text", "language"],
+        {},
+        _learned_rules,
+    ),
     (voice_commands, "mark_commands"): (["text"], {}),
     (voice_commands, "count_commands"): (["text"], {}),
     (voice_commands, "commands_alone"): (["text"], {}),
@@ -142,10 +307,16 @@ SIGNATURES = {
     (voice_edits, "plan"): (["said", "take"], {}),
     (voice_edits, "changes_end"): ([("planned", _value), "chars"], {}),
     (voice_edits, "corrected"): (["output", "before", "after"], {}),
-    (dictation_edits, "apply_dictation_edits"): (["text"], {"formatting": None, "corrections": None}),
+    (dictation_edits, "apply_dictation_edits"): (
+        ["text"],
+        {"formatting": None, "corrections": None},
+    ),
     (dictation_edits, "apply_line_breaks"): (["text"], {}),
     (dictation_edits, "apply_spoken_marks"): (["text"], {}),
 }
+
+# Functions whose ``examples`` are kept once in the recording, by index.
+SHARED_EXAMPLES = ("content_check._copied_example", "content_check.check_refinement")
 
 calls: dict[str, dict] = {}
 
@@ -164,15 +335,17 @@ def _encode(names, keywords, args, kwargs):
     return encoded
 
 
-def _wrap(module, name, names, keywords):
+def _wrap(module, name, names, keywords, state=None):
     original = getattr(module, name)
     qualified = f"{module.__name__.rsplit('.', 1)[-1]}.{name}"
 
     @functools.wraps(original)
     def recorded(*args, **kwargs):
+        read = state(*args, **kwargs) if state else {}
         result = original(*args, **kwargs)
         try:
-            entry = {"fn": qualified, "args": _encode(names, keywords, args, kwargs), "out": _value(result)}
+            encoded = {**_encode(names, keywords, args, kwargs), **read}
+            entry = {"fn": qualified, "args": encoded, "out": _value(result)}
         except TypeError:
             return result
         calls.setdefault(json.dumps([entry["fn"], entry["args"]], sort_keys=True), entry)
@@ -198,6 +371,30 @@ def _parity_texts(path: Path) -> list[tuple[str, str]]:
 
     walk(json.loads(path.read_text()))
     return list(dict.fromkeys(found))
+
+
+_FLAGS = [
+    refinement.RefinementFlags(),
+    refinement.RefinementFlags(smart_cleanup=False, self_correction=False, capitalize_first=False),
+    refinement.RefinementFlags(punctuation_style="casual", preserve_technical=False),
+]
+
+_HABITS = [
+    {
+        "boundary": "comma",
+        "lowercase_start": True,
+        "drop_intro_comma": True,
+        "drop_conjunction_comma": True,
+        "drop_final_period": True,
+    },
+    {
+        "boundary": "none",
+        "lowercase_start": False,
+        "drop_intro_comma": False,
+        "drop_conjunction_comma": True,
+        "drop_final_period": False,
+    },
+]
 
 
 def _run_stages(raw: str, cleaned: str) -> None:
@@ -231,6 +428,22 @@ def _run_stages(raw: str, cleaned: str) -> None:
     content_check.check(raw, cleaned)
     content_check.check(raw, cleaned, allow_retractions=True)
     spoken_corrections.retracted_by(cleaned, raw)
+    for text in (raw, cleaned):
+        spelling.join_spelling(text)
+        spelling.respell(text)
+        refinement.strip_stt_artifacts(text)
+        correction_rules.words(text)
+        writing_style._as_spoken(text)
+        for habits in _HABITS:
+            writing_style.apply_style(text, habits)
+    shown = list(refinement.REFINEMENT_EXAMPLES)
+    for flags in _FLAGS:
+        refinement.prepare_refinement(raw, flags)
+        content_check.check_refinement(raw, cleaned, flags, shown)
+        refinement.style_first_word(cleaned, flags)
+    refinement.keep_said_punctuation(raw, cleaned)
+    writing_style.observe(cleaned, raw, deliberate=True)
+    writing_style.observe(cleaned, cleaned.lower().rstrip("."), deliberate=False)
     words = raw.split()
     # A pause after some of the words: at most a dozen places, spread out.
     for cut in sorted({1 + i * (len(words) - 1) // 12 for i in range(12)} - {len(words)}):
@@ -242,13 +455,17 @@ def _run_stages(raw: str, cleaned: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--parity", type=Path, help="a parity recording whose transcripts every stage runs over")
+    parser.add_argument(
+        "--parity",
+        type=Path,
+        help="a parity recording whose transcripts every stage runs over",
+    )
     options = parser.parse_args()
 
     phrase_seams._vocabulary.cache_clear()
     phrase_seams._vocabulary = functools.cache(lambda: {})
-    for (module, name), (names, keywords) in SIGNATURES.items():
-        _wrap(module, name, names, keywords)
+    for (module, name), (names, keywords, *state) in SIGNATURES.items():
+        _wrap(module, name, names, keywords, *state)
 
     import pytest
 
@@ -260,12 +477,15 @@ def main() -> None:
         for raw, cleaned in _parity_texts(options.parity):
             _run_stages(raw, cleaned)
 
-    entries = sorted(calls.values(), key=lambda entry: (entry["fn"], json.dumps(entry["args"], sort_keys=True)))
+    entries = sorted(
+        calls.values(),
+        key=lambda entry: (entry["fn"], json.dumps(entry["args"], sort_keys=True)),
+    )
     # The cleanup examples are the same long list in most calls: kept once, by index.
     shared: list = []
     for entry in entries:
         examples = entry["args"].get("examples")
-        if entry["fn"] == "content_check._copied_example" and examples is not None:
+        if entry["fn"] in SHARED_EXAMPLES and examples is not None:
             if examples not in shared:
                 shared.append(examples)
             entry["args"]["examples"] = shared.index(examples)
