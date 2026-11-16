@@ -1,13 +1,14 @@
 //! The main window's frame in GPUI: the title bar strip, the left rail, the
 //! settings navigation and the status line. The screens not yet rebuilt in
 //! GPUI still come from the page, in a web view placed over the content
-//! area; the native ones (src/settings, Captures, Insights) hide it.
+//! area; the native ones (src/settings, Captures, Insights, Reports) hide it.
 
 pub mod bridge;
 mod captures;
 pub mod data;
 mod insights;
 pub mod logs;
+mod reports;
 pub(crate) mod status;
 
 use std::rc::Rc;
@@ -152,7 +153,7 @@ impl Placement {
 
 /// Tabs of the rail the shell draws itself.
 fn is_native_tab(tab: &str) -> bool {
-    matches!(tab, "captures" | "insights")
+    matches!(tab, "captures" | "insights" | "reports")
 }
 
 /// The tab of the rail a path belongs to: its first segment.
@@ -171,6 +172,7 @@ pub struct MainShell {
     icons: Rc<insights::Icons>,
     insights: Entity<InsightsPage>,
     window: AnyWindowHandle,
+    reports: Entity<reports::ReportsPage>,
     logo: Arc<Image>,
     restarting: bool,
     _subscriptions: Vec<Subscription>,
@@ -202,6 +204,7 @@ impl MainShell {
             insights: cx.new(|cx| InsightsPage::new(api, icons.clone(), cx)),
             icons,
             window: window.window_handle(),
+            reports: cx.new(|_| reports::ReportsPage::default()),
             data,
             location: Location {
                 path: "/captures".into(),
@@ -399,6 +402,8 @@ impl Render for MainShell {
             self.insights.clone().into_any_element()
         } else if active_tab(&path) == "captures" {
             self.captures.clone().into_any_element()
+        } else if active_tab(&path) == "reports" {
+            self.reports.clone().into_any_element()
         } else {
             div().into_any_element()
         };
@@ -473,6 +478,7 @@ mod tests {
         assert_eq!(Placement::of("/settings/logs"), Placement::Hidden);
         assert_eq!(Placement::of("/settings/dictation"), Placement::Settings);
         assert_eq!(Placement::of("/insights"), Placement::Hidden);
+        assert_eq!(Placement::of("/reports"), Placement::Hidden);
         assert_eq!(Placement::of("/captures"), Placement::Hidden);
         assert_eq!(Placement::of("/models"), Placement::Content);
     }
