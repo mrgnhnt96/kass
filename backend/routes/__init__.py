@@ -13,6 +13,7 @@ def register_routers(app: FastAPI) -> None:
     from .llm import router as llm_router
     from .models import router as models_router
     from .settings import router as settings_router
+    from .stream_models import router as stream_models_router
     from .styles import router as styles_router
     from .sync import router as sync_router
     from .tasks import router as tasks_router
@@ -32,3 +33,4 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(writing_style_router)
     app.include_router(dictionary_router)
     app.include_router(sync_router)
+    app.include_router(stream_models_router)
