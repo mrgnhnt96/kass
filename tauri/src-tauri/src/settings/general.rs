@@ -27,7 +27,7 @@ use crate::ServerState;
 
 const G: &str = "settings-general";
 const STORE: &str = "settings-captures-storage";
-const KEEP: &str = "settings-captures-storage-retention";
+pub(crate) const KEEP: &str = "settings-captures-storage-retention";
 
 /// How long to wait for another Mac's Kass to answer before giving up.
 const REACH_TIMEOUT: Duration = Duration::from_secs(5);
@@ -35,7 +35,7 @@ const REACH_TIMEOUT: Duration = Duration::from_secs(5);
 const THEMES: [&str; 3] = ["system", "light", "dark"];
 
 /// The history choices, shortest first, then forever.
-const RETENTION: [(u16, &str); 5] = [
+pub(crate) const RETENTION: [(u16, &str); 5] = [
     (7, "d7"),
     (30, "d30"),
     (90, "d90"),
@@ -47,7 +47,7 @@ fn t(id: impl AsRef<str>) -> String {
     kass_i18n::t(id.as_ref())
 }
 
-fn retention_label(days: u16) -> String {
+pub(crate) fn retention_label(days: u16) -> String {
     let key = RETENTION
         .iter()
         .find(|(d, _)| *d == days)

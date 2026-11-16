@@ -6,7 +6,6 @@ import {
   redirect,
 } from '@tanstack/react-router';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
-import { AppLocationDialog } from '@/components/AppLocationDialog/AppLocationDialog';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
 import { InsightsTab } from '@/components/InsightsTab/InsightsTab';
 import { ModelsTab } from '@/components/ModelsTab/ModelsTab';
@@ -14,7 +13,6 @@ import { SetupEntry } from '@/components/Onboarding/SetupEntry';
 import { ReportsTab } from '@/components/ReportsTab/ReportsTab';
 import { GeneralPage } from '@/components/ServerTab/GeneralPage';
 import { LogsPage } from '@/components/ServerTab/LogsPage';
-import { RetentionAskDialog } from '@/components/ServerTab/RetentionAskDialog';
 import { SettingsLayout } from '@/components/ServerTab/ServerTab';
 import { CommandModePage } from '@/components/Settings/CommandModePage';
 import { DictationSettingsPage } from '@/components/Settings/DictationSettingsPage';
@@ -56,10 +54,9 @@ function RootLayout() {
           <StatusBar />
         </>
       )}
-      <RetentionAskDialog />
-      <AppLocationDialog />
-
-      {/* Show download toasts for any active downloads (from anywhere) */}
+      {/* The native shell asks about retention and the app's location.
+          Download toasts stay here for the screens still in the web view,
+          which covers the native ones. */}
       {activeDownloads.map((download) => {
         const displayName = MODEL_DISPLAY_NAMES[download.model_name] || download.model_name;
         return (
