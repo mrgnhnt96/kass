@@ -5,7 +5,6 @@ import pytest
 from backend.services.content_check import check
 from backend.services.refinement import RefinementFlags, refine_transcript
 from backend.services.voice_commands import CLIPBOARD, commands_alone, mark_commands
-from backend.tests.test_capture_stream_tail import refining_session, scripted
 
 
 @pytest.mark.parametrize(
@@ -54,35 +53,3 @@ def test_a_cleanup_that_drops_the_marker_is_rejected():
     # "clipboard" as a word is not the command.
     assert check(said, "Here's the link clipboard. Let me know.").outcome == "reject"
     assert check(said, f"Here's the link: {CLIPBOARD}. Let me know.").outcome == "ok"
-
-
-@pytest.mark.asyncio
-async def test_the_cleanup_sees_the_marker_mid_sentence(tmp_path, monkeypatch):
-    refine, prompts = scripted(
-        {f"Here's the link {CLIPBOARD} let me know.": f"Here's the link {CLIPBOARD}. Let me know."}
-    )
-    session, _ = refining_session(tmp_path, monkeypatch, refine)
-    session.finish()
-    await session.accept("Here's the link paste from clipboard let me know.")
-    await session.run()
-    session.close()
-    assert prompts == [f"Here's the link {CLIPBOARD} let me know."]
-    assert session.raw == f"Here's the link {CLIPBOARD} let me know."
-    assert session.refined == f"Here's the link {CLIPBOARD}. Let me know."
-
-
-@pytest.mark.asyncio
-async def test_the_phrase_is_marked_across_a_pause(tmp_path, monkeypatch):
-    refine, _ = scripted(
-        {
-            "Here's the link paste from": "Here's the link paste from.",
-            f"Here's the link {CLIPBOARD} let me know.": f"Here's the link {CLIPBOARD}. Let me know.",
-        }
-    )
-    session, _ = refining_session(tmp_path, monkeypatch, refine)
-    await session.accept("Here's the link paste from-", paused=True)
-    session.finish()
-    await session.accept("clipboard let me know.")
-    await session.run()
-    session.close()
-    assert session.raw == f"Here's the link {CLIPBOARD} let me know."

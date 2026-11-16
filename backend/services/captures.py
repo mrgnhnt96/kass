@@ -58,11 +58,6 @@ def target_app(bundle_id: object, name: object) -> tuple[str | None, str | None]
     return _clean_app_field(bundle_id), _clean_app_field(name)
 
 
-def target_app_category(category: object) -> str | None:
-    """The target app's App Store category (``LSApplicationCategoryType``), as stored."""
-    return _clean_app_field(category)
-
-
 def app_categories(db: Session) -> dict[str, str | None]:
     """Each app's App Store category, from its newest capture that has one."""
     rows = (

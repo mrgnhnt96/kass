@@ -270,7 +270,7 @@ _VALUE_KINDS = (
 _NOT_NAMES = frozenset({"I", *(w.title() for w in f"{_WEEKDAYS}|{_MONTHS}".split("|"))})
 # The cue may follow a sentence break too: speech-to-text often hears
 # "noon? No, actually, one" rather than "noon, no actually one". Where the
-# speaker paused there, the mark is gone (``phrase_seams.continue_after_seam``)
+# speaker paused there, streamed dictation drops the mark at the seam
 # and only the capital it gave the cue is left: "noon No, actually one".
 _PAUSED_CUE = r"\s+(?=(?-i:(?:Or|No|Sorry|Actually)\b))"
 _ANSWER_CUE = re.compile(

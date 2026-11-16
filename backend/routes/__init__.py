@@ -5,7 +5,6 @@ from fastapi import FastAPI
 
 def register_routers(app: FastAPI) -> None:
     """Include all domain routers on the application."""
-    from .capture_stream import router as capture_stream_router
     from .captures import router as captures_router, worker_router as captures_worker_router
     from .commands import router as commands_router
     from .dictionary import router as dictionary_router
@@ -24,7 +23,6 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(health_router)
     app.include_router(transcription_router)
     app.include_router(llm_router)
-    app.include_router(capture_stream_router)
     app.include_router(captures_router)
     app.include_router(captures_worker_router)
     app.include_router(learning_router)

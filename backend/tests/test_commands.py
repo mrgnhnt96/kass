@@ -1,9 +1,5 @@
 """Command Mode: prompt, transform names, rewrite post-processing, endpoint and stream session."""
 
-import asyncio
-import struct
-
-import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,11 +7,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend import config
 from backend.database import get_db
 from backend.database.models import Base, Capture, CaptureSettings
 from backend.models import CaptureSettingsResponse
-from backend.services import capture_stream, commands
+from backend.services import commands
 from backend.services.refinement import RefinementFlags, build_refinement_prompt
 
 
@@ -335,108 +330,6 @@ def test_endpoint_reports_bad_requests(api):
     assert response.status_code == 400
     assert "Select text" in response.json()["detail"]
     assert not api.llm.calls
-
-
-# --- Stream session -----------------------------------------------------------------
-
-
-@pytest.fixture
-def stream(tmp_path, monkeypatch):
-    from backend.tests.test_capture_stream import HeardWhenLoud
-
-    monkeypatch.setattr(config, "_data_dir", tmp_path)
-    monkeypatch.setattr(capture_stream, "SpeechDetector", HeardWhenLoud)
-    llm = FakeLLM("Hola.")
-    monkeypatch.setattr(commands, "_llm", lambda: llm)
-    monkeypatch.setattr(capture_stream, "ensure_model_ready", lambda size: None)
-    events = []
-
-    async def send(event):
-        events.append(event)
-
-    session = capture_stream.StreamingCapture(
-        dict(
-            type="start",
-            protocol_version=1,
-            sample_rate=16000,
-            channels=1,
-            encoding="pcm_s16le",
-            source="command",
-        ),
-        CaptureSettingsResponse(auto_refine=True),
-        send,
-    )
-    session.recognize = _recognized("translate to Spanish")
-    session.llm = llm
-    yield session
-    session.close()
-
-
-def _recognized(text):
-    async def recognize(pcm, start=None):
-        return text
-
-    return recognize
-
-
-def _speak(session, seconds):
-    pcm = np.full(round(seconds * session.rate), 1000, dtype="<i2").tobytes()
-    session.append(struct.pack("<II", session.sequence, session.samples) + pcm)
-
-
-@pytest.mark.asyncio
-async def test_a_command_session_prefills_while_speaking_and_rewrites_at_finish(stream, monkeypatch):
-    async def refine(*args, **kwargs):
-        raise AssertionError("dictation cleanup ran on a command's instruction")
-
-    monkeypatch.setattr(capture_stream, "refine_transcript", refine)
-    worker = asyncio.create_task(stream.run())
-    stream.set_selection("Hello.")
-    _speak(stream, 1)
-    await stream.prefilling
-    assert stream.llm.calls[0]["max_tokens"] == 1
-    stream.finish()
-    await worker
-    assert stream.refined == "Hola."
-    rewrite_call = stream.llm.calls[-1]
-    assert rewrite_call["prompt"] == commands.command_message("Hello.", "translate to Spanish")
-    # Prefill and rewrite run on the dictation cleanup model.
-    assert {call["model_size"] for call in stream.llm.calls} == {stream.settings.llm_model}
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as db:
-        result = stream.persist(db)
-    assert result.source == "command"
-    assert result.transcript_raw == "translate to Spanish"
-    assert result.transcript_refined == "Hola."
-    assert result.command_selection == "Hello."
-    assert result.allow_auto_paste
-    assert result.auto_refine
-    assert result.refinement_flags is None
-
-
-@pytest.mark.asyncio
-async def test_a_command_without_a_selection_fails_without_rewriting(stream):
-    worker = asyncio.create_task(stream.run())
-    _speak(stream, 1)
-    stream.finish()
-    await worker
-    assert stream.refinement_error == "Select text to rewrite first"
-    assert not stream.llm.calls
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as db:
-        result = stream.persist(db)
-    # Saved, so the instruction isn't lost, but with no rewrite to paste.
-    assert result.transcript_refined is None
-
-
-def test_only_command_sessions_take_a_bounded_selection(stream, tmp_path, monkeypatch):
-    with pytest.raises(ValueError, match="too long"):
-        stream.set_selection("x" * (commands.MAX_SELECTION_CHARS + 1))
-    stream.source = "dictation"
-    with pytest.raises(ValueError, match="Only command"):
-        stream.set_selection("x")
 
 
 # --- Loading the cleanup model ------------------------------------------------------

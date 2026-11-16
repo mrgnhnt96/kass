@@ -17,7 +17,6 @@ from backend.database import session as database_session
 from backend.database.migrations import run_migrations
 from backend.database.models import Base, Capture, CaptureFeedback
 from backend.services import captures, history_retention, known_names, personal_examples, styles
-from backend.services.capture_stream import StreamingCapture
 from backend.services.settings import get_capture_settings
 from backend.tests.settings_rows import save_settings
 
@@ -95,19 +94,6 @@ def test_off_by_default_and_upgrades_add_the_setting_and_the_capture_marker(stor
     with engine.connect() as connection:
         assert connection.execute(text("SELECT discard_audio FROM capture_settings")).scalar() == 0
         assert connection.execute(text("SELECT audio_deleted FROM captures")).scalar() == 0
-
-
-@pytest.mark.parametrize("discard", [True, False])
-def test_a_dictation_is_saved_without_its_recording_only_when_asked(storage, discard):
-    choose(storage, discard)
-    session = StreamingCapture.__new__(StreamingCapture)
-    with storage() as db:
-        session.settings = get_capture_settings(db)
-    session.path = config.get_captures_dir() / "take.wav"
-    session.path.write_bytes(b"RIFF")
-    stored = session.stored_audio()
-    assert session.path.exists() is not discard
-    assert stored == ("" if discard else config.to_storage_path(session.path))
 
 
 @pytest.mark.asyncio
