@@ -8,7 +8,6 @@ import {
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { AppLocationDialog } from '@/components/AppLocationDialog/AppLocationDialog';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
-import { CommandPalette } from '@/components/CommandPalette/CommandPalette';
 import { InsightsTab } from '@/components/InsightsTab/InsightsTab';
 import { ModelsTab } from '@/components/ModelsTab/ModelsTab';
 import { SetupEntry } from '@/components/Onboarding/SetupEntry';
@@ -57,7 +56,6 @@ function RootLayout() {
           <StatusBar />
         </>
       )}
-      <CommandPalette />
       <RetentionAskDialog />
       <AppLocationDialog />
 

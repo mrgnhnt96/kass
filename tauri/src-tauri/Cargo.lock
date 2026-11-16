@@ -4134,6 +4134,8 @@ dependencies = [
  "kass-api",
  "kass-i18n",
  "kass-insights",
+ "kass-palette",
+ "kass-pill",
  "kass-server",
  "kass-ui",
  "kass-writing-style",
@@ -4196,6 +4198,27 @@ dependencies = [
  "kass-api",
  "kass-i18n",
  "kass-ui",
+]
+
+[[package]]
+name = "kass-palette"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui-kit",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
+]
+
+[[package]]
+name = "kass-pill"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kass-i18n",
+ "kass-ui",
+ "serde",
 ]
 
 [[package]]

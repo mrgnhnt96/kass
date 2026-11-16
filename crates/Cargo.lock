@@ -3552,6 +3552,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "kass-palette"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui-kit",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
+ "serde_json",
+]
+
+[[package]]
+name = "kass-pill"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kass-i18n",
+ "kass-ui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kass-ui"
 version = "0.1.0"
 dependencies = [

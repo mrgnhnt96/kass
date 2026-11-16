@@ -1,7 +1,6 @@
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import kassLogo from '@/assets/kass-logo.png';
-import { DictateWindow } from '@/components/DictateWindow/DictateWindow';
 import { OnboardingWindow } from '@/components/Onboarding/OnboardingWindow';
 import { useOnboardingLauncher } from '@/components/Onboarding/useOnboardingLauncher';
 import ShinyText from '@/components/ShinyText';
@@ -25,7 +24,7 @@ import { router } from '@/router';
 import { useLogStore } from '@/stores/logStore';
 import { remoteServerUrl, useServerStore } from '@/stores/serverStore';
 
-/** Which window this webview is: `?view=dictate` and `?view=onboarding` are their own. */
+/** Which window this webview is: `?view=onboarding` is its own. */
 function currentView(): string | null {
   if (typeof window === 'undefined') return null;
   return new URLSearchParams(window.location.search).get('view');
@@ -76,14 +75,7 @@ function App() {
     void readThisMac();
   }, []);
 
-  // The dictate window runs in a separate Tauri webview that must skip
-  // server bootstrap (the main window owns that lifecycle) and render only
-  // the floating recording surface. Split into a sibling component so the
-  // main app's hooks are not called on the dictate path.
   const view = currentView();
-  if (view === 'dictate') {
-    return <DictateWindow />;
-  }
   // Onboarding runs in its own window once the main window has the server up.
   if (view === 'onboarding') {
     return <OnboardingWindow />;

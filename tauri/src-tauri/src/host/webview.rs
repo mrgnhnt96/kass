@@ -67,6 +67,14 @@ pub(crate) fn with_window<R>(label: &str, f: impl FnOnce(&NSWindow) -> R) -> Opt
     Some(f(&window))
 }
 
+/// Run `f` in window `label`'s GPUI window, if it's open.
+pub(crate) fn update_window(label: &str, cx: &mut App, f: impl FnOnce(&mut Window, &mut App)) {
+    let handle = WINDOWS.with(|w| w.borrow().get(label).map(|e| e.handle));
+    if let Some(handle) = handle {
+        let _ = handle.update(cx, |_, window, cx| f(window, cx));
+    }
+}
+
 fn with_webview(label: &str, f: impl FnOnce(&WebView)) {
     WINDOWS.with(|w| {
         if let Some(webview) = w.borrow().get(label).and_then(|e| e.webview.as_ref()) {
@@ -209,8 +217,9 @@ pub enum OnClose {
 
 pub struct Spec {
     pub label: &'static str,
-    /// Appended to the page URL, like `?view=dictate`.
-    pub query: &'static str,
+    /// Appended to the page URL, like `?shell=native`. `None` opens no web
+    /// view: GPUI's `root` draws the whole window.
+    pub query: Option<&'static str>,
     pub options: WindowOptions,
     pub transparent: bool,
     /// Runs on the new NSWindow before the web view attaches to it.
@@ -280,26 +289,35 @@ pub fn open(cx: &mut App, spec: Spec) -> Result<WebviewWindow> {
             )
             .into(),
         };
-        match build_webview(window, label, query, bounds, transparent) {
-            Ok(webview) => {
-                // Follow the window's size, as Tauri's did. wry pins a child
-                // web view's top edge instead.
-                unsafe {
-                    let _: () = msg_send![&*webview.webview(), setAutoresizingMask: 18usize];
+        let webview = match query {
+            Some(query) => match build_webview(window, label, query, bounds, transparent) {
+                Ok(webview) => {
+                    // Follow the window's size, as Tauri's did. wry pins a child
+                    // web view's top edge instead.
+                    unsafe {
+                        let _: () = msg_send![&*webview.webview(), setAutoresizingMask: 18usize];
+                    }
+                    Some(webview)
                 }
-                WINDOWS.with(|w| {
-                    w.borrow_mut().insert(
-                        label.to_string(),
-                        Entry {
-                            webview: Some(webview),
-                            window: ns_window,
-                            handle: Window::window_handle(window),
-                        },
-                    )
-                });
-                labels().lock().unwrap().insert(label.to_string());
-            }
-            Err(e) => failed = Some(e.to_string()),
+                Err(e) => {
+                    failed = Some(e.to_string());
+                    None
+                }
+            },
+            None => None,
+        };
+        if failed.is_none() {
+            WINDOWS.with(|w| {
+                w.borrow_mut().insert(
+                    label.to_string(),
+                    Entry {
+                        webview,
+                        window: ns_window,
+                        handle: Window::window_handle(window),
+                    },
+                )
+            });
+            labels().lock().unwrap().insert(label.to_string());
         }
         window.on_window_should_close(cx, move |_, _| match on_close {
             OnClose::Hide => {
@@ -362,11 +380,17 @@ fn build_webview(
 /// origin the Tauri build had (so saved settings and the server's allowed
 /// origins carry over), or Vite's dev server.
 fn page_url(query: &str) -> String {
+    format!("{}/{query}", page_origin())
+}
+
+/// The origin the app's pages load from, which the server allows: the
+/// bundled pages' `tauri://localhost`, or Vite's dev server.
+pub(crate) fn page_origin() -> String {
     if cfg!(feature = "custom-protocol") {
-        format!("tauri://localhost/{query}")
+        "tauri://localhost".into()
     } else {
         let base = std::env::var("KASS_DEV_URL").unwrap_or_else(|_| "http://localhost:5173".into());
-        format!("{}/{query}", base.trim_end_matches('/'))
+        base.trim_end_matches('/').to_string()
     }
 }
 

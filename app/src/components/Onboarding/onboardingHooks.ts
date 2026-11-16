@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CaptureResponse } from '@/lib/api/types';
-import type { NativeDictationEvent } from '@/lib/hooks/useNativeDictationSession';
+import type { NativeDictationEvent } from '@/lib/hooks/nativeDictationEvent';
 
 export type ChordAction = 'push_to_talk' | 'toggle_to_talk' | 'command';
 

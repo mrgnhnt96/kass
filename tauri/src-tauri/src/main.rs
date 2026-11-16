@@ -5,6 +5,7 @@ mod app_location;
 mod clipboard;
 mod commands;
 mod deep_link;
+mod dictate;
 mod dictation;
 mod dictation_handshake;
 mod focus_capture;
@@ -21,6 +22,7 @@ mod keyboard_layout;
 mod keystroke_insert;
 mod login_item;
 mod overlap;
+mod palette;
 mod report;
 mod server_process;
 mod server_version;
@@ -40,7 +42,7 @@ use gpui_kit::{
     WindowKind, WindowOptions,
 };
 use host::webview::{self, OnClose, Spec};
-use host::{AppHandle, Emitter, Listener, Manager, State};
+use host::{AppHandle, Emitter, Manager, State};
 use objc2::runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel};
 use objc2::{msg_send, sel, MainThreadMarker};
 use objc2_app_kit::{NSScreen, NSWindow};
@@ -78,7 +80,7 @@ fn main_window_spec(cx: &App) -> Spec {
         label: MAIN_WINDOW_LABEL,
         // The page draws only the screens not yet in GPUI; the shell around
         // them (src/shell) is native.
-        query: "?shell=native",
+        query: Some("?shell=native"),
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -100,13 +102,13 @@ fn main_window_spec(cx: &App) -> Spec {
     }
 }
 
-/// The floating dictate pill, built hidden at startup so its page listens
-/// for the `dictate:*` events before the first chord. The HotkeyMonitor
-/// shows it on chord-start; the page hides it when the take finishes.
+/// The floating dictate pill, built hidden before the first chord. The
+/// HotkeyMonitor shows it on chord-start; the pill (src/dictate.rs) parks it
+/// when the take finishes.
 fn dictate_window_spec() -> Spec {
     Spec {
         label: DICTATE_WINDOW_LABEL,
-        query: "?view=dictate",
+        query: None,
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(-10_000.0), px(-10_000.0)),
@@ -130,14 +132,14 @@ fn dictate_window_spec() -> Spec {
         transparent: true,
         prepare: prepare_pill,
         on_close: OnClose::Never,
-        root: None,
+        root: Some(dictate::root),
     }
 }
 
 fn onboarding_window_spec(cx: &App) -> Spec {
     Spec {
         label: ONBOARDING_WINDOW_LABEL,
-        query: "?view=onboarding",
+        query: Some("?view=onboarding"),
         options: WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -290,8 +292,8 @@ fn set_dictate_chip_space(window: &host::WebviewWindow, show: bool) {
     });
 }
 
-/// Called by the HUD around the style chip's animation.
-fn dictate_chip_space(app: AppHandle, show: bool) {
+/// Called by the pill around the style chip's animation.
+pub(crate) fn dictate_chip_space(app: AppHandle, show: bool) {
     if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
         set_dictate_chip_space(&window, show);
     }
@@ -400,7 +402,7 @@ pub fn force_order_front(window: &host::WebviewWindow) {
 /// been unreliable for transparent always-on-top windows on macOS: the
 /// window could linger as an invisible click target that steals focus to
 /// Kass when the user clicks where it used to be.
-fn park_dictate_window(window: &host::WebviewWindow) {
+pub(crate) fn park_dictate_window(window: &host::WebviewWindow) {
     // A chip cut off by the end of the take gives its room back.
     set_dictate_chip_space(window, false);
     let _ = window.set_ignore_cursor_events(true);
@@ -1261,9 +1263,9 @@ fn enable_hotkey(
     // polls `check_input_monitoring_permission` separately.
     let _ = input_monitoring::request();
 
-    // The dictate pill webview must exist before the first chord fires so it
-    // can subscribe to `dictate:start`. Build it here (idempotent — Tauri
-    // returns the existing window when one with this label already exists).
+    // The dictate pill must exist before the first chord fires so it hears
+    // the take's first state. Build it here (idempotent: the existing window
+    // is kept when one with this label already exists).
     if app.get_webview_window(DICTATE_WINDOW_LABEL).is_none() {
         ensure_dictate_window();
     }
@@ -1822,13 +1824,6 @@ pub fn run() {
         // Apps that show a text field when dictation starts
         // (docs/DICTATION_HANDSHAKE.md) register and reply here.
         dictation_handshake::listen();
-        // The page emits `dictate:hide` whenever the pill cycle finishes
-        // (rest-fade → hidden).
-        app.listen("dictate:hide", move |_event| {
-            if let Some(window) = AppHandle.get_webview_window(DICTATE_WINDOW_LABEL) {
-                park_dictate_window(&window);
-            }
-        });
     });
 }
 
