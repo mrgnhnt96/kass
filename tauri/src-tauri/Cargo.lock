@@ -2358,6 +2358,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "kass-text",
  "libc",
  "ort",
  "rusqlite",
