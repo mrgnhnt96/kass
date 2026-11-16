@@ -3552,6 +3552,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kass-models"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "gpui-kit",
+ "kass-api",
+ "kass-i18n",
+ "kass-ui",
+]
+
+[[package]]
 name = "kass-onboarding"
 version = "0.1.0"
 dependencies = [

@@ -9,6 +9,7 @@ interface NativePrefs {
   theme: Theme;
   shareOnNetwork: boolean;
   remoteServerUrl: string | null;
+  customModelsDir: string | null;
   /** The other Mac in use can't be reached; this Mac's server stands in. */
   sharedAway: boolean;
 }
@@ -25,10 +26,10 @@ export function loadNativePrefs(): Promise<void> {
   loading ??= (async () => {
     await listen<NativePrefs>('prefs:changed', ({ payload }) => apply(payload));
     const { theme } = useUIStore.getState();
-    const { shareOnNetwork, remoteServerUrl } = useServerStore.getState();
+    const { shareOnNetwork, remoteServerUrl, customModelsDir } = useServerStore.getState();
     apply(
       await invoke<NativePrefs>('prefs_adopt', {
-        prefs: { theme, shareOnNetwork, remoteServerUrl },
+        prefs: { theme, shareOnNetwork, remoteServerUrl, customModelsDir },
       }),
     );
   })().catch((error) => console.warn('[prefs] loading the app’s preferences failed:', error));
@@ -44,6 +45,9 @@ function apply(prefs: NativePrefs): void {
   }
   if (server.remoteServerUrl !== prefs.remoteServerUrl) {
     server.setRemoteServerUrl(prefs.remoteServerUrl);
+  }
+  if (server.customModelsDir !== prefs.customModelsDir) {
+    server.setCustomModelsDir(prefs.customModelsDir);
   }
   if (server.sharedAway !== prefs.sharedAway) {
     server.setSharedAway(prefs.sharedAway);

@@ -28,6 +28,8 @@ pub struct Prefs {
     pub share_on_network: bool,
     /// Beta `network`: the other Mac whose Kass this one uses.
     pub remote_server_url: Option<String>,
+    /// The folder models are kept in, when the user moved it.
+    pub custom_models_dir: Option<String>,
     /// Set once the page's old values were taken, or anything was changed
     /// here: the page's copy counts for nothing after that.
     pub adopted: bool,
@@ -39,6 +41,7 @@ impl Default for Prefs {
             theme: "system".into(),
             share_on_network: false,
             remote_server_url: None,
+            custom_models_dir: None,
             adopted: false,
         }
     }
@@ -70,6 +73,7 @@ impl Prefs {
             },
             share_on_network: page.share_on_network,
             remote_server_url: page.remote_server_url.filter(|url| !url.is_empty()),
+            custom_models_dir: page.custom_models_dir.filter(|dir| !dir.is_empty()),
             adopted: true,
         })
     }
@@ -82,6 +86,7 @@ pub struct PagePrefs {
     pub theme: String,
     pub share_on_network: bool,
     pub remote_server_url: Option<String>,
+    pub custom_models_dir: Option<String>,
 }
 
 static PREFS: Mutex<Option<Prefs>> = Mutex::new(None);
@@ -179,6 +184,7 @@ pub fn page_view() -> serde_json::Value {
         "theme": prefs.theme,
         "shareOnNetwork": prefs.share_on_network,
         "remoteServerUrl": prefs.remote_server_url,
+        "customModelsDir": prefs.custom_models_dir,
         "sharedAway": away(),
     })
 }
@@ -244,6 +250,25 @@ pub async fn use_remote(url: Option<String>) -> Result<(), String> {
     result
 }
 
+/// Keep models in this folder (the default with `None`), then restart the
+/// server there.
+pub async fn set_models_dir(dir: Option<String>) -> Result<(), String> {
+    let previous = get().custom_models_dir;
+    let dir = dir.filter(|dir| !dir.is_empty());
+    change(|prefs| prefs.custom_models_dir = dir.clone());
+    // An empty folder resets the server to its default.
+    let result = crate::restart_server(
+        AppHandle,
+        AppHandle.state::<ServerState>(),
+        Some(dir.unwrap_or_default()),
+    )
+    .await;
+    if result.is_err() {
+        change(|prefs| prefs.custom_models_dir = previous);
+    }
+    result.map(drop)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,6 +278,7 @@ mod tests {
             theme: theme.into(),
             share_on_network: share,
             remote_server_url: remote.map(Into::into),
+            custom_models_dir: None,
         }
     }
 

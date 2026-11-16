@@ -147,7 +147,8 @@ const insightsRoute = createRoute({
 const modelsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/models',
-  component: ModelsTab,
+  // The native shell draws Models itself (crates/kass-models).
+  component: nativeShell ? () => null : ModelsTab,
   // `?model=<name>` opens that model (Settings links here to change one).
   validateSearch: (search: Record<string, unknown>): { model?: string } => ({
     model: typeof search.model === 'string' ? search.model : undefined,

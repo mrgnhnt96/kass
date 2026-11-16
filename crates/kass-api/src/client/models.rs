@@ -7,7 +7,9 @@ use super::ApiClient;
 use crate::encode::component;
 use crate::error::Result;
 use crate::sse::{SseCancel, SseStream};
-use crate::types::{Message, MigrateResult, ModelDownloadRequest, ModelStatusListResponse};
+use crate::types::{
+    HuggingFaceModelInfo, Message, MigrateResult, ModelDownloadRequest, ModelStatusListResponse,
+};
 
 impl ApiClient {
     pub fn model_status(&self) -> Result<ModelStatusListResponse> {
@@ -75,6 +77,22 @@ impl ApiClient {
         self.fetch::<DiskSpace>("GET", "/models/disk-space")
             .map(|body| body.free_mb)
     }
+}
+
+/// A model's card on Hugging Face (`repo_id` like `openai/whisper-base`),
+/// straight from huggingface.co rather than the Kass server.
+pub fn hugging_face_model_info(repo_id: &str) -> Result<HuggingFaceModelInfo> {
+    let path = repo_id
+        .split('/')
+        .map(component)
+        .collect::<Vec<_>>()
+        .join("/");
+    let response = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .get(&format!("https://huggingface.co/api/models/{path}"))
+        .call()?;
+    super::decode(response)
 }
 
 fn download(model_name: &str) -> ModelDownloadRequest {
