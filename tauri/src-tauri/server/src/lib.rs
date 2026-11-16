@@ -6,9 +6,11 @@
 //! lists its paths; a ported route swaps `proxy::to_worker()` for a handler
 //! of its own.
 
+pub mod captures;
 mod cors;
 pub mod db;
 pub mod dictionary;
+mod events;
 pub mod proxy;
 pub mod routes;
 pub mod settings;
@@ -44,12 +46,23 @@ pub struct AppState {
     pub proxy: proxy::Proxy,
     pub db: db::Db,
     pub sync: dictionary::store::Sync,
+    events: events::Events,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
 pub struct Running {
     address: SocketAddr,
     _shutdown: oneshot::Sender<()>,
+    _relay: Relay,
+}
+
+/// Stops passing on the worker's capture events when the server stops.
+struct Relay(tokio::task::JoinHandle<()>);
+
+impl Drop for Relay {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 impl Running {
@@ -74,12 +87,17 @@ pub async fn start(config: Config) -> Result<Running, String> {
                 .shared_server
                 .is_some_and(|url| !url.trim().trim_end_matches('/').is_empty()),
         },
+        events: events::Events::default(),
     };
     let listener = TcpListener::bind(config.listen)
         .await
         .map_err(|e| format!("Could not listen on {}: {e}", config.listen))?;
     let address = listener.local_addr().map_err(|e| e.to_string())?;
     let (shutdown, stopped) = oneshot::channel::<()>();
+    let relay = Relay(tokio::spawn(events::relay(
+        state.events.clone(),
+        state.proxy.clone(),
+    )));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
@@ -99,5 +117,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
     Ok(Running {
         address,
         _shutdown: shutdown,
+        _relay: relay,
     })
 }

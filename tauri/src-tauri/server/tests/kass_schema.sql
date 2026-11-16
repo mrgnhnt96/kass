@@ -1,4 +1,4 @@
--- The tables the dictionary reads and writes, as the Python worker creates
+-- The tables the dictionary and captures read and write, as the Python worker creates
 -- them in kass.db (backend/database/models.py), for tests.
 CREATE TABLE dictionary_entries (
 	id VARCHAR NOT NULL, 
@@ -48,3 +48,46 @@ CREATE TABLE sync_changes (
 	changed_at DATETIME NOT NULL, 
 	PRIMARY KEY (kind, ref_id)
 );
+CREATE TABLE captures (
+	id VARCHAR NOT NULL, 
+	audio_path VARCHAR NOT NULL, 
+	source VARCHAR NOT NULL, 
+	language VARCHAR, 
+	duration_ms INTEGER, 
+	transcript_raw TEXT NOT NULL, 
+	transcript_refined TEXT, 
+	stt_model VARCHAR, 
+	llm_model VARCHAR, 
+	refinement_flags TEXT, 
+	refinement_review TEXT, 
+	app_bundle_id VARCHAR, 
+	app_name VARCHAR, 
+	command_selection TEXT, 
+	command_instruction TEXT, 
+	command_transform VARCHAR, 
+	style_id VARCHAR, 
+	app_category VARCHAR, 
+	teaches_style_id VARCHAR, 
+	mac_id VARCHAR, 
+	mac_name VARCHAR, 
+	audio_deleted BOOLEAN NOT NULL, 
+	prosody TEXT, 
+	created_at DATETIME, 
+	PRIMARY KEY (id)
+);
+CREATE TABLE capture_feedback (
+	id VARCHAR NOT NULL, 
+	capture_id VARCHAR NOT NULL, 
+	target VARCHAR NOT NULL, 
+	expected_text TEXT NOT NULL, 
+	notes TEXT NOT NULL, 
+	snapshot TEXT NOT NULL, 
+	source VARCHAR DEFAULT 'manual' NOT NULL, 
+	filed_by VARCHAR, 
+	app_bundle_id VARCHAR, 
+	teaches_style_id VARCHAR, 
+	created_at DATETIME, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(capture_id) REFERENCES captures (id)
+);
+CREATE INDEX ix_capture_feedback_capture_id ON capture_feedback (capture_id);

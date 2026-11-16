@@ -80,7 +80,7 @@ def test_filters_to_one_app_or_to_no_app(db):
     assert total == 4
 
 
-def test_endpoints_count_and_filter(db):
+def test_the_app_list_counts_captures(db):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -98,6 +98,3 @@ def test_endpoints_count_and_filter(db):
     assert apps["total"] == 3
     assert apps["unknown_count"] == 1
     assert apps["apps"][0]["app_name"] == "Mail"
-
-    assert client.get("/captures", params={"app_bundle_id": "com.apple.mail"}).json()["total"] == 2
-    assert client.get("/captures", params={"unknown_app": "true"}).json()["total"] == 1

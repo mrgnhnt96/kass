@@ -151,36 +151,6 @@ def test_missing_capture_and_snapshot_mismatch(db):
         save_feedback("take", draft, db)
 
 
-def test_http_roundtrip_export_and_validation(db):
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-    from sqlalchemy.pool import StaticPool
-
-    from backend.database import get_db
-    from backend.routes.captures import router
-
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        session.add(Capture(id="take", audio_path="captures/take.wav", transcript_raw="wrong words"))
-        session.commit()
-        app = FastAPI()
-        app.include_router(router)
-        app.dependency_overrides[get_db] = lambda: session
-        with TestClient(app) as client:
-            snapshot = client.get("/captures/take").json()
-            body = {"snapshot": snapshot, "target": "raw", "expected_text": "Right words"}
-            response = client.post("/captures/take/feedback", json=body)
-            assert response.status_code == 200
-            assert response.json()["source"] == "manual"
-            assert client.get("/capture/feedback/export").json() == [response.json()]
-            assert client.get("/captures/take/feedback").json() == [response.json()]
-            assert client.post("/captures/missing/feedback", json=body).status_code == 404
-            body["target"] = "unknown"
-            assert client.post("/captures/take/feedback", json=body).status_code == 422
-    engine.dispose()
-
-
 def test_spoken_reports_join_spelled_letters(db):
     assert save_feedback("take", request(db), db).expected_text == "Right words"
     draft = request(db, source="voice_fix")
@@ -190,32 +160,6 @@ def test_spoken_reports_join_spelled_letters(db):
     draft = request(db)
     draft.expected_text = "Code A-B-C"
     assert save_feedback("take", draft, db).expected_text == "Code A-B-C"
-
-
-def test_http_withdraw_removes_only_that_report():
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-    from sqlalchemy.pool import StaticPool
-
-    from backend.database import get_db
-    from backend.routes.captures import router
-
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        session.add(Capture(id="take", audio_path="captures/take.wav", transcript_raw="wrong words"))
-        session.commit()
-        kept = save_feedback("take", request(session), session)
-        withdrawn = save_feedback("take", request(session, source="redictation"), session)
-        app = FastAPI()
-        app.include_router(router)
-        app.dependency_overrides[get_db] = lambda: session
-        with TestClient(app) as client:
-            assert client.delete(f"/captures/other/feedback/{withdrawn.id}").status_code == 404
-            assert client.delete(f"/captures/take/feedback/{withdrawn.id}").status_code == 204
-            assert client.delete(f"/captures/take/feedback/{withdrawn.id}").status_code == 404
-        assert [report.id for report in list_feedback(session)] == [kept.id]
-    engine.dispose()
 
 
 def _misheard(db):
@@ -278,3 +222,71 @@ def test_deleting_the_capture_removes_its_corrected_words(db, monkeypatch):
     save_feedback("pikto", _misheard(db), db)
     assert delete_capture("pikto", db)
     assert _words(db) == []
+
+
+@pytest.fixture
+def worker(monkeypatch):
+    """The routes the Rust server calls, on a database both share."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy.pool import StaticPool
+
+    from backend.database import get_db
+    from backend.routes.captures import worker_router
+    from backend.services import capture_feedback
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    changed = []
+    monkeypatch.setattr(
+        capture_feedback,
+        "reports_changed",
+        lambda target, source, db, withdrawn=False: changed.append((target, source, withdrawn)),
+    )
+    with Session(engine) as session:
+        app = FastAPI()
+        app.include_router(worker_router)
+        app.dependency_overrides[get_db] = lambda: session
+        with TestClient(app) as client:
+            yield client, session, changed
+    engine.dispose()
+
+
+def test_the_worker_joins_spelling_and_takes_back_changes_for_the_server(worker):
+    from backend.services.text_merge import take_back
+
+    client, _, _ = worker
+    joined = client.post("/worker/captures/join-spelling", json={"text": "Thanks, M-E-G-H-A-N."})
+    assert joined.json() == {"text": "Thanks, MEGHAN."}
+    body = {"before": "wrong words", "removed": "Right words", "newer": ["Right words now", "wrong words here"]}
+    texts = client.post("/worker/captures/take-back", json=body).json()["texts"]
+    assert texts == [take_back("wrong words", "Right words", text) for text in body["newer"]]
+    assert client.post("/worker/captures/take-back", json={"before": "a", "removed": "b"}).status_code == 422
+
+
+def test_the_worker_learns_from_reports_the_server_saved(worker, monkeypatch):
+    from backend.database.models import DictionaryEntry
+    from backend.services.voice_training import bank
+
+    client, session, changed = worker
+    forgotten = []
+    monkeypatch.setattr(bank, "forget", forgotten.append)
+    learn = {
+        "report_id": "r1",
+        "source": "manual",
+        "original": "Test that Pikto works.",
+        "expected": "Test that Picto works.",
+    }
+    spoken = {**learn, "report_id": "r2", "source": "redictation"}
+    body = {
+        "learn": [learn, spoken],
+        "changed": [{"target": "refined", "source": "manual", "withdrawn": True}],
+        "forgotten": "gone",
+    }
+    assert client.post("/worker/captures/reports-changed", json=body).json() == {"ok": True}
+    # Only explicit fixes teach words.
+    assert _words(session) == [("Picto", "correction")]
+    assert {row.added_by for row in session.query(DictionaryEntry)} == {"r1"}
+    assert changed == [("refined", "manual", True)]
+    assert forgotten == ["gone"]
+    assert client.post("/worker/captures/reports-changed", json={}).json() == {"ok": True}

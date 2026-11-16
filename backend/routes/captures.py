@@ -1,12 +1,19 @@
-"""Capture (voice input) endpoints."""
+"""Capture (voice input) endpoints that run the models.
+
+The Rust server answers the capture list, each capture and its audio, the
+reports on them and the events stream from kass.db. The worker keeps saving,
+refining and retranscribing captures and the learning, and ``worker_router``
+holds what the server asks of it for the rest.
+"""
 
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import config, models
+from .. import models
 from ..backends import get_llm_model_configs, get_stt_model_configs
 from ..backends.base import is_model_cached
 from ..database import Capture as DBCapture, get_db
@@ -16,6 +23,7 @@ from ..services.refinement import RefinementFlags
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+worker_router = APIRouter(prefix="/worker/captures", tags=["worker"])
 
 
 @router.get("/capture/learning")
@@ -132,31 +140,6 @@ async def create_capture_endpoint(
     )
 
 
-@router.get("/captures", response_model=models.CaptureListResponse)
-async def list_captures_endpoint(
-    limit: int = 50,
-    offset: int = 0,
-    app_bundle_id: str | None = None,
-    unknown_app: bool = False,
-    db: Session = Depends(get_db),
-):
-    """The newest captures first. ``app_bundle_id`` keeps one app's;
-    ``unknown_app`` keeps those with no app recorded."""
-    if limit < 1 or limit > 200:
-        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
-    if offset < 0:
-        raise HTTPException(status_code=400, detail="offset must be >= 0")
-
-    items, total = captures_service.list_captures(
-        db,
-        limit=limit,
-        offset=offset,
-        app_bundle_id=app_bundle_id,
-        unknown_app=unknown_app,
-    )
-    return models.CaptureListResponse(items=items, total=total)
-
-
 @router.get("/captures/apps", response_model=models.CaptureAppsResponse)
 async def list_capture_apps_endpoint(db: Session = Depends(get_db)):
     """Capture counts per app for the Captures app list."""
@@ -179,59 +162,6 @@ async def capture_stats_endpoint(
         raise HTTPException(status_code=400, detail=f"period must be one of {', '.join(usage_stats.PERIODS)}")
     scope = usage_stats.AppScope(bundle_id=app_bundle_id or None, unknown=unknown_app)
     return usage_stats.usage_stats(db, period, scope)
-
-
-@router.get("/captures/events")
-async def capture_events_endpoint():
-    """Server-Sent Events: ``changed`` whenever captures are added, edited or
-    deleted, from this Mac or another using it (beta ``network``), and
-    ``peers`` with the Macs listening."""
-    from ..services import capture_events
-    from ..utils.macs import current_mac
-
-    return StreamingResponse(
-        capture_events.subscribe(current_mac.get()),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@router.get("/captures/{capture_id}", response_model=models.CaptureResponse)
-async def get_capture_endpoint(capture_id: str, db: Session = Depends(get_db)):
-    capture = captures_service.get_capture(capture_id, db)
-    if not capture:
-        raise HTTPException(status_code=404, detail="Capture not found")
-    return capture
-
-
-@router.get("/captures/{capture_id}/audio")
-async def get_capture_audio_endpoint(capture_id: str, db: Session = Depends(get_db)):
-    """Stream the original capture audio file."""
-    row = db.query(DBCapture).filter(DBCapture.id == capture_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Capture not found")
-
-    audio_path = config.resolve_storage_path(row.audio_path)
-    if audio_path is None or not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file not found")
-
-    return FileResponse(
-        audio_path,
-        media_type="audio/wav",
-        filename=f"capture_{capture_id}.wav",
-    )
-
-
-@router.delete("/captures/{capture_id}")
-async def delete_capture_endpoint(capture_id: str, db: Session = Depends(get_db)):
-    deleted = captures_service.delete_capture(capture_id, db)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Capture not found")
-    return {"message": f"Capture {capture_id} deleted"}
 
 
 @router.post("/captures/{capture_id}/refine", response_model=models.CaptureResponse)
@@ -348,44 +278,84 @@ async def retranscribe_capture_endpoint(
     return capture
 
 
-@router.post("/captures/{capture_id}/feedback", response_model=models.CaptureFeedbackResponse)
-async def report_capture_output(
-    capture_id: str,
-    request: models.CaptureFeedbackCreate,
-    db: Session = Depends(get_db),
-):
-    from ..services.capture_feedback import save_feedback
-
-    try:
-        feedback = save_feedback(capture_id, request, db)
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-    if feedback is None:
-        raise HTTPException(status_code=404, detail="Capture not found")
-    return feedback
+# -- What the Rust server asks of the worker ----------------------------------
 
 
-@router.delete("/captures/{capture_id}/feedback/{report_id}", status_code=204)
-async def withdraw_capture_report(capture_id: str, report_id: str, db: Session = Depends(get_db)):
-    """Withdraw one report and what it taught (docs/plans/CORRECTION_LEARNING.md)."""
-    from ..services.capture_feedback import withdraw_feedback
-
-    if not withdraw_feedback(capture_id, report_id, db):
-        raise HTTPException(status_code=404, detail="Report not found")
+class TextRequest(BaseModel):
+    text: str
 
 
-@router.get("/captures/{capture_id}/feedback", response_model=list[models.CaptureFeedbackResponse])
-async def list_capture_feedback(capture_id: str, db: Session = Depends(get_db)):
-    from ..services.capture_feedback import list_feedback
-
-    if captures_service.get_capture(capture_id, db) is None:
-        raise HTTPException(status_code=404, detail="Capture not found")
-    return list_feedback(db, capture_id)
+class TakeBackRequest(BaseModel):
+    before: str
+    removed: str
+    newer: list[str]
 
 
-@router.get("/capture/feedback/export", response_model=list[models.CaptureFeedbackResponse])
-async def export_capture_feedback(db: Session = Depends(get_db)):
-    """Export local correction snapshots; audio remains available on each capture."""
-    from ..services.capture_feedback import list_feedback
+class LearnedReport(BaseModel):
+    report_id: str
+    source: str
+    original: str
+    expected: str
 
-    return list_feedback(db)
+
+class ChangedReports(BaseModel):
+    target: str
+    source: str
+    withdrawn: bool = False
+
+
+class ReportsChangedRequest(BaseModel):
+    learn: list[LearnedReport] = []
+    changed: list[ChangedReports] = []
+    forgotten: str | None = None
+
+
+@worker_router.post("/join-spelling")
+def join_spelling_endpoint(request: TextRequest):
+    """Letters a user spelled aloud, joined as one word."""
+    from ..services.spelling import join_spelling
+
+    return {"text": join_spelling(request.text)}
+
+
+@worker_router.post("/take-back")
+def take_back_endpoint(request: TakeBackRequest):
+    """Each newer report's text without the changes ``removed`` made to ``before``."""
+    from ..services.text_merge import take_back
+
+    return {"texts": [take_back(request.before, request.removed, text) for text in request.newer]}
+
+
+@worker_router.post("/reports-changed")
+def reports_changed_endpoint(request: ReportsChangedRequest, db: Session = Depends(get_db)):
+    """The server saved, withdrew or deleted reports: learn the words they
+    fixed, relearn from them, and drop a deleted capture's voice take."""
+    from ..services import capture_feedback, dictionary
+    from ..services.voice_training import bank
+
+    # The server wrote the dictionary rows the reports added or took back.
+    dictionary.invalidate()
+    for item in request.learn:
+        capture_feedback.learn_words(item.source, item.original, item.expected, item.report_id, db)
+    for item in request.changed:
+        capture_feedback.reports_changed(item.target, item.source, db, withdrawn=item.withdrawn)
+    if request.forgotten is not None:
+        bank.forget(request.forgotten)
+    return {"ok": True}
+
+
+@worker_router.get("/events")
+async def capture_events_endpoint():
+    """The worker's own capture events (saved, refined, learned), which the
+    server passes on to the apps."""
+    from ..services import capture_events
+
+    return StreamingResponse(
+        capture_events.subscribe(None),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

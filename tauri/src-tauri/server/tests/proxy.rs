@@ -105,7 +105,7 @@ async fn stream_socket(headers: HeaderMap, upgrade: WebSocketUpgrade) -> Respons
 async fn start_worker() -> SocketAddr {
     let app = Router::new()
         .route("/captures/stream", get(stream_socket))
-        .route("/captures/events", get(events))
+        .route("/models/progress/{model_name}", get(events))
         .route("/upload", post(echo_request))
         .fallback(any(echo_request));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -186,7 +186,7 @@ async fn streams_events_as_they_come() {
     let server = start_server(start_worker().await).await;
     let mut stream = TcpStream::connect(server.address()).await.unwrap();
     stream
-        .write_all(b"GET /captures/events HTTP/1.1\r\nHost: x\r\n\r\n")
+        .write_all(b"GET /models/progress/turbo HTTP/1.1\r\nHost: x\r\n\r\n")
         .await
         .unwrap();
     let mut seen = Vec::new();
