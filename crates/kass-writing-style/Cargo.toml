@@ -1,0 +1,16 @@
+[package]
+name = "kass-writing-style"
+description = "Kass's Writing Style page and teach conversation in GPUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+gpui-kit = "0.7"
+kass-api.workspace = true
+kass-dictionary = { path = "../kass-dictionary" }
+kass-i18n.workspace = true
+kass-ui = { path = "../kass-ui" }
+serde_json.workspace = true

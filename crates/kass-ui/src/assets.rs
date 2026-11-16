@@ -20,6 +20,13 @@ gpui_kit::assets::icon_assets!(
         CircleQuestionMark,
         BookPlus,
         MessageSquareQuote,
+        PenTool,
+        NotebookPen,
+        Hash,
+        CircleDot,
+        Mail,
+        MessageCircle,
+        Send,
     ]
 );
 
