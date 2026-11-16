@@ -20,8 +20,7 @@
 //! the capture flagged for the user to check) and `reject` (the transcript is
 //! pasted instead and the capture flagged).
 //!
-//! `check_refinement` stays in Python until the refinement prompt is ported:
-//! it needs `prepare_refinement` and the examples the model is shown.
+//! [`check_refinement`] checks a whole cleanup the way a dictation does.
 
 use std::collections::BTreeSet;
 
@@ -30,6 +29,8 @@ use unicode_normalization::UnicodeNormalization;
 use crate::difflib::{SequenceMatcher, Tag};
 use crate::py::{self, Groups, Re};
 use crate::re;
+use crate::refinement::{prepare_refinement, Example, Flags};
+use crate::spoken_punctuation::Learned;
 use crate::voice_commands::count_commands;
 
 const FUNCTION_WORDS: &[&str] = &[
@@ -259,6 +260,47 @@ impl Verdict {
     fn reject(reason: &str, added: Vec<String>, missing: Vec<String>) -> Verdict {
         Verdict::new("reject", Some(reason), added, missing)
     }
+}
+
+/// Check a cleanup and choose what to keep: the cleanup unless rejected.
+///
+/// `said` is compared after the deterministic spoken-correction pass, so a
+/// retraction the speaker made ("3, no actually 4") is not a changed number.
+/// Text copied from an example the model was shown (`examples`, see
+/// [`crate::refinement::shown_examples`]) is rejected, whatever else the
+/// check finds. `retractable` is what a correction the stream detected may
+/// have taken back ([`crate::spoken_corrections::retracted_by`]).
+pub fn check_refinement(
+    said: &str,
+    refined: &str,
+    flags: &Flags,
+    examples: &[Example],
+    retractable: &str,
+    learned: Option<&Learned>,
+) -> (String, Verdict) {
+    let (cleaned, explicit) = prepare_refinement(said, flags, learned);
+    if let Some(explicit) = explicit {
+        return (explicit, Verdict::ok());
+    }
+    if let Some(copied) = copied_example(&cleaned, refined, examples) {
+        return (
+            cleaned,
+            Verdict::reject("copied example", copied, Vec::new()),
+        );
+    }
+    let mut verdict = check(&cleaned, refined, flags.self_correction, retractable);
+    let corrected = correction_cue().search(said).is_some() || !retractable.is_empty();
+    if verdict.outcome == "review" && verdict.added.is_empty() && flags.self_correction && corrected
+    {
+        // The speaker took words back, so leaving them out is the point.
+        verdict = Verdict::ok();
+    }
+    let kept = if verdict.outcome == "reject" {
+        cleaned
+    } else {
+        refined.to_string()
+    };
+    (kept, verdict)
 }
 
 /// One flag for a capture, from its phrases' verdicts.
