@@ -2,10 +2,13 @@
 //! settings navigation and the status line. The screens not yet rebuilt in
 //! GPUI still come from the page, in a web view placed over the content
 //! area; the native ones (src/settings, Captures, Insights, Reports) hide it.
+//! App-wide dialogs and toasts (asks, downloads) draw over every screen.
 
+mod asks;
 pub mod bridge;
 mod captures;
 pub mod data;
+mod downloads;
 mod insights;
 pub mod logs;
 mod reports;
@@ -15,6 +18,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use kass_captures::CapturesPage;
@@ -29,8 +33,10 @@ use crate::host::{self, webview, AppHandle, Listener, Manager};
 use crate::settings::{self, Settings};
 use crate::updater::{self, UpdateStatus};
 use crate::{ServerState, MAIN_WINDOW_LABEL};
+use asks::Asks;
 use bridge::Location;
 use data::ShellData;
+use downloads::DownloadToasts;
 
 /// The strip the traffic lights sit in, above everything else.
 pub(crate) const TITLEBAR: f32 = 48.;
@@ -176,6 +182,8 @@ pub struct MainShell {
     reports: Entity<reports::ReportsPage>,
     logo: Arc<Image>,
     restarting: bool,
+    _asks: Entity<Asks>,
+    _downloads: Entity<DownloadToasts>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -198,6 +206,8 @@ impl MainShell {
         kass_ui::system_appearance_changed(window.appearance(), cx);
         let api = data.read(cx).api.clone();
         let icons = Rc::new(insights::Icons::default());
+        let asks = cx.new(|cx| Asks::new(data.clone(), window, cx));
+        let downloads = cx.new(|cx| DownloadToasts::new(data.clone(), window, cx));
         Self {
             settings: Settings::new(data.clone(), window, cx),
             captures: new_captures(&data, &icons, window, cx),
@@ -217,6 +227,8 @@ impl MainShell {
                 include_bytes!("../../../../app/src/assets/kass-logo.png").to_vec(),
             )),
             restarting: false,
+            _asks: asks,
+            _downloads: downloads,
             _subscriptions: subscriptions,
         }
     }
@@ -264,8 +276,13 @@ impl MainShell {
 
     /// Put the web view where the screen showing needs it. It keeps its
     /// margins as the window resizes, so this runs only when they change.
-    fn place_webview(&mut self, window: &Window) {
-        let placement = Placement::of(&self.location.path);
+    /// A dialog hides it: GPUI draws under the web view.
+    fn place_webview(&mut self, window: &mut Window, cx: &mut App) {
+        let placement = if window.has_active_dialog(cx) {
+            Placement::Hidden
+        } else {
+            Placement::of(&self.location.path)
+        };
         if self.placed == Some(placement) {
             return;
         }
@@ -401,7 +418,7 @@ fn model_alerts(data: &ShellData) -> Option<TabAlert> {
 
 impl Render for MainShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.place_webview(window);
+        self.place_webview(window, cx);
         let t = theme(cx);
         let (background, foreground, border, sans) =
             (t.background, t.foreground, t.border, t.sans_font());

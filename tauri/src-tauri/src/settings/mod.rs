@@ -8,7 +8,7 @@ mod command_mode;
 mod dictation;
 pub mod dictionary;
 mod features;
-mod general;
+pub(crate) mod general;
 mod hud_preview;
 mod logs;
 mod transcription;
