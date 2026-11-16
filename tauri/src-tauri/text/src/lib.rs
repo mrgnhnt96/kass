@@ -7,6 +7,7 @@
 pub mod content_check;
 pub mod correction_rules;
 pub mod dictation_edits;
+pub mod dictionary;
 pub mod difflib;
 pub mod laughter;
 pub mod lexicon;
