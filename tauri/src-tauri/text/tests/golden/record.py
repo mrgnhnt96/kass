@@ -292,6 +292,9 @@ SIGNATURES = {
     (writing_style, "_as_spoken"): (["text"], {}),
     (correction_rules, "words"): (["text"], {}),
     (correction_rules, "apply_rules"): (["text", ("compiled", _rules), "language"], {}),
+    (correction_rules, "candidate"): (["example"], {}),
+    (correction_rules, "loss"): (["actual", "expected"], {}),
+    (correction_rules, "evaluate"): (["examples", "active", "blocked"], {"every_report": None}),
     (correction_learning, "apply_learned_corrections"): (
         ["text", "language"],
         {},

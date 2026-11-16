@@ -9,5 +9,6 @@ publish = false
 caseless = "0.2"
 fancy-regex = "0.14"
 serde_json = "1.0"
+sha2 = "0.10"
 unicode-normalization = "0.1"
 
