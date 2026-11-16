@@ -9,6 +9,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[workspace]
+members = ["server"]
+
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
 
@@ -36,6 +39,8 @@ rtrb = "0.4"
 objc = "0.2"
 core-foundation-sys = "0.8"
 tauri-plugin-updater = "2"
+# Kass's HTTP API on port 17493, in front of the Python model worker.
+kass-server = { path = "server" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 # Observe-only global keyboard tap with left/right modifier fidelity,

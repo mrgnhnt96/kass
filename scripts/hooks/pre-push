@@ -143,10 +143,10 @@ def main() -> int:
     if web:
         step("biome check", [BIOME, "check", *BIOME_FLAGS, *web])
     if rust:
-        # clippy reads the whole crate; warnings fail, as in just check.
+        # clippy reads every crate in the workspace; warnings fail, as in just check.
         step(
             "cargo clippy",
-            ["cargo", "clippy", "--manifest-path", CARGO_MANIFEST, "--all-targets", "--quiet", "--", "-D", "warnings"],
+            ["cargo", "clippy", "--manifest-path", CARGO_MANIFEST, "--workspace", "--all-targets", "--quiet", "--", "-D", "warnings"],
         )
     # tauri compiles app/src too, so app code is type-checked in both.
     for package in ("app", "tauri"):

@@ -9,7 +9,7 @@ FastAPI server powering Kass dictation: Whisper speech-to-text followed by a loc
 just dev-backend
 
 # Standalone
-python -m backend.main --host 127.0.0.1 --port 17493
+python -m backend.main --host 127.0.0.1 --port 17494
 
 # With custom data directory
 python -m backend.main --data-dir /path/to/data
@@ -64,7 +64,7 @@ The backend runs on Apple Silicon Macs only. Whisper (mlx-audio) and the Qwen3 L
 
 ## API
 
-Full interactive documentation is available at `http://localhost:17493/docs` when the server is running.
+Full interactive documentation is available at `http://localhost:17494/docs` when the server is running. In the app, Kass's API listens on port 17493 (the `kass-server` crate in `tauri/src-tauri/server`) and passes every request on to this server on 17494.
 
 | Domain | Prefix | Description |
 |--------|--------|-------------|

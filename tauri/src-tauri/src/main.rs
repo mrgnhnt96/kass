@@ -409,6 +409,9 @@ pub fn ensure_dictate_window(app: &tauri::AppHandle) {
 }
 
 pub(crate) const SERVER_PORT: u16 = 17493;
+/// The Python model worker's own port, on this Mac only. Kass's API on
+/// `SERVER_PORT` (the `kass-server` crate) passes requests on to it.
+pub(crate) const WORKER_PORT: u16 = 17494;
 
 /// Check if a Kass server is responding on the given port.
 ///
@@ -447,6 +450,14 @@ struct ServerState {
     /// Beta `network`: the other Mac's server this one stands in for while
     /// it's away (backend/services/sync).
     shared_server: Mutex<Option<String>>,
+    /// Kass's API on `SERVER_PORT`, in front of the worker.
+    api: Mutex<Option<Api>>,
+}
+
+struct Api {
+    running: kass_server::Running,
+    /// Listening for other Macs too, not just this one.
+    shared: bool,
 }
 
 /// Whether the server should listen for other Macs on the network: asked
@@ -493,12 +504,27 @@ async fn start_server(
         *state.share_on_network.lock().unwrap() = share;
     }
     let share = shares_on_network(&app, &state);
-    // Check if server is already running (managed by this app instance)
+    if state.api.lock().unwrap().is_none() {
+        free_api_port().await?;
+    }
+    start_worker(&app, &state, models_dir).await?;
+    serve_api(&app, &state, share).await?;
+    Ok(format!("http://127.0.0.1:{}", SERVER_PORT))
+}
+
+/// Start the Python model worker on `WORKER_PORT`, or reuse one already
+/// there, and return once it answers.
+async fn start_worker(
+    app: &tauri::AppHandle,
+    state: &ServerState,
+    models_dir: Option<String>,
+) -> Result<(), String> {
+    // Check if the worker is already running (managed by this app instance)
     if state.child.lock().unwrap().is_some() {
-        return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
+        return Ok(());
     }
 
-    // Check if a kass server is already running on our port (e.g. one left
+    // Check if a kass worker is already running on its port (e.g. one left
     // over from a previous session, or started by hand via `python`/`uvicorn`).
     // It's reused only when it's this version's; after an update, a server
     // left over from the old version is stopped and a new one started.
@@ -506,7 +532,7 @@ async fn start_server(
     {
         use std::process::Command;
         if let Ok(output) = Command::new("lsof")
-            .args(["-i", &format!(":{}", SERVER_PORT), "-sTCP:LISTEN"])
+            .args(["-i", &format!(":{}", WORKER_PORT), "-sTCP:LISTEN"])
             .output()
         {
             let output_str = String::from_utf8_lossy(&output.stdout);
@@ -517,46 +543,36 @@ async fn start_server(
                     let pid_str = parts[1];
                     if command.contains("kass") {
                         if let Ok(pid) = pid_str.parse::<u32>() {
-                            let running = server_version::running(SERVER_PORT);
-                            // lsof names a server open to the network `*:17493`.
-                            if line.contains(&format!("*:{SERVER_PORT}")) != share {
-                                println!(
-                                    "Found kass-server on port {} (PID: {}) listening for the wrong Macs; replacing it",
-                                    SERVER_PORT, pid
-                                );
-                                server_process::stop(pid)?;
-                                wait_for_server_exit().await?;
-                                break;
-                            }
+                            let running = server_version::running(WORKER_PORT);
                             if !server_version::is_current(running.as_deref(), &app_version) {
                                 println!(
                                     "Found kass-server {} on port {} (PID: {}), but this is {}; replacing it",
                                     running.as_deref().unwrap_or("of unknown version"),
-                                    SERVER_PORT,
+                                    WORKER_PORT,
                                     pid,
                                     app_version
                                 );
                                 server_process::stop(pid)?;
-                                wait_for_server_exit().await?;
+                                wait_for_port_free(WORKER_PORT).await?;
                                 break;
                             }
                             println!(
                                 "Found existing kass-server on port {} (PID: {}), reusing it",
-                                SERVER_PORT, pid
+                                WORKER_PORT, pid
                             );
                             // Store the PID so we can kill it on exit if needed
                             *state.server_pid.lock().unwrap() = Some(pid);
-                            return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
+                            return Ok(());
                         }
                     } else {
                         // Process name doesn't contain "kass" — could be an external
                         // Python/uvicorn/Docker server. Verify via HTTP health check.
                         println!(
                             "Port {} in use by '{}' (PID: {}), checking if it's a Kass server...",
-                            SERVER_PORT, command, pid_str
+                            WORKER_PORT, command, pid_str
                         );
-                        if check_health(SERVER_PORT) {
-                            let running = server_version::running(SERVER_PORT);
+                        if check_health(WORKER_PORT) {
+                            let running = server_version::running(WORKER_PORT);
                             // A release build replaces an old server, such as
                             // one still named voicebox-server. A dev build keeps
                             // the server started by hand, whatever its version.
@@ -566,26 +582,26 @@ async fn start_server(
                                 if let Ok(pid) = pid_str.parse::<u32>() {
                                     println!(
                                         "Server on port {} is {}, but this is {}; replacing it",
-                                        SERVER_PORT,
+                                        WORKER_PORT,
                                         running.as_deref().unwrap_or("of unknown version"),
                                         app_version
                                     );
                                     server_process::stop(pid)?;
-                                    wait_for_server_exit().await?;
+                                    wait_for_port_free(WORKER_PORT).await?;
                                     break;
                                 }
                             }
                             println!(
                                 "Health check passed — reusing external server on port {}",
-                                SERVER_PORT
+                                WORKER_PORT
                             );
-                            return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
+                            return Ok(());
                         }
                         println!("Health check failed — port is occupied by a non-Kass process");
                         return Err(format!(
                             "Port {} is already in use by another application ({}). \
                              Close it or change the Kass server port.",
-                            SERVER_PORT, command
+                            WORKER_PORT, command
                         ));
                     }
                 }
@@ -622,24 +638,24 @@ async fn start_server(
             {
                 eprintln!(
                     "Dev mode: Checking if server is already running on port {}...",
-                    SERVER_PORT
+                    WORKER_PORT
                 );
 
                 // Try to connect to the server port
                 use std::net::TcpStream;
                 if TcpStream::connect_timeout(
-                    &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
+                    &format!("127.0.0.1:{}", WORKER_PORT).parse().unwrap(),
                     std::time::Duration::from_secs(1),
                 )
                 .is_ok()
                 {
-                    println!("Found server already running on port {}", SERVER_PORT);
-                    return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
+                    println!("Found server already running on port {}", WORKER_PORT);
+                    return Ok(());
                 }
 
                 eprintln!();
                 eprintln!("=================================================================");
-                eprintln!("DEV MODE: No server found on port {}", SERVER_PORT);
+                eprintln!("DEV MODE: No server found on port {}", WORKER_PORT);
                 eprintln!();
                 eprintln!("Start the Python server in a separate terminal:");
                 eprintln!("  bun run dev:server");
@@ -658,7 +674,7 @@ async fn start_server(
         .to_str()
         .ok_or_else(|| "Invalid data dir path".to_string())?
         .to_string();
-    let port_str = SERVER_PORT.to_string();
+    let port_str = WORKER_PORT.to_string();
     let parent_pid_str = std::process::id().to_string();
 
     // Resolve the custom models directory from the parameter or stored state
@@ -671,7 +687,7 @@ async fn start_server(
         "--data-dir",
         &data_dir_str,
         "--host",
-        if share { "0.0.0.0" } else { "127.0.0.1" },
+        "127.0.0.1",
         "--port",
         &port_str,
         "--parent-pid",
@@ -696,13 +712,13 @@ async fn start_server(
             {
                 use std::net::TcpStream;
                 if TcpStream::connect_timeout(
-                    &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
+                    &format!("127.0.0.1:{}", WORKER_PORT).parse().unwrap(),
                     std::time::Duration::from_secs(1),
                 )
                 .is_ok()
                 {
-                    println!("Found manually-started server on port {}", SERVER_PORT);
-                    return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
+                    println!("Found manually-started server on port {}", WORKER_PORT);
+                    return Ok(());
                 }
 
                 eprintln!();
@@ -758,15 +774,15 @@ async fn start_server(
             {
                 use std::net::TcpStream;
                 if TcpStream::connect_timeout(
-                    &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
+                    &format!("127.0.0.1:{}", WORKER_PORT).parse().unwrap(),
                     std::time::Duration::from_secs(1),
                 )
                 .is_ok()
                 {
                     // Kill the placeholder process
                     let _ = state.child.lock().unwrap().take();
-                    println!("Found manually-started server on port {}", SERVER_PORT);
-                    return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
+                    println!("Found manually-started server on port {}", WORKER_PORT);
+                    return Ok(());
                 }
             }
 
@@ -833,7 +849,7 @@ async fn start_server(
 
                     // Check if a manually-started server is available
                     if TcpStream::connect_timeout(
-                        &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
+                        &format!("127.0.0.1:{}", WORKER_PORT).parse().unwrap(),
                         std::time::Duration::from_secs(1),
                     )
                     .is_ok()
@@ -841,8 +857,8 @@ async fn start_server(
                         // Clean up state
                         let _ = state.child.lock().unwrap().take();
                         let _ = state.server_pid.lock().unwrap().take();
-                        println!("Found manually-started server on port {}", SERVER_PORT);
-                        return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
+                        println!("Found manually-started server on port {}", WORKER_PORT);
+                        return Ok(());
                     }
 
                     eprintln!();
@@ -900,12 +916,117 @@ async fn start_server(
                         }),
                     );
                 }
+                // The API goes with its worker, unless a restart has
+                // already put another worker in its place.
+                tauri_plugin_shell::process::CommandEvent::Terminated(_) => {
+                    let state = app_handle.state::<ServerState>();
+                    if *state.server_pid.lock().unwrap() == Some(process_pid) {
+                        state.api.lock().unwrap().take();
+                    }
+                }
                 _ => {}
             }
         }
     });
 
-    Ok(format!("http://127.0.0.1:{}", SERVER_PORT))
+    Ok(())
+}
+
+/// Before this app serves `SERVER_PORT` itself, stop a server an older
+/// version of Kass left there, when all of Kass ran in Python.
+async fn free_api_port() -> Result<(), String> {
+    use std::process::Command;
+    let Ok(output) = Command::new("lsof")
+        .args(["-i", &format!(":{}", SERVER_PORT), "-sTCP:LISTEN"])
+        .output()
+    else {
+        return Ok(());
+    };
+    let output = String::from_utf8_lossy(&output.stdout);
+    for line in output.lines().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        let (Some(command), Some(Ok(pid))) =
+            (parts.first(), parts.get(1).map(|p| p.parse::<u32>()))
+        else {
+            continue;
+        };
+        if pid == std::process::id() {
+            continue;
+        }
+        // The app itself is `kass`; its Python server was `kass-server`.
+        if *command == "kass" {
+            return Err(format!(
+                "Port {SERVER_PORT} is in use by another copy of Kass (PID {pid}). Quit it first."
+            ));
+        }
+        if !command.contains("kass") {
+            if !check_health(SERVER_PORT) {
+                return Err(format!(
+                    "Port {} is already in use by another application ({}). \
+                     Close it or change the Kass server port.",
+                    SERVER_PORT, command
+                ));
+            }
+            if cfg!(debug_assertions) {
+                return Err(format!(
+                    "A Kass server started by hand is on port {SERVER_PORT} (PID {pid}). \
+                     The app serves that port itself now: stop it and run the Python \
+                     worker on {WORKER_PORT} instead (just dev-backend)."
+                ));
+            }
+        }
+        println!("Found an older Kass server on port {SERVER_PORT} (PID: {pid}); replacing it");
+        server_process::stop(pid)?;
+        wait_for_port_free(SERVER_PORT).await?;
+        break;
+    }
+    Ok(())
+}
+
+/// Serve Kass's API on `SERVER_PORT`, in front of the worker: to this Mac
+/// only, or to other Macs on the network too while `share` is on. One
+/// already listening for the right Macs keeps running.
+async fn serve_api(app: &tauri::AppHandle, state: &ServerState, share: bool) -> Result<(), String> {
+    let previous = {
+        let mut api = state.api.lock().unwrap();
+        if api.as_ref().is_some_and(|api| api.shared == share) {
+            return Ok(());
+        }
+        api.take()
+    };
+    if let Some(previous) = previous {
+        previous.running.stop();
+        wait_for_port_free(SERVER_PORT).await?;
+    }
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let host = if share {
+        std::net::Ipv4Addr::UNSPECIFIED
+    } else {
+        std::net::Ipv4Addr::LOCALHOST
+    };
+    let started = kass_server::start(kass_server::Config {
+        listen: (host, SERVER_PORT).into(),
+        worker: (std::net::Ipv4Addr::LOCALHOST, WORKER_PORT).into(),
+        database: data_dir.join("kass.db"),
+    })
+    .await;
+    let mut api = state.api.lock().unwrap();
+    match started {
+        Ok(running) => {
+            println!("Kass API listening on {}", running.address());
+            *api = Some(Api {
+                running,
+                shared: share,
+            });
+            Ok(())
+        }
+        // Another start got there first.
+        Err(_) if api.as_ref().is_some_and(|api| api.shared == share) => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 #[command]
@@ -914,6 +1035,7 @@ async fn stop_server(state: State<'_, ServerState>) -> Result<(), String> {
 }
 
 fn stop_managed_server(state: &ServerState) -> Result<(), String> {
+    state.api.lock().unwrap().take();
     let mut pid = state.server_pid.lock().unwrap();
     if let Some(value) = *pid {
         server_process::stop(value)?;
@@ -924,8 +1046,13 @@ fn stop_managed_server(state: &ServerState) -> Result<(), String> {
 }
 
 async fn wait_for_server_exit() -> Result<(), String> {
+    wait_for_port_free(SERVER_PORT).await?;
+    wait_for_port_free(WORKER_PORT).await
+}
+
+async fn wait_for_port_free(port: u16) -> Result<(), String> {
     for _ in 0..50 {
-        if tokio::net::TcpStream::connect(("127.0.0.1", SERVER_PORT))
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
             .is_err()
         {
@@ -1614,6 +1741,7 @@ pub fn run() {
             models_dir: Mutex::new(None),
             share_on_network: Mutex::new(false),
             shared_server: Mutex::new(None),
+            api: Mutex::new(None),
         })
         .manage(dictation::DictationState::default())
         .manage(deep_link::DeepLinkState::default())
