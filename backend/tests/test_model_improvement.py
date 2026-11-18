@@ -275,6 +275,16 @@ def test_recording_preempts_child_and_says_a_dictation_is_on(storage, monkeypatc
     assert manager.idle_generation() is None
 
 
+def test_the_servers_stop_for_recording_opens_the_recording_window(storage, monkeypatch):
+    from backend.routes import learning
+
+    monkeypatch.setattr(manager, "_stop_process", lambda process: None)
+    learning.model_stop()
+    assert not manager.dictating()
+    learning.model_stop(learning.Stop(recording=True))
+    assert manager.dictating()
+
+
 @pytest.mark.asyncio
 async def test_failed_personal_adapter_retries_base_and_quarantines(storage, monkeypatch):
     class Backend:

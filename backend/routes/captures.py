@@ -27,22 +27,6 @@ router = APIRouter()
 worker_router = APIRouter(prefix="/worker/captures", tags=["worker"])
 
 
-@router.post("/capture/learning/activity")
-def pause_learning_for_recording():
-    from ..services.model_improvement.manager import foreground_activity
-
-    foreground_activity(recording=True)
-    return {"paused": True}
-
-
-@router.post("/capture/learning/voice/sounds")
-def download_voice_sounds():
-    """Start the one-time download of background sounds for voice training."""
-    from ..services.voice_training import sounds
-
-    return sounds.start()
-
-
 UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 

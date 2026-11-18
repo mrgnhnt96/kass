@@ -97,10 +97,18 @@ def model_use(request: Active):
     return {"active": manager.use(request.active)}
 
 
+class Stop(BaseModel):
+    recording: bool = False
+
+
 @router.post("/model/stop")
-def model_stop():
-    """Stop a run in progress."""
-    manager.stop()
+def model_stop(request: Stop | None = None):
+    """Stop a run in progress. ``recording``: the user started recording, so
+    background model work waits until the dictation is done."""
+    if request and request.recording:
+        manager.foreground_activity(recording=True)
+    else:
+        manager.stop()
     return {}
 
 
@@ -112,7 +120,8 @@ def model_reports():
 
 @router.post("/model/voice")
 def model_voice():
-    """The voice recordings banked for training, and the background sounds it mixes in."""
-    from ..services.voice_training import bank, sounds
+    """The voice recordings banked for training. The server reports the
+    background sounds' download (server/src/voice_sounds.rs)."""
+    from ..services.voice_training import bank
 
-    return {"bank": bank.summary(), "sounds": sounds.status()}
+    return {"bank": bank.summary()}

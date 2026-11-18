@@ -8,12 +8,7 @@ import asyncio
 # server's correction notes job generates here (/worker/learning/generate)
 # without counting as a dictation. Being told which style a teach session is
 # open in isn't a dictation either.
-_BACKGROUND = (
-    "/capture/learning",
-    "/worker/learning/",
-    "/worker/styles/state",
-    "/worker/styles/teaching",
-)
+_BACKGROUND = ("/worker/learning/", "/worker/styles/state", "/worker/styles/teaching")
 
 
 class ForegroundPriorityMiddleware:

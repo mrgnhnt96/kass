@@ -611,32 +611,3 @@ def test_voice_trains_once_the_refinement_model_has_nothing_new(learning, monkey
     assert plan["voice"]
     assert not plan["train_ready"]
     assert fingerprint != refinement
-
-
-def test_sound_download_resumes_after_a_dropped_connection(tmp_path, monkeypatch):
-    import io
-    import urllib.request
-
-    from backend.services.voice_training import sounds
-
-    payload = bytes(range(256)) * 40
-    requests = []
-
-    class Response(io.BytesIO):
-        def __init__(self, body, status, length):
-            super().__init__(body)
-            self.status, self.headers = status, {"Content-Length": str(length)}
-
-    def urlopen(request, timeout):
-        start = int((request.get_header("Range") or "bytes=0-")[6:-1])
-        requests.append(start)
-        if start == 0:  # the connection drops halfway
-            return Response(payload[: len(payload) // 2], 200, len(payload))
-        return Response(payload[start:], 206, len(payload) - start)
-
-    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(sounds.time, "sleep", lambda seconds: None)
-    target = tmp_path / "archive.tar.gz"
-    sounds._fetch(["https://example.test/a"], target, lambda count: None)
-    assert target.read_bytes() == payload
-    assert requests == [0, len(payload) // 2]
