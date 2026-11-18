@@ -2,7 +2,8 @@
 
 The app creates kass.db and brings an older one up to date before it starts
 this worker (tauri/src-tauri/server/src/db/schema.rs); in development,
-``cargo xtask db-init`` does. This only uses the tables it finds.
+``cargo xtask db-init`` does. The worker only reads the reports and
+captures model improvement trains on; the Rust server writes everything.
 """
 
 import logging
@@ -41,29 +42,6 @@ def init_db() -> None:
     check_schema(engine, _db_path)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    # Apps on other Macs hear about capture changes from the server (beta `network`).
-    from ..services import capture_events
-
-    capture_events.install()
-    # Each capture records the Mac that dictated it.
-    from ..utils import macs
-
-    macs.install()
-
-    # The preset writing styles, with the global settings moved into the default.
-    from ..services.dictionary import ensure_defaults
-    from ..services.styles import ensure_styles
-
-    with SessionLocal() as db:
-        ensure_styles(db)
-        ensure_defaults(db, _db_path.with_name("dictionary-defaulted"))
-
-    # From here on, a stand-in for a shared Kass records what it changes,
-    # to send there (services/sync).
-    from ..services.sync import changes
-
-    changes.install()
 
 
 def check_schema(engine, db_path) -> None:

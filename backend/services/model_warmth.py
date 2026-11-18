@@ -178,4 +178,3 @@ async def keep_resident(reason: str, llm: bool = True, stt: bool = True) -> None
                 warmth.paged_in * PAGE_SIZE // (1024 * 1024),
                 warmth.seconds,
             )
-

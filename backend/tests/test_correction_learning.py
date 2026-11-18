@@ -1,18 +1,13 @@
 """Learning must earn activation on independent examples and remain reversible."""
 
-from unittest.mock import AsyncMock
-
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend import config
 from backend.database.models import Base, Capture
-from backend.models import CaptureFeedbackCreate
 from backend.services import correction_learning as learning, correction_rules as rules
-from backend.services.capture_feedback import save_feedback
-from backend.services.captures import get_capture, refine_capture
-from backend.services.refinement import RefinementFlags
+from backend.tests.feedback_rows import file_report
 
 
 def samples(language=None, sources=("manual", "manual", "manual")):
@@ -200,13 +195,7 @@ def storage(tmp_path, monkeypatch):
                 )
             )
             db.commit()
-            save_feedback(
-                example.id,
-                CaptureFeedbackCreate(
-                    target="refined", expected_text=example.expected, snapshot=get_capture(example.id, db)
-                ),
-                db,
-            )
+            file_report(db, example.id, example.expected)
     yield factory
     engine.dispose()
 
@@ -230,22 +219,6 @@ def test_reload_reads_the_servers_rules(storage):
     assert learning.apply_learned_corrections(samples()[0].original) == samples()[0].expected
 
 
-@pytest.mark.asyncio
-async def test_future_refinement_uses_rules_without_changing_prompt_or_raw(storage, monkeypatch):
-    from backend.services import captures
-
-    learn()
-    model = AsyncMock(return_value=("Please use voice box today at lunch.", "4B"))
-    monkeypatch.setattr(captures, "refine_transcript", model)
-    with storage() as db:
-        db.add(Capture(id="future", audio_path="unused.wav", transcript_raw="please use voice box today at lunch"))
-        db.commit()
-        output = await refine_capture("future", RefinementFlags(), None, db)
-    assert output.transcript_refined == "Please use Voicebox today at lunch."
-    assert output.transcript_raw == "please use voice box today at lunch"
-    model.assert_awaited_once_with("please use voice box today at lunch", RefinementFlags(), model_size=None)
-
-
 def test_corrupt_state_falls_back_to_no_rules(storage):
     (config.get_data_dir() / "correction-learning.json").write_text("{broken")
     assert learning.status()["active_rules"] == 0
@@ -257,16 +230,3 @@ def test_numeric_changes_and_long_live_inputs_are_not_applied(storage):
     learn()
     text = samples()[0].original * 200
     assert learning.apply_learned_corrections(text) == text
-
-
-def report(storage, capture_id, original, expected, source="manual"):
-    with storage() as db:
-        db.add(Capture(id=capture_id, audio_path="unused.wav", transcript_raw=original, transcript_refined=original))
-        db.commit()
-        return save_feedback(
-            capture_id,
-            CaptureFeedbackCreate(
-                target="refined", expected_text=expected, snapshot=get_capture(capture_id, db), source=source
-            ),
-            db,
-        )

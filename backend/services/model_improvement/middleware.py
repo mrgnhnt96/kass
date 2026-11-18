@@ -6,9 +6,9 @@ import asyncio
 # learning calls must not count as a dictation and stop the run they drive,
 # asking whether the models are idle mustn't make them busy, and the Rust
 # server's correction notes job generates here (/worker/learning/generate)
-# without counting as a dictation. Being told which style a teach session is
-# open in isn't a dictation either.
-_BACKGROUND = ("/worker/learning/", "/worker/styles/state", "/worker/styles/teaching")
+# without counting as a dictation. Sizing the styles' prompt caches for the
+# styles listing isn't a dictation either.
+_BACKGROUND = ("/worker/learning/", "/worker/cleanup/cache-bytes")
 
 
 class ForegroundPriorityMiddleware:

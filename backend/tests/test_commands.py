@@ -1,15 +1,7 @@
-"""Command Mode: prompt, transform names, rewrite post-processing, endpoint and stream session."""
+"""Command Mode on the worker: the prompt, the rewrite and its post-processing."""
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from backend.database import get_db
-from backend.database.models import Base, Capture, CaptureSettings
-from backend.models import CaptureSettingsResponse
 from backend.services import commands
 from backend.services.refinement import RefinementFlags, build_refinement_prompt
 
@@ -59,102 +51,6 @@ def test_every_example_stays_in_the_passage_language():
     examples = commands.command_examples()
     assert len(examples) == len(commands.COMMAND_EXAMPLES)
     assert all(user.startswith("<text>\n") and "\nInstruction: " in user for user, _ in examples)
-
-
-# --- Transforms ---------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "spoken",
-    [
-        "polish",
-        "Polish.",
-        "polish this",
-        "Polish this, please.",
-        "please polish the text",
-        "Okay, run polish on this.",
-        "can you polish that",
-        "apply polish to the selection",
-    ],
-)
-def test_saying_a_transform_name_runs_its_instruction(spoken):
-    instruction, transform = commands.resolve_instruction(spoken, commands.default_transforms())
-    assert transform["name"] == "Polish"
-    assert instruction == commands.DEFAULT_TRANSFORMS[0]["instruction"]
-
-
-@pytest.mark.parametrize("spoken", ["prompt engineer", "Prompt engineer this.", "use prompt engineer"])
-def test_multi_word_names_match_whatever_their_case_and_punctuation(spoken):
-    _, transform = commands.resolve_instruction(spoken, commands.default_transforms())
-    assert transform["name"] == "Prompt Engineer"
-
-
-@pytest.mark.parametrize(
-    "spoken",
-    [
-        "make this more concise",
-        "polish this and translate it to French",
-        "polishing",
-        "don't polish this",
-        "",
-    ],
-)
-def test_anything_else_is_a_free_form_instruction(spoken):
-    instruction, transform = commands.resolve_instruction(spoken, commands.default_transforms())
-    assert transform is None
-    assert instruction == spoken.strip()
-
-
-def test_a_name_ending_in_a_reference_to_the_selection_still_matches():
-    transforms = [{"id": "x", "name": "Fix this", "instruction": "Fix it."}]
-    assert commands.match_transform("fix this", transforms)["id"] == "x"
-    assert commands.match_transform("please fix this", transforms)["id"] == "x"
-
-
-def test_transforms_are_validated_before_they_are_saved():
-    saved = commands.normalize_transforms([{"name": " Shorten ", "instruction": " Make it shorter. "}])
-    assert saved[0]["name"] == "Shorten"
-    assert saved[0]["instruction"] == "Make it shorter."
-    assert saved[0]["id"]
-    with pytest.raises(ValueError, match="called"):
-        commands.normalize_transforms([{"name": "Polish", "instruction": "a"}, {"name": "polish!", "instruction": "b"}])
-    with pytest.raises(ValueError, match="name and an instruction"):
-        commands.normalize_transforms([{"name": "Empty", "instruction": " "}])
-    with pytest.raises(ValueError, match="said aloud"):
-        commands.normalize_transforms([{"name": "!!!", "instruction": "x"}])
-
-
-def test_new_installs_get_the_default_transforms_and_command_chord():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as db:
-        from backend.services.settings import get_capture_settings
-
-        response = CaptureSettingsResponse.model_validate(get_capture_settings(db))
-    assert [t.name for t in response.command_transforms] == ["Polish", "Prompt Engineer"]
-    assert response.chord_command_keys == ["MetaRight", "ShiftRight"]
-
-
-def test_databases_with_the_retired_command_model_column_keep_working(tmp_path):
-    # Command Mode once had its own model setting; existing databases keep the column.
-    from sqlalchemy import text
-
-    from backend.services.settings import get_capture_settings
-    from backend.tests.settings_rows import save_settings
-
-    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
-    Base.metadata.create_all(engine)
-    with engine.begin() as connection:
-        connection.execute(
-            text("ALTER TABLE capture_settings ADD COLUMN command_llm_model VARCHAR NOT NULL DEFAULT '1.7B'")
-        )
-    with Session(engine) as db:
-        get_capture_settings(db)
-        row = save_settings(db, llm_model="4B")
-        assert CaptureSettingsResponse.model_validate(row).llm_model == "4B"
-
-
-# --- Rewrite ------------------------------------------------------------------------
 
 
 def test_the_selection_keeps_its_surrounding_whitespace():
@@ -215,94 +111,6 @@ async def test_an_empty_rewrite_is_an_error_not_an_empty_replacement():
 
 
 # --- Endpoint -----------------------------------------------------------------------
-
-
-@pytest.fixture
-def api(monkeypatch):
-    from backend.routes.commands import router
-
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    make = sessionmaker(bind=engine)
-
-    def override():
-        with make() as db:
-            yield db
-
-    llm = FakeLLM("Hola.")
-    monkeypatch.setattr(commands, "_llm", lambda: llm)
-    monkeypatch.setattr(commands, "ensure_model_ready", lambda size: None)
-    app = FastAPI()
-    app.include_router(router)
-    app.dependency_overrides[get_db] = override
-    client = TestClient(app)
-    client.llm, client.db = llm, make
-    return client
-
-
-def test_endpoint_rewrites_and_saves_a_command_capture(api):
-    response = api.post(
-        "/commands/run",
-        json={"selection": "Hello.", "instruction": "translate to Spanish", "app_name": "Notes"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["source"] == "command"
-    assert body["transcript_refined"] == "Hola."
-    assert body["command_selection"] == "Hello."
-    assert body["command_instruction"] == "translate to Spanish"
-    assert body["command_transform"] is None
-    assert body["app_name"] == "Notes"
-    assert body["llm_model"] == CaptureSettingsResponse().llm_model
-    with api.db() as db:
-        assert db.query(Capture).one().audio_path == ""
-
-
-def test_endpoint_rewrites_on_the_dictation_cleanup_model(api):
-    # One model for both, so a command never switches models.
-    with api.db() as db:
-        db.add(CaptureSettings(id=1, llm_model="4B"))
-        db.commit()
-    body = api.post("/commands/run", json={"selection": "Hello.", "instruction": "shorter"}).json()
-    assert body["llm_model"] == "4B"
-    assert api.llm.calls[0]["model_size"] == "4B"
-
-
-def test_endpoint_runs_a_transform_by_name(api):
-    body = api.post("/commands/run", json={"selection": "hi", "instruction": "Polish"}).json()
-    assert body["command_transform"] == "Polish"
-    assert body["command_instruction"] == commands.DEFAULT_TRANSFORMS[0]["instruction"]
-    assert api.llm.calls[0]["prompt"].endswith(commands.DEFAULT_TRANSFORMS[0]["instruction"])
-
-
-def test_endpoint_uses_the_users_own_transforms(api):
-    with api.db() as db:
-        db.add(
-            CaptureSettings(
-                id=1, command_transforms=[{"id": "t", "name": "Pirate", "instruction": "Talk like a pirate."}]
-            )
-        )
-        db.commit()
-    body = api.post("/commands/run", json={"selection": "hi", "instruction": "pirate this"}).json()
-    assert body["command_instruction"] == "Talk like a pirate."
-
-
-def test_endpoint_turns_an_uploaded_command_recording_into_its_rewrite(api):
-    with api.db() as db:
-        db.add(Capture(id="rec", audio_path="captures/rec.wav", source="command", transcript_raw="make it Spanish"))
-        db.commit()
-    body = api.post("/commands/run", json={"selection": "Hello.", "capture_id": "rec"}).json()
-    assert body["id"] == "rec"
-    assert body["transcript_raw"] == "make it Spanish"
-    assert body["transcript_refined"] == "Hola."
-    assert api.post("/commands/run", json={"selection": "x", "capture_id": "missing"}).status_code == 404
-
-
-def test_endpoint_reports_bad_requests(api):
-    response = api.post("/commands/run", json={"selection": "", "instruction": "shorter"})
-    assert response.status_code == 400
-    assert "Select text" in response.json()["detail"]
-    assert not api.llm.calls
 
 
 # --- Loading the cleanup model ------------------------------------------------------

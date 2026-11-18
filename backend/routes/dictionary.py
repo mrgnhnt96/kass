@@ -1,16 +1,13 @@
 """What the Rust server needs from the worker for the dictionary (docs/plans/DICTIONARIES.md).
 
-The dictionary's routes and its kass.db rows live in the Rust server; the worker
-keeps reading kass.db for dictations and only hears when to reload it, and counts
-prompt terms with Whisper's tokenizer.
+The dictionary lives in the Rust server; the worker only counts prompt terms
+with Whisper's tokenizer.
 """
 
 import logging
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-
-from ..services import dictionary
 
 router = APIRouter(prefix="/worker/dictionary", tags=["worker"])
 logger = logging.getLogger(__name__)
@@ -35,12 +32,6 @@ def _tokenizer():
     except Exception:
         logger.warning("Could not read Whisper's tokenizer; the server estimates term sizes", exc_info=True)
     return None
-
-
-@router.post("/changed")
-async def changed():
-    dictionary.invalidate()
-    return {"ok": True}
 
 
 @router.post("/token-counts", response_model=TokenCountsResponse)

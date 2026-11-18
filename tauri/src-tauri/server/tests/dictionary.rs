@@ -1,5 +1,5 @@
 //! The dictionary API against a real kass.db, in front of a stand-in worker
-//! that counts the reloads it is told to do and counts prompt terms.
+//! that counts prompt terms.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -18,17 +18,14 @@ const SLACK: &str = "com.tinyspeck.slackmacgap";
 
 #[derive(Clone, Default)]
 struct Worker {
-    reloads: Arc<AtomicUsize>,
+    /// How many times it was asked to count.
+    counted: Arc<AtomicUsize>,
     /// Whisper loaded: each term counts as one token per word.
     whisper: bool,
 }
 
-async fn changed(State(worker): State<Worker>) -> Json<Value> {
-    worker.reloads.fetch_add(1, Ordering::SeqCst);
-    Json(json!({"ok": true}))
-}
-
 async fn token_counts(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
+    worker.counted.fetch_add(1, Ordering::SeqCst);
     if !worker.whisper {
         return Json(json!({"counts": null}));
     }
@@ -43,7 +40,6 @@ async fn token_counts(State(worker): State<Worker>, Json(body): Json<Value>) -> 
 
 async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
-        .route("/worker/dictionary/changed", post(changed))
         .route("/worker/dictionary/token-counts", post(token_counts))
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -73,7 +69,7 @@ fn database() -> PathBuf {
 
 struct Kass {
     server: kass_server::Running,
-    reloads: Arc<AtomicUsize>,
+    counted: Arc<AtomicUsize>,
     database: PathBuf,
 }
 
@@ -83,7 +79,7 @@ impl Kass {
             whisper,
             ..Worker::default()
         };
-        let reloads = worker.reloads.clone();
+        let counted = worker.counted.clone();
         let database = database();
         let server = kass_server::start(kass_server::Config {
             listen: "127.0.0.1:0".parse().unwrap(),
@@ -98,13 +94,13 @@ impl Kass {
         .unwrap();
         Kass {
             server,
-            reloads,
+            counted,
             database,
         }
     }
 
-    fn reloads(&self) -> usize {
-        self.reloads.load(Ordering::SeqCst)
+    fn counted(&self) -> usize {
+        self.counted.load(Ordering::SeqCst)
     }
 
     async fn raw(&self, request: String) -> String {
@@ -205,7 +201,6 @@ async fn adds_lists_and_rejects_the_same_word_twice() {
             "phrase": false,
         })
     );
-    assert_eq!(kass.reloads(), 1);
 
     let (status, duplicate) = kass.add("VoiceBox", Some("Voice Box"), global()).await;
     assert_eq!(status, 409);
@@ -213,7 +208,6 @@ async fn adds_lists_and_rejects_the_same_word_twice() {
         duplicate["detail"],
         "That word is already in the dictionary for everywhere"
     );
-    assert_eq!(kass.reloads(), 1);
 
     // The same word said is fine in another place.
     let (status, _) = kass
@@ -328,7 +322,6 @@ async fn rejects_empty_words_unknown_places_and_bad_bodies() {
         422
     );
 
-    assert_eq!(kass.reloads(), 0);
     assert_eq!(kass.entries().await, Vec::<Value>::new());
 }
 
@@ -392,7 +385,6 @@ async fn one_entry_applies_in_several_places_and_edits_them_together() {
         (200, json!({"deleted": true}))
     );
     assert_eq!(kass.entries().await, Vec::<Value>::new());
-    assert_eq!(kass.reloads(), 4);
 }
 
 #[tokio::test]
@@ -439,7 +431,6 @@ async fn editing_and_deleting_tell_the_worker_and_a_missing_entry_is_404() {
         kass.call("DELETE", &path, None).await,
         (200, json!({"deleted": true}))
     );
-    assert_eq!(kass.reloads(), 3);
 
     let missing = json!({"detail": "Dictionary entry not found"});
     assert_eq!(
@@ -451,7 +442,6 @@ async fn editing_and_deleting_tell_the_worker_and_a_missing_entry_is_404() {
             .await,
         (404, missing)
     );
-    assert_eq!(kass.reloads(), 3);
 }
 
 #[tokio::test]
@@ -630,9 +620,19 @@ async fn the_worker_s_own_routes_are_not_reachable_from_outside() {
     let kass = Kass::start(false, None).await;
     let not_found = json!({"detail": "Not Found"});
     assert_eq!(
-        kass.call("POST", "/worker/dictionary/changed", None).await,
+        kass.call(
+            "POST",
+            "/worker/dictionary/token-counts",
+            Some(json!({"terms": []}))
+        )
+        .await,
         (404, not_found.clone())
     );
-    assert_eq!(kass.call("GET", "/worker", None).await, (404, not_found));
-    assert_eq!(kass.reloads(), 0);
+    assert_eq!(
+        kass.call("GET", "/worker", None).await,
+        (404, not_found.clone())
+    );
+    // Nor is anything else the server doesn't answer itself.
+    assert_eq!(kass.call("GET", "/nowhere", None).await, (404, not_found));
+    assert_eq!(kass.counted(), 0);
 }

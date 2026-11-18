@@ -1,6 +1,6 @@
-# Kass Backend
+# Kass model worker
 
-FastAPI server powering Kass dictation: Whisper speech-to-text followed by a local LLM cleanup pass. Runs locally as a Tauri sidecar or standalone via `python -m backend.main`.
+The Python process that runs Kass's models: Whisper speech-to-text, Qwen3 cleanup and command generation, and training. It has no public API. The Rust server (`kass-server` in `tauri/src-tauri/server`) owns kass.db and every HTTP and WebSocket route, and calls this worker's `/worker` endpoints on a private port. The app starts it as a sidecar; for development run it with `python -m backend.main`.
 
 ## Running
 
@@ -8,55 +8,38 @@ FastAPI server powering Kass dictation: Whisper speech-to-text followed by a loc
 # From the repo root (recommended)
 cargo xtask dev-backend
 
-# Standalone
-python -m backend.main --host 127.0.0.1 --port 17494
-
-# With custom data directory
-python -m backend.main --data-dir /path/to/data
+# Standalone, on a kass.db the Rust server created
+python -m backend.main --host 127.0.0.1 --port 17494 --data-dir /path/to/data
 ```
 
-The server auto-initializes the SQLite database on first startup. Before reporting ready, it loads the installed Whisper model selected in capture settings and the selected refinement model when auto-refine is enabled. Missing models are left to the existing download/setup flow; a model load failure is logged without preventing the server from opening. Other models are downloaded from HuggingFace on first use.
+The worker opens kass.db, which the app creates and migrates (`kass_server::db::prepare`), and fails clearly if tables or columns are missing. Before reporting ready, it loads the installed Whisper model selected in capture settings and the selected refinement model when auto-refine is enabled. A model load failure is logged without preventing the worker from opening.
 
 ## Architecture
 
 ```
 backend/
-  app.py                  # FastAPI app factory, CORS, lifecycle events
+  app.py                  # FastAPI app: the /worker routers, startup and shutdown
   main.py                 # Entry point (imports app, runs uvicorn)
   config.py               # Data directory paths and configuration
-  models.py               # Pydantic request/response schemas
+  models.py               # The /worker/health response
   server.py               # Tauri sidecar launcher, parent-pid watchdog
 
-  routes/                 # Thin HTTP handlers — validation, delegation, response formatting
-  services/               # Business logic, CRUD, orchestration
+  routes/                 # /worker endpoints the Rust server calls
+  services/               # Model calls, the cleanup prompt and text rules, training
   backends/               # Whisper STT and Qwen3 LLM implementations (MLX)
-  database/               # ORM models, session management (the app creates kass.db)
-  utils/                  # Shared utilities (audio loading, progress tracking)
+  database/               # SQLAlchemy models of kass.db, read for settings and training
+  utils/                  # Audio loading, memory, progress tracking
 ```
-
-### Request flow
-
-```
-HTTP request
-  -> routes/        (validate input, parse params)
-  -> services/      (business logic, database queries, orchestration)
-  -> backends/      (STT / LLM inference)
-  -> utils/         (audio loading, progress tracking)
-```
-
-Route handlers are intentionally thin. They validate input, delegate to a service function, and format the response. All business logic lives in `services/`.
 
 ### Key modules
 
-**services/captures.py**, **services/capture_stream.py** -- Dictation captures: upload or stream audio, run Whisper, persist the capture, and chain refinement.
+**routes/stream_models.py** -- Recognize, alignments, cleanup and command generation, keep-resident and foreground: the calls a dictation makes.
 
-**services/refinement.py** -- Builds the cleanup prompt and runs the local Qwen3 LLM over a raw transcript.
+**services/refinement.py** -- The cleanup prompt and the text rules applied to the model's draft. Training's `pipeline_id` hashes them, so they stay here until training data is prepared in Rust.
+
+**services/model_improvement/** -- Voice and cleanup training. It reads corrections and captures from kass.db.
 
 **backends/__init__.py** -- Protocol definitions (`STTBackend`, `LLMBackend`), model config registry, and factory functions.
-
-**backends/base.py** -- Shared utilities used by the backends: HuggingFace cache checks, progress tracking.
-
-**database/** -- SQLAlchemy ORM models with a re-exporting `__init__.py` for backward compatibility. Migrations run automatically on startup.
 
 ### Platform
 
@@ -64,19 +47,7 @@ The backend runs on Apple Silicon Macs only. Whisper (mlx-audio) and the Qwen3 L
 
 ## API
 
-Full interactive documentation is available at `http://localhost:17494/docs` when the server is running. In the app, Kass's API listens on port 17493 (the `kass-server` crate in `tauri/src-tauri/server`) and passes every request on to this server on 17494.
-
-| Domain | Prefix | Description |
-|--------|--------|-------------|
-| Health | `/`, `/health` | Server status, filesystem checks, shutdown |
-| Transcription | `/transcribe` | Whisper-based audio-to-text |
-| Captures | `/captures`, `/capture` | Dictation captures, refinement, feedback, readiness, correction learning |
-| Streaming dictation | `WS /captures/stream` | PCM recognition/refinement during recording, with one final capture |
-| LLM | `/llm/generate` | Local Qwen3 text generation |
-| Writing style | `/writing-style` | Learned punctuation habits and personal examples |
-| Settings | `/settings/captures` | Capture and refinement defaults |
-| Models | `/models` | Download, unload, delete, migrate, status |
-| Tasks | `/tasks` | Active download tracking |
+The worker only answers `/worker/*` and `/health`, on 127.0.0.1. Kass's API listens on port 17493 in the Rust server, which serves every route from kass.db and calls the worker for model work. Interactive docs for the worker endpoints are at `http://localhost:17494/docs` while it runs.
 
 ## Data directory
 

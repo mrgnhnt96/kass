@@ -289,10 +289,7 @@ async fn add_entry(State(state): State<AppState>, bytes: Bytes) -> Response {
         .call(move |conn| store::add_group(conn, new, sync))
         .await
     {
-        Ok(Ok(group)) => {
-            worker::dictionary_changed(&state.proxy).await;
-            Json(EntryModel::from(group)).into_response()
-        }
+        Ok(Ok(group)) => Json(EntryModel::from(group)).into_response(),
         Ok(Err(error)) => refused(error),
         Err(error) => failed(error),
     }
@@ -372,10 +369,7 @@ async fn update_entry(
         .call(move |conn| store::update_group(conn, &entry_id, patch, sync))
         .await;
     match updated {
-        Ok(Ok(Some(group))) => {
-            worker::dictionary_changed(&state.proxy).await;
-            Json(EntryModel::from(group)).into_response()
-        }
+        Ok(Ok(Some(group))) => Json(EntryModel::from(group)).into_response(),
         Ok(Ok(None)) => not_found(),
         Ok(Err(error)) => refused(error),
         Err(error) => failed(error),
@@ -389,10 +383,7 @@ async fn delete_entry(State(state): State<AppState>, Path(entry_id): Path<String
         .call(move |conn| store::delete_group(conn, &entry_id, sync))
         .await
     {
-        Ok(true) => {
-            worker::dictionary_changed(&state.proxy).await;
-            Json(json!({ "deleted": true })).into_response()
-        }
+        Ok(true) => Json(json!({ "deleted": true })).into_response(),
         Ok(false) => not_found(),
         Err(error) => failed(error),
     }

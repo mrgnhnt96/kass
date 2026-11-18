@@ -12,7 +12,7 @@ pub mod preview;
 pub mod text;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use chrono::{NaiveDateTime, Utc};
@@ -21,9 +21,7 @@ use kass_text::refinement::strip_stt_artifacts;
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 
-use crate::proxy::Proxy;
 use crate::styles::{Snapshot, KASS_BUNDLE};
-use crate::worker;
 use text::{Chip, Note};
 
 pub const TARGET_REPLIES: usize = 10;
@@ -114,9 +112,6 @@ fn now() -> NaiveDateTime {
 #[derive(Default)]
 pub struct Sessions {
     open: Mutex<HashMap<String, Session>>,
-    /// Held while the worker is told the style being taught, so the latest
-    /// one always lands last.
-    telling: tokio::sync::Mutex<()>,
 }
 
 impl Sessions {
@@ -143,19 +138,6 @@ impl Sessions {
 
     pub fn teaching_style(&self) -> Option<String> {
         self.newest().map(|(style, _)| style)
-    }
-
-    /// Tell the worker the style being taught now, in the background: it
-    /// still answers some styles itself.
-    pub fn tell_worker(self: &Arc<Self>, proxy: &Proxy) {
-        let sessions = Arc::clone(self);
-        let proxy = proxy.clone();
-        tokio::spawn(async move {
-            let _held = sessions.telling.lock().await;
-            let (style, left) = sessions.newest().unzip();
-            let left = left.map_or(0.0, |left| left.as_secs_f64());
-            worker::teaching(&proxy, style.as_deref(), left).await;
-        });
     }
 
     /// Run `work` on an open session, which counts as touching it.

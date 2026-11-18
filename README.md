@@ -48,7 +48,7 @@ Requires an Apple Silicon Mac. Download the latest DMG from [Releases](https://g
 
 ## Development
 
-Built in Rust with GPUI, with a bundled FastAPI server running Whisper and Qwen3 on MLX.
+Built in Rust with GPUI. A bundled Python worker runs Whisper and Qwen3 on MLX.
 
 ```bash
 cargo xtask setup     # Python venv, dependencies and the pre-push hook
@@ -68,14 +68,14 @@ To release, move the Unreleased notes in [CHANGELOG.md](CHANGELOG.md) under the 
 
 To try a feature before it's public, run `tb release cut v0.7.0-beta.1` from a clean `main`. Betas are published as prereleases: the website and the public update skip them, and only copies with **Settings › General › Beta updates** on install them. Betas keep their notes under Unreleased until the public release.
 
-To ship a feature in a public release without showing it yet, add its name to `BETA_FEATURES` in [backend/beta.py](backend/beta.py) and gate it with `beta.enabled(name)` on the server and `updater::beta_features_on()` in the app. It only shows for beta users. Remove the name to make it public; every server check still using it then raises.
+To ship a feature in a public release without showing it yet, gate it with `updater::beta_features_on()` in the app. It only shows for beta users. While the beta channel is on, the app also writes `update-channel` (containing `beta`) into the data dir, for server code that needs the same check.
 
-| Path       | What                                               |
-| ---------- | -------------------------------------------------- |
-| `tauri/`   | The desktop app, its windows and dictation (Rust)  |
-| `crates/`  | The app's screens and shared Rust libraries        |
-| `backend/` | Python server: STT, refinement, captures, learning |
-| `site/`    | Website, docs and changelog                        |
+| Path       | What                                                   |
+| ---------- | ------------------------------------------------------ |
+| `tauri/`   | The desktop app, its windows and dictation (Rust)      |
+| `crates/`  | The app's screens and shared Rust libraries            |
+| `backend/` | Python model worker: Whisper, Qwen3 cleanup, training  |
+| `site/`    | Website, docs and changelog                            |
 
 ## License
 

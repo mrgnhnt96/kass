@@ -1,6 +1,6 @@
 //! `kass.db`. The app creates it, or brings an older one up to date
-//! (`prepare`, `schema`), before it starts the Python worker, which then
-//! reads and writes the same tables. The journal mode stays SQLite's
+//! (`prepare`, `schema`), before it starts the Python worker, which reads
+//! the reports and captures it trains on. The journal mode stays SQLite's
 //! default, as the worker opens it.
 
 mod schema;
@@ -102,6 +102,25 @@ pub fn prepare(path: &Path) -> Result<(), String> {
         .pragma_update(None, "foreign_keys", false)
         .map_err(|e| failed(&e))?;
     schema::migrate(&mut connection).map_err(|e| failed(&e))
+}
+
+/// What a new install starts with, in a kass.db `prepare` made: the
+/// settings, the Personal style and the default dictionary words. The app runs it once
+/// at launch, after `prepare`. Idempotent.
+pub fn seed(path: &Path) -> Result<(), String> {
+    let failed =
+        |error: &dyn std::fmt::Display| format!("Could not seed {}: {error}", path.display());
+    let mut connection = Connection::open(path).map_err(|e| failed(&e))?;
+    connection
+        .busy_timeout(BUSY_TIMEOUT)
+        .map_err(|e| failed(&e))?;
+    crate::settings::get(&mut connection).map_err(|e| failed(&e))?;
+    crate::styles::ensure(&mut connection).map_err(|e| failed(&e))?;
+    crate::dictionary::store::ensure_defaults(
+        &mut connection,
+        &path.with_file_name("dictionary-defaulted"),
+    )
+    .map_err(|e| failed(&e))
 }
 
 /// Kass was Herga (herga.db), and before that Voicebox (voicebox.db); carry
@@ -225,6 +244,63 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tables, 10);
+    }
+
+    #[test]
+    fn a_new_install_starts_with_the_personal_style_and_the_default_words() {
+        let db = TempDb::new("seed");
+        let mut c = db.prepare();
+        crate::settings::get(&mut c).unwrap();
+        c.execute(
+            "UPDATE capture_settings SET punctuation_style = 'casual', preserve_technical = 0",
+            [],
+        )
+        .unwrap();
+        seed(&db.0).unwrap();
+        seed(&db.0).unwrap();
+        let styles: Vec<(String, String, bool, String)> = c
+            .prepare("SELECT id, name, is_default, punctuation_style FROM writing_styles")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(styles.len(), 1);
+        assert_eq!(styles[0].3, "casual");
+        assert_eq!(
+            (styles[0].0.as_str(), styles[0].1.as_str(), styles[0].2),
+            ("personal", "Personal", true)
+        );
+        let words: Vec<String> = c
+            .prepare("SELECT written FROM dictionary_entries")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(words, ["Kass"]);
+
+        // A deleted default word stays deleted; two defaults become one.
+        c.execute_batch(
+            "DELETE FROM dictionary_entries;
+             INSERT INTO writing_styles (id, name, position, is_default, punctuation_style, \
+             capitalize_first, smart_cleanup, preserve_technical) \
+             VALUES ('work', 'Work', 1, 1, 'standard', 1, 1, 1);",
+        )
+        .unwrap();
+        seed(&db.0).unwrap();
+        let words: i64 = c
+            .query_row("SELECT count(*) FROM dictionary_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(words, 0);
+        let defaults: Vec<String> = c
+            .prepare("SELECT id FROM writing_styles WHERE is_default != 0")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(defaults, ["personal"]);
     }
 
     #[test]

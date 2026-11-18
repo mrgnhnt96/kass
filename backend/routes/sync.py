@@ -18,27 +18,13 @@ class Mirrored(BaseModel):
 @router.post("/sync/mirrored")
 async def use_mirrored(request: Mirrored):
     """A stand-in copied the shared Kass: use its trained models, already
-    copied here, and read everything else it copied afresh."""
-    from ..services import (
-        correction_learning,
-        correction_notes,
-        dictionary,
-        known_names,
-        personal_examples,
-        styles,
-        writing_style,
-    )
+    copied here, and the learned corrections training checks against."""
+    from ..services import correction_learning
     from ..services.model_improvement import manager
 
     active = manager.use_mirrored(request.active)
-    writing_style._state = None
-    correction_notes._state = None
     correction_learning._state = None
     correction_learning.initialize()
-    personal_examples.invalidate()
-    known_names.invalidate()
-    styles.invalidate()
-    dictionary.invalidate()
     # The server saves the ones in use as its own (model_improvement.rs).
     return {"active": active}
 

@@ -8,6 +8,7 @@ dictations and plans, trains and uses the models model improvement picks.
 import logging
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..services import correction_learning
@@ -16,6 +17,7 @@ from .stream_models import Generate, cleanup_generate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/worker/learning", tags=["worker"])
+events_router = APIRouter(prefix="/worker/captures", tags=["worker"])
 
 
 @router.post("/reload")
@@ -125,3 +127,33 @@ def model_voice():
     from ..services.voice_training import bank
 
     return {"bank": bank.summary()}
+
+
+class Forget(BaseModel):
+    capture_id: str
+
+
+@router.post("/model/forget")
+def model_forget(request: Forget):
+    """The server deleted a capture: its voice take leaves the training bank."""
+    from ..services.voice_training import bank
+
+    bank.forget(request.capture_id)
+    return {"ok": True}
+
+
+@events_router.get("/events")
+async def capture_events_endpoint():
+    """The worker's own events (a trained model it stopped using is
+    "learned"), which the server passes on to the apps."""
+    from ..services import capture_events
+
+    return StreamingResponse(
+        capture_events.subscribe(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

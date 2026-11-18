@@ -59,26 +59,9 @@ def test_refined_corrections_become_examples(storage):
 
 
 def test_only_explicit_reports_teach_the_style(storage):
-    from backend.services import known_names
-
     _correct(storage, "meet megan at noon", "Meet Morgan at noon.", "voice", source="voice_fix")
     _correct(storage, "call megan at noon", "Call Rosalind at noon.", "again", source="redictation")
     assert [e["meant"] for e in personal_examples.all_examples()] == ["Meet Morgan at noon."]
-    known_names.invalidate()
-    names = known_names.known_names()
-    assert "Morgan" in names
-    assert "Rosalind" not in names
-
-
-def test_withdrawn_correction_stops_being_an_example(storage):
-    from backend.services.capture_feedback import withdraw_feedback
-
-    _correct(storage, "meet megan at noon", "Meet Morgan at noon.", "voice", source="voice_fix")
-    assert personal_examples.all_examples()
-    with storage() as db:
-        report = db.query(CaptureFeedback).one()
-        assert withdraw_feedback("voice", report.id, db)
-    assert personal_examples.all_examples() == []
 
 
 def test_every_dictation_gets_the_same_examples_oldest_first(storage):
@@ -169,21 +152,3 @@ async def test_refinement_sends_the_users_examples_after_the_defaults(storage):
         use_personal_examples=False,
     )
     assert backend.generate.await_args.kwargs["examples"] == REFINEMENT_EXAMPLES
-
-
-@pytest.mark.asyncio
-async def test_refining_a_capture_keeps_and_flags_possible_content_changes(storage, monkeypatch):
-    from backend.services import captures
-
-    monkeypatch.setattr(captures, "refine_transcript", AsyncMock(return_value=("Send the notes to main.", "0.6B")))
-    with storage() as db:
-        db.add(Capture(id="c1", audio_path="a.wav", transcript_raw="send the notes to domain"))
-        db.commit()
-        output = await captures.refine_capture("c1", RefinementFlags(), None, db)
-    assert output.transcript_refined == "Send the notes to main."
-    assert output.refinement_review.model_dump() == {
-        "outcome": "review",
-        "added": ["main"],
-        "missing": ["domain"],
-        "reasons": [],
-    }

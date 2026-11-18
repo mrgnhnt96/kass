@@ -547,9 +547,12 @@ async fn start_server(
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?
         .join("kass.db");
-    tokio::task::spawn_blocking(move || kass_server::db::prepare(&database))
-        .await
-        .map_err(|e| e.to_string())??;
+    tokio::task::spawn_blocking(move || {
+        kass_server::db::prepare(&database)?;
+        kass_server::db::seed(&database)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     start_worker(&app, &state, models_dir).await?;
     serve_api(&app, &state, share).await?;
     Ok(format!("http://127.0.0.1:{}", SERVER_PORT))

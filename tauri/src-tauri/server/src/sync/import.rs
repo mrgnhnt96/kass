@@ -47,10 +47,8 @@ pub struct Applied {
     pub reports: BTreeMap<(String, String), bool>,
     /// Captures deleted, whose voice takes the worker forgets.
     pub forgotten: Vec<String>,
-    /// Styles deleted, whose learning the worker forgets.
+    /// Styles deleted, whose learning is forgotten.
     pub styles_deleted: Vec<String>,
-    /// Whether any other style or app assignment changed.
-    pub styles: bool,
 }
 
 fn newer_here(row: &Row, changed_at: NaiveDateTime) -> bool {
@@ -124,7 +122,6 @@ fn style(
         changed_at,
         &["is_default"],
     )?;
-    applied.styles = true;
     Ok(())
 }
 
@@ -133,17 +130,15 @@ fn app_style(
     change: &Change,
     row: &Row,
     changed_at: NaiveDateTime,
-) -> rusqlite::Result<bool> {
+) -> rusqlite::Result<()> {
     if change.deleted {
-        delete_unless_newer(conn, "app_styles", &change.id, changed_at)?;
-        return Ok(true);
+        return delete_unless_newer(conn, "app_styles", &change.id, changed_at);
     }
     let style = text(row, "style_id").unwrap_or_default();
     if rows::get(conn, "writing_styles", style)?.is_none() {
-        return Ok(false);
+        return Ok(());
     }
-    upsert(conn, "app_styles", &change.id, row, changed_at, &[])?;
-    Ok(true)
+    upsert(conn, "app_styles", &change.id, row, changed_at, &[])
 }
 
 fn settings(
@@ -341,7 +336,7 @@ pub fn apply(
         let row = change.row.clone().unwrap_or_default();
         match change.kind.as_str() {
             "style" => style(conn, &change, &row, changed_at, &mut applied)?,
-            "app_style" => applied.styles |= app_style(conn, &change, &row, changed_at)?,
+            "app_style" => app_style(conn, &change, &row, changed_at)?,
             "settings" => settings(conn, &change, &row, changed_at)?,
             "dictionary" => dictionary_entry(conn, &change, &row, changed_at)?,
             "capture" => capture(conn, data_dir, &change, &row, audio, &mut applied)?,

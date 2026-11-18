@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.database import session as database_session
 from backend.database.models import Base, DictionaryEntry
-from backend.services import dictionary, phrase_seams, styles
+from backend.services import dictionary, phrase_seams
 from backend.services.correction_rules import MAX_TEXT
 from backend.services.dictionary import Entry
 
@@ -303,8 +303,6 @@ def storage(monkeypatch):
     Base.metadata.create_all(engine)
     make = sessionmaker(bind=engine)
     monkeypatch.setattr(database_session, "SessionLocal", make)
-    with make() as db:
-        styles.ensure_styles(db)
     return make
 
 
@@ -315,31 +313,6 @@ def worker(storage):
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
-
-
-GLOBAL = [{"scope": "global"}]
-
-
-def add(storage, written, spoken=None, places=GLOBAL):
-    with storage() as db:
-        return dictionary.add_group(db, written, spoken, places)
-
-
-def listed(storage):
-    with storage() as db:
-        return dictionary.list_groups(db)
-
-
-def test_the_worker_reloads_the_dictionary_the_server_changed(storage, worker):
-    assert dictionary.for_app(ZED).terms == ()
-    with storage() as db:
-        db.add(DictionaryEntry(id="rust", scope="global", scope_id="", written="Kubernetes", key="kubernetes"))
-        db.commit()
-    assert dictionary.for_app(ZED).terms == ()
-
-    assert worker.post("/worker/dictionary/changed").json() == {"ok": True}
-
-    assert dictionary.for_app(ZED).terms == ("Kubernetes",)
 
 
 def test_the_worker_counts_terms_with_whisper_or_leaves_it_to_the_server(worker, monkeypatch):
@@ -358,186 +331,24 @@ def test_the_worker_counts_terms_with_whisper_or_leaves_it_to_the_server(worker,
     assert worker.post("/worker/dictionary/token-counts", json={"terms": []}).json() == {"counts": []}
 
 
-@pytest.mark.parametrize(
-    ("letters", "heard", "written"),
-    [
-        ("MEGHAN", "Megan", "Meghan"),
-        ("meghan", None, "Meghan"),
-        ("MEGHAN.", "meghan", "Meghan"),
-        ("NASA", "NASA", "NASA"),
-        ("IPHONE", "iPhone", "iPhone"),
-        ("McKAY", None, "McKAY"),
-        ("MRGNHNT96", None, "MRGNHNT96"),
-        ("mrgnhnt96", None, "mrgnhnt96"),
-    ],
-)
-def test_a_spelled_word_is_written_as_a_name(letters, heard, written):
-    assert dictionary.spelled_word(letters, heard) == written
-
-
-def test_a_spelled_fix_adds_a_word_that_never_respells_others(storage):
-    dictionary.for_app(ZED)
+def test_dictation_reads_the_entries_the_server_saved(storage):
+    # An entry from before groups, as the app's migration leaves it (server/src/db.rs).
     with storage() as db:
-        added = dictionary.add_spelled_word("MEGHAN", ZED, "Megan", db)
-
-    assert (added.written, added.spoken, added.match_sound, added.source) == ("Meghan", None, False, "spoken_fix")
-    assert [(p.scope, p.scope_id) for p in added.places] == [("global", None)]
-    # The caches were cleared: dictation uses it at once, in every app.
-    for app in (ZED, SLACK):
-        found = dictionary.for_app(app)
-        assert found.terms == ("Meghan",)
-        assert found.apply("meghan met Megan and Meagan") == "Meghan met Megan and Meagan"
-
-
-def test_a_spelled_fix_twice_adds_the_word_once(storage):
-    with storage() as db:
-        first = dictionary.add_spelled_word("MEGHAN", ZED, db=db)
-    with storage() as db:
-        again = dictionary.add_spelled_word("meghan", SLACK, "Meghan", db)
-
-    assert again.id == first.id
-    [group] = listed(storage)
-    assert (group.written, group.match_sound, group.source) == ("Meghan", False, "spoken_fix")
-
-
-def test_a_spelled_fix_never_changes_the_users_entry(storage):
-    mine = add(storage, "Meghan")
-    zed = {"scope": "app", "scope_id": ZED, "app_name": "Zed"}
-    theirs = add(storage, "Saggar", "sagar", [zed])
-
-    with storage() as db:
-        kept = dictionary.add_spelled_word("MEGHAN", ZED, db=db)
-        # Said "sagar" everywhere is taken only in Zed: everywhere gets the word.
-        elsewhere = dictionary.add_spelled_word("SAGAR", SLACK, db=db)
-        # In Zed, "sagar" already writes something else; that stays.
-        assert dictionary.add_spelled_word("SAGAR", ZED, db=db) is None
-
-    assert kept.id == mine.id
-    assert (kept.match_sound, kept.source) == (True, "user")
-    assert elsewhere.written == "Sagar"
-    assert dictionary.for_app(ZED).apply("sagar met Megan") == "Saggar met Meghan"
-    groups = {group.id: group for group in listed(storage)}
-    assert (groups[mine.id].match_sound, groups[theirs.id].spoken) == (True, "sagar")
-
-
-def test_a_spelled_fix_an_entry_already_said_that_way_is_left_alone(storage):
-    add(storage, "Megan", "meghan")
-
-    with storage() as db:
-        assert dictionary.add_spelled_word("MEGHAN", ZED, db=db) is None
-
-    assert [group.written for group in listed(storage)] == ["Megan"]
-
-
-def test_editing_a_spelled_fix_makes_it_the_users(storage):
-    with storage() as db:
-        added = dictionary.add_spelled_word("MEGHAN", db=db)
-
-    with storage() as db:
-        edited = dictionary.update_group(db, added.id, {"match_sound": True})
-
-    assert (edited.match_sound, edited.source) == (True, "user")
-
-
-def test_a_spelled_fix_without_a_word_or_database_adds_nothing(storage, monkeypatch):
-    with storage() as db:
-        assert dictionary.add_spelled_word("  . ", ZED, db=db) is None
-    monkeypatch.setattr(database_session, "SessionLocal", None)
-    assert dictionary.add_spelled_word("MEGHAN", ZED) is None
-
-
-def test_a_spelled_fix_opens_its_own_session(storage):
-    added = dictionary.add_spelled_word("MEGHAN", ZED)
-
-    with storage() as db:
-        assert [g.id for g in dictionary.list_groups(db)] == [added.id]
-
-
-def test_entries_from_before_groups_are_their_own_entry(storage):
-    from backend.database.models import DictionaryEntry
-
-    with storage() as db:
-        db.add(DictionaryEntry(id="old", scope="global", scope_id="", written="Zed", key="zed"))
+        db.add(DictionaryEntry(id="old", scope="global", scope_id="", written="Kass", key="kass"))
         db.commit()
-        [group] = dictionary.list_groups(db)
-        assert group.id == "old"
-        dictionary.update_group(db, "old", {"places": [{"scope": "app", "scope_id": ZED}]})
-        assert [(p.scope, p.scope_id) for p in dictionary.list_groups(db)[0].places] == [("app", ZED)]
-
-
-def test_deleting_a_style_moves_its_entries_to_the_default(storage):
-    with storage() as db:
-        code = styles.create_style(db, "Code")
-        default = styles.default_id()
-        dictionary.add_group(db, "Kubernetes", None, [{"scope": "style", "scope_id": code.id}])
-        dictionary.add_group(db, "Zed", None, [{"scope": "style", "scope_id": code.id}])
-        dictionary.add_group(db, "zed", None, [{"scope": "style", "scope_id": default}])
-        styles.delete_style(db, code.id)
-
-        moved = dictionary.list_entries(db)
-
-    assert sorted((e.scope_id == default, e.written) for e in moved) == [(True, "Kubernetes"), (True, "zed")]
-
-
-def test_an_entry_from_before_groups_is_its_own_group_of_the_users():
-    # The app's migration leaves an existing entry as this row
-    # (tauri/src-tauri/server/src/db.rs).
-    from sqlalchemy import text
-
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "INSERT INTO dictionary_entries (id, scope, scope_id, written, key, group_id, match_sound,"
-                " source, phrase) VALUES ('old', 'global', '', 'Zed', 'zed', NULL, 1, NULL, 0)"
-            )
-        )
-    make = sessionmaker(bind=engine)
-    with make() as db:
-        [group] = dictionary.list_groups(db)
-    assert (group.match_sound, group.source, group.phrase) == (True, "user", False)
-
-
-def test_the_app_name_is_in_a_new_dictionary_once(storage, tmp_path):
-    marker = tmp_path / "dictionary-defaulted"
-    with storage() as db:
-        dictionary.ensure_defaults(db, marker)
-        [group] = dictionary.list_groups(db)
-        assert (group.written, group.spoken, group.places) == ("Kass", None, (dictionary.Place("global"),))
-        assert dictionary.for_app(ZED).apply("Ask Cass to fix it") == "Ask Kass to fix it"
-
-        # Deleted, it stays deleted.
-        dictionary.delete_group(db, group.id)
-        dictionary.ensure_defaults(db, marker)
-        assert dictionary.list_groups(db) == []
-
-
-def test_an_existing_entry_for_the_app_name_is_left_alone(storage, tmp_path):
-    with storage() as db:
-        dictionary.add_group(db, "Kass", "Cass", [{"scope": "global"}])
-        dictionary.ensure_defaults(db, tmp_path / "dictionary-defaulted")
-        [group] = dictionary.list_groups(db)
-        assert group.spoken == "Cass"
-
-
-def test_a_word_already_said_as_the_app_name_keeps_startup_working(storage, tmp_path):
-    with storage() as db:
-        dictionary.add_group(db, "KASS-2", "kass", [{"scope": "global"}])
-        dictionary.ensure_defaults(db, tmp_path / "dictionary-defaulted")
-        assert [group.written for group in dictionary.list_groups(db)] == ["KASS-2"]
+    [saved] = dictionary.entries()
+    assert (saved.group_id, saved.match_sound, saved.phrase) == ("old", True, False)
+    assert dictionary.for_app(ZED).apply("Ask Cass to fix it") == "Ask Kass to fix it"
 
 
 @pytest.mark.parametrize(
     ("original", "corrected", "words"),
     [
-        # Heard close enough: the term alone fixes it, matched by sound.
-        ("Test that Pikto works.", "Test that Picto works.", [("Picto", None)]),
-        ("ask Sagar about it", "ask Saggar about it", [("Saggar", None)]),
-        # Heard as a non-word too far off: that form is replaced.
-        ("open Clard code now", "open Claude code now", [("Claude", "Clard")]),
-        # Heard as a word the user also says: never replaced, only prompted.
-        ("start a cloud session", "start a Claude session", [("Claude", None)]),
+        # Voice training keeps the ones that sound alike (bank.py).
+        ("Test that Pikto works.", "Test that Picto works.", [("Pikto", "Picto")]),
+        ("ask Sagar about it", "ask Saggar about it", [("Sagar", "Saggar")]),
+        ("open Clard code now", "open Claude code now", [("Clard", "Claude")]),
+        ("start a cloud session", "start a Claude session", [("cloud", "Claude")]),
         # Common words, drawn-out spellings and numbers are not vocabulary.
         ("Complete it and push.", "Commit it and push.", []),
         ("it was way better", "it was wayyy better", []),
@@ -546,31 +357,11 @@ def test_a_word_already_said_as_the_app_name_keeps_startup_working(storage, tmp_
         ("send the notes", "send the notes to Picto", []),
         # Words only dropped were heard right; a recased name is still a term.
         ("Whenever I. I. Don't have it", "Whenever I don't have it", []),
-        ("push it to github", "push it to GitHub", [("GitHub", None)]),
+        ("push it to github", "push it to GitHub", [("github", "GitHub")]),
     ],
 )
-def test_a_correction_finds_the_words_it_fixed(original, corrected, words, monkeypatch):
+def test_a_correction_finds_the_terms_it_fixed(original, corrected, words, monkeypatch):
     spoken = "a about and ask better code commit complete cloud done is it now open push send session start test"
     common = COMMON | set(spoken.split()) | {"that", "the", "notes", "to", "ticket", "was", "way", "works", "or"}
     monkeypatch.setattr(phrase_seams, "_common_word", lambda word: word.casefold() in common)
-    assert dictionary.corrected_words(original, corrected) == words
-
-
-def test_corrected_words_are_added_everywhere_and_fix_the_mistake(storage):
-    with storage() as db:
-        [added] = dictionary.add_corrected_words(db, "open Clard code", "open Claude code", "report-1")
-
-    assert (added.written, added.spoken, added.match_sound, added.source) == ("Claude", "Clard", True, "correction")
-    assert [(p.scope, p.scope_id) for p in added.places] == [("global", None)]
-    assert dictionary.for_app(SLACK).apply("Clard and claude") == "Claude and Claude"
-    with storage() as db:
-        dictionary.delete_added_by(db, "report-1")
-        assert dictionary.list_entries(db) == []
-
-
-def test_a_corrected_word_never_changes_the_users_entry(storage):
-    add(storage, "Picto")
-    with storage() as db:
-        assert dictionary.add_corrected_words(db, "Pikto works", "Picto works", "report-1") == []
-    [group] = listed(storage)
-    assert (group.written, group.source) == ("Picto", "user")
+    assert dictionary.misheard_terms(original, corrected) == words

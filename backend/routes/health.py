@@ -6,11 +6,9 @@ import resource
 import signal
 import time
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter
 
 from .. import models
-from ..database import get_db
 from ..services import transcribe
 from ..services.task_queue import create_background_task
 from ..utils.platform_detect import BACKEND_TYPE, GPU_TYPE
@@ -19,14 +17,6 @@ router = APIRouter()
 
 # When this server process started, for the uptime the status bar shows.
 STARTED_AT = time.time()
-
-
-@router.get("/")
-async def root():
-    """Root endpoint."""
-    from .. import __version__
-
-    return {"message": "kass API", "version": __version__}
 
 
 @router.post("/shutdown")
@@ -43,12 +33,11 @@ async def shutdown():
 
 
 @router.get("/health", response_model=models.HealthResponse)
-async def health(db: Session = Depends(get_db)):
+async def health():
     """Health check endpoint.
 
-    ``model_loaded`` / ``model_size`` describe the Whisper model in memory;
-    ``model_downloaded`` says whether the Whisper model chosen in the capture
-    settings is cached locally.
+    ``model_loaded`` / ``model_size`` describe the Whisper model in memory.
+    The Rust server answers whether the chosen Whisper model is downloaded.
     """
     from .. import __version__
 
@@ -63,23 +52,10 @@ async def health(db: Session = Depends(get_db)):
         model_loaded = False
         model_size = None
 
-    model_downloaded = None
-    try:
-        from ..backends import WHISPER_HF_REPOS
-        from ..backends.base import is_model_cached
-        from ..services import settings as settings_service
-
-        stt_size = settings_service.get_capture_settings(db).stt_model
-        repo = WHISPER_HF_REPOS.get(stt_size)
-        if repo:
-            model_downloaded = is_model_cached(repo, weight_extensions=(".safetensors", ".bin", ".npz"))
-    except Exception:
-        pass
-
     return models.HealthResponse(
         status="healthy",
         model_loaded=model_loaded,
-        model_downloaded=model_downloaded,
+        model_downloaded=None,
         model_size=model_size,
         # Startup refuses anything but Apple Silicon, so MLX on Metal is
         # always the backend here.

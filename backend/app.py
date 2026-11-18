@@ -1,9 +1,10 @@
-"""FastAPI application factory, middleware, and lifecycle events."""
+"""The model worker the Rust server (kass-server) starts and calls: it loads
+Whisper and the cleanup model, recognizes, generates and trains."""
 
 import asyncio
 import logging
 import sys
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import ClassVar
 
@@ -37,7 +38,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__, config, database
 from .routes import register_routers
@@ -51,71 +51,30 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        from .services import sync
-
         await _run_startup(app)
         from .services.correction_learning import initialize
 
         initialize()
-        tasks = [asyncio.create_task(job()) for job in (_stand_in_jobs() if sync.standing_in() else _jobs())]
         try:
             yield
         finally:
-            for task in tasks:
-                task.cancel()
-            for task in tasks:
-                with suppress(asyncio.CancelledError):
-                    await task
             # Runs whether or not startup finished, so a partial startup
             # still unloads whatever models were loaded.
             await _run_shutdown()
 
     application = FastAPI(
-        title="kass API",
-        description="Local dictation API: Whisper speech-to-text with LLM cleanup",
+        title="kass model worker",
+        description="Runs Whisper, the cleanup model and training for the Kass server",
         version=__version__,
         lifespan=lifespan,
     )
 
-    _configure_cors(application)
     from .services.model_improvement.middleware import ForegroundPriorityMiddleware
 
     application.add_middleware(ForegroundPriorityMiddleware)
-    # Which Mac each request came from, for the captures it saves.
-    from .utils.macs import MacMiddleware
-
-    application.add_middleware(MacMiddleware)
     register_routers(application)
 
     return application
-
-
-def _jobs():
-    # The daily usage report, the correction notes job, the history retention
-    # sweep and model improvement's schedule run in the app
-    # (tauri/src-tauri/server/src/usage, correction_notes.rs,
-    # captures/retention.rs, model_improvement.rs).
-    return ()
-
-
-def _stand_in_jobs():
-    """A stand-in for a shared Kass runs none: the shared Kass learns, keeps
-    history and reports usage, and the Rust server syncs with it
-    (kass-server's sync::job)."""
-    return ()
-
-
-def _configure_cors(application: FastAPI) -> None:
-    """Set up CORS middleware with local-first defaults."""
-    from .utils.origins import allowed_origins
-
-    application.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins(),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
 
 async def _run_startup(application: FastAPI) -> None:

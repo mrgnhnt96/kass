@@ -2,7 +2,6 @@
 
 import pytest
 
-from backend.services.content_check import check
 from backend.services.refinement import RefinementFlags, refine_transcript
 from backend.services.voice_commands import CLIPBOARD, commands_alone, mark_commands
 
@@ -45,11 +44,3 @@ async def test_only_a_command_skips_the_model():
 
     flags = RefinementFlags(True, True, True, "standard")
     assert await refine_transcript(f"{CLIPBOARD}.", flags, backend_override=NoModel()) == (CLIPBOARD, "4B")
-
-
-def test_a_cleanup_that_drops_the_marker_is_rejected():
-    said = f"Here's the link {CLIPBOARD} let me know"
-    assert check(said, "Here's the link. Let me know.").outcome == "reject"
-    # "clipboard" as a word is not the command.
-    assert check(said, "Here's the link clipboard. Let me know.").outcome == "reject"
-    assert check(said, f"Here's the link: {CLIPBOARD}. Let me know.").outcome == "ok"

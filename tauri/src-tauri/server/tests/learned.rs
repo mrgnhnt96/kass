@@ -1,14 +1,11 @@
 //! What each writing style learned (writing-style.json and
 //! correction-notes.json) against a real kass.db, in front of a stand-in
-//! worker that records when it's told to reread them.
+//! worker.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::extract::State;
-use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -42,31 +39,12 @@ const CORRECTIONS: [(&str, &str, &str); 6] = [
     ("status", "Status.", "Status"),
 ];
 
-#[derive(Clone, Default)]
-struct Worker {
-    /// Each `/worker/learned/changed` body, in order.
-    learned: Arc<Mutex<Vec<Value>>>,
-}
-
-async fn learned_changed(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
-    worker.learned.lock().unwrap().push(body);
-    Json(json!({"ok": true}))
-}
-
-async fn styles_state() -> Json<Value> {
-    Json(json!({"cache_mb_per_style": 189}))
-}
-
 async fn ok() -> Json<Value> {
     Json(json!({"ok": true}))
 }
 
-async fn start_worker(worker: Worker) -> SocketAddr {
-    let app = Router::new()
-        .route("/worker/learned/changed", post(learned_changed))
-        .route("/worker/styles/state", post(styles_state))
-        .fallback(ok)
-        .with_state(worker);
+async fn start_worker() -> SocketAddr {
+    let app = Router::new().fallback(ok);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -119,20 +97,17 @@ fn database(corrected: bool) -> PathBuf {
 
 struct Kass {
     server: kass_server::Running,
-    learned: Arc<Mutex<Vec<Value>>>,
     dir: PathBuf,
 }
 
 impl Kass {
     /// Kass, once the habits counted at start are saved.
     async fn start(corrected: bool) -> Self {
-        let worker = Worker::default();
-        let learned = worker.learned.clone();
         let database = database(corrected);
         let dir = database.parent().unwrap().to_path_buf();
         let server = kass_server::start(kass_server::Config {
             listen: "127.0.0.1:0".parse().unwrap(),
-            worker: start_worker(worker).await,
+            worker: start_worker().await,
             database,
             shared_server: None,
             voice_model: None,
@@ -141,17 +116,9 @@ impl Kass {
         })
         .await
         .unwrap();
-        let kass = Kass {
-            server,
-            learned,
-            dir,
-        };
-        kass.until(|kass| {
-            kass.file("writing-style.json")["counting"] == 2
-                && !kass.learned.lock().unwrap().is_empty()
-        })
-        .await;
-        assert_eq!(kass.told(), vec![json!({})]);
+        let kass = Kass { server, dir };
+        kass.until(|kass| kass.file("writing-style.json")["counting"] == 2)
+            .await;
         kass
     }
 
@@ -163,11 +130,6 @@ impl Kass {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         panic!("timed out");
-    }
-
-    /// What the worker was told since the last call.
-    fn told(&self) -> Vec<Value> {
-        std::mem::take(&mut *self.learned.lock().unwrap())
     }
 
     fn path(&self, name: &str) -> PathBuf {
@@ -252,7 +214,6 @@ async fn habits_are_counted_again_after_a_correction() {
     }
     let (_, learned) = kass.call("GET", "/writing-style", None).await;
     assert_eq!(learned["habits"], json!(["drop_final_period"]));
-    assert!(!kass.told().is_empty());
 }
 
 #[tokio::test]
@@ -280,7 +241,6 @@ async fn examples_are_listed_and_hidden() {
             .0,
         204
     );
-    assert_eq!(kass.told(), vec![json!({})]);
     assert_eq!(
         kass.file("writing-style.json")["hidden_examples"],
         json!(["correction:f5"])
@@ -293,7 +253,6 @@ async fn examples_are_listed_and_hidden() {
             .await,
         not_found("Example not found")
     );
-    assert!(kass.told().is_empty());
 }
 
 #[tokio::test]
@@ -331,7 +290,6 @@ async fn notes_are_listed_removed_and_reset() {
 
     let remove = format!("/writing-style/notes/{KASS_RULE_ID}");
     assert_eq!(kass.call("DELETE", &remove, None).await.0, 204);
-    assert_eq!(kass.told(), vec![json!({})]);
     let saved = &kass.file("correction-notes.json")["styles"]["personal"];
     assert_eq!(saved["notes"], json!([BASICALLY_RULE]));
     assert_eq!(
@@ -354,7 +312,6 @@ async fn notes_are_listed_removed_and_reset() {
     assert_eq!(status, 200);
     assert_eq!(reset["ready"], false);
     assert_eq!(reset["habits"], json!([]));
-    assert_eq!(kass.told(), vec![json!({})]);
     let (_, listed) = kass.call("GET", "/writing-style/notes", None).await;
     assert_eq!(listed["notes"], json!([]));
     assert_eq!(listed["outcome"], "waiting");
