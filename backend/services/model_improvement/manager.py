@@ -351,6 +351,12 @@ def dictating():
         return bool(_foreground_count) or time.monotonic() < _recording_until
 
 
+def foreground_generation():
+    """Changes with every dictation or other foreground request."""
+    with _lock:
+        return _generation
+
+
 def interrupted(generation):
     return generation != _generation
 

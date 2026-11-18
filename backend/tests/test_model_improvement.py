@@ -278,6 +278,30 @@ async def test_foreground_middleware_balances_busy_state_on_failure(storage, mon
     assert manager._foreground_count == 0
 
 
+def test_asking_whether_the_models_are_idle_keeps_them_idle(storage, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from backend.routes.learning import router
+    from backend.services.model_improvement.middleware import ForegroundPriorityMiddleware
+
+    app = FastAPI()
+    app.add_middleware(ForegroundPriorityMiddleware)
+    app.include_router(router)
+    monkeypatch.setattr(manager, "_last_activity", manager.time.monotonic() - manager.IDLE_SECONDS - 1)
+    monkeypatch.setattr(manager, "_recording_until", 0.0)
+    client = TestClient(app)
+    first = client.post("/worker/learning/idle").json()
+    assert first["idle"]
+    # Asking again, or for the styles' state, is no dictation.
+    assert client.post("/worker/learning/idle").json() == first
+    manager.begin_foreground()
+    manager.end_foreground()
+    second = client.post("/worker/learning/idle").json()
+    assert not second["idle"]
+    assert second["generation"] != first["generation"]
+
+
 def test_frozen_worker_command_uses_early_entrypoint(storage, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     command = manager._command(Path("/local/plan.json"))
