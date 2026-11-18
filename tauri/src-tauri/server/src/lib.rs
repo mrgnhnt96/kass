@@ -33,10 +33,11 @@ mod worker;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::serve::ListenerExt;
 use tokio::net::TcpListener;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 /// Where the server listens, the worker it proxies to, and the database.
 #[derive(Clone, Debug)]
@@ -58,7 +59,7 @@ pub struct Config {
     /// The folder models download to, as the worker was given it
     /// (`KASS_MODELS_DIR`); None for Hugging Face's own cache.
     pub models_dir: Option<PathBuf>,
-    /// The app's version, for the daily usage report.
+    /// The app's version, for the daily usage report, `/` and `/health`.
     pub app_version: String,
 }
 
@@ -87,20 +88,54 @@ pub struct AppState {
     pub teach: Arc<teach::Sessions>,
     /// Model improvement's runs and schedule.
     pub model_improvement: Arc<model_improvement::Runtime>,
+    /// The app's version.
+    pub version: Arc<str>,
+    /// Stopping from inside, for `POST /shutdown`.
+    pub stopping: Stopping,
+}
+
+/// The server stopping itself (`POST /shutdown`) rather than being stopped
+/// by the app that started it.
+#[derive(Clone)]
+pub struct Stopping {
+    asked: Arc<watch::Sender<bool>>,
+    served: watch::Receiver<bool>,
+}
+
+impl Stopping {
+    /// Stop listening and stop the background tasks; requests already
+    /// running finish on their own.
+    pub fn stop(&self) {
+        self.asked.send_replace(true);
+    }
+
+    /// Whether it was asked to stop, or isn't serving any more.
+    pub fn stopped(&self) -> bool {
+        *self.asked.borrow() || *self.served.borrow()
+    }
+
+    /// Wait up to `within` for the requests still running when it stopped
+    /// listening to finish; whether they did. A stream that never ends (an
+    /// events listener) holds this up to `within`.
+    pub async fn finished(&self, within: Duration) -> bool {
+        let mut served = self.served.clone();
+        tokio::time::timeout(within, served.wait_for(|done| *done))
+            .await
+            .is_ok_and(|done| done.is_ok())
+    }
+
+    async fn asked(&self) {
+        let mut asked = self.asked.subscribe();
+        let _ = asked.wait_for(|asked| *asked).await;
+    }
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
 pub struct Running {
     address: SocketAddr,
     _shutdown: oneshot::Sender<()>,
-    _relay: Relay,
-    _learning: Relay,
-    _model_improvement: Relay,
-    _warmth: Relay,
-    _sync: Option<Relay>,
-    _usage: Relay,
-    _notes: Relay,
-    _retention: Option<Relay>,
+    stopping: Stopping,
+    _relays: Vec<Relay>,
 }
 
 /// A background task that stops when the server stops: passing on the
@@ -124,13 +159,26 @@ impl Running {
     /// Stop accepting connections and close the listening socket, so the
     /// port is free again. Requests already running finish on their own.
     pub fn stop(self) {}
+
+    /// Whether it stopped on its own (`POST /shutdown`), so isn't serving
+    /// any more though it hasn't been stopped or dropped.
+    pub fn stopped(&self) -> bool {
+        self.stopping.stopped()
+    }
 }
 
 /// A server's state over `database` (already prepared) and a worker at
 /// `worker`, without serving: for tests of a background job.
 #[cfg(test)]
 pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> AppState {
+    let (asked, _) = watch::channel(false);
+    let (_, served) = watch::channel(false);
     AppState {
+        version: Arc::from("test"),
+        stopping: Stopping {
+            asked: Arc::new(asked),
+            served,
+        },
         proxy: proxy::Proxy::new(worker),
         db: db::Db::new(database),
         sync: dictionary::store::Sync { standing_in: false },
@@ -155,7 +203,15 @@ pub async fn start(config: Config) -> Result<Running, String> {
         .await
         .map_err(|e| e.to_string())??;
     let shared_server = sync::shared_server(config.shared_server.as_deref());
+    let (asked, _) = watch::channel(false);
+    let (served_tx, served) = watch::channel(false);
+    let stopping = Stopping {
+        asked: Arc::new(asked),
+        served,
+    };
     let state = AppState {
+        version: config.app_version.as_str().into(),
+        stopping: stopping.clone(),
         proxy: proxy::Proxy::new(config.worker),
         db: db::Db::new(config.database),
         sync: dictionary::store::Sync {
@@ -206,32 +262,44 @@ pub async fn start(config: Config) -> Result<Running, String> {
         .stand_in
         .is_none()
         .then(|| Relay(tokio::spawn(captures::retention::watch(state.clone()))));
+    let mut relays: Vec<Relay> = [relay, learning, model_improvement, warmth, usage, notes]
+        .into_iter()
+        .chain(sync)
+        .chain(retention)
+        .collect();
+    // Stopped from inside, the background tasks stop with it.
+    let background: Vec<_> = relays.iter().map(|relay| relay.0.abort_handle()).collect();
+    let on_stop = stopping.clone();
+    relays.push(Relay(tokio::spawn(async move {
+        on_stop.asked().await;
+        background.iter().for_each(tokio::task::AbortHandle::abort);
+    })));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
         let _ = tcp.set_nodelay(true);
     });
+    let asked = stopping.clone();
     tokio::spawn(async move {
         let served = axum::serve(listener, app)
-            // Fires when `Running` is stopped or dropped: its sender goes.
+            // Fires when `Running` is stopped or dropped (its sender goes),
+            // or on `POST /shutdown`.
             .with_graceful_shutdown(async move {
-                let _ = stopped.await;
+                tokio::select! {
+                    _ = stopped => {}
+                    () = asked.asked() => {}
+                }
             })
             .await;
         if let Err(error) = served {
             eprintln!("Kass server on {address} stopped: {error}");
         }
+        served_tx.send_replace(true);
     });
     Ok(Running {
         address,
         _shutdown: shutdown,
-        _relay: relay,
-        _learning: learning,
-        _model_improvement: model_improvement,
-        _warmth: warmth,
-        _sync: sync,
-        _usage: usage,
-        _notes: notes,
-        _retention: retention,
+        stopping,
+        _relays: relays,
     })
 }

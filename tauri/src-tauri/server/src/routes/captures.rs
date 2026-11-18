@@ -2,9 +2,9 @@
 //! Python: `backend/routes/captures.py`.
 //!
 //! Captures, their audio, the apps they came from, the corrections reported
-//! on them and the events stream are answered here from `kass.db`; uploading,
-//! refining and retranscribing one are `routes::capture_jobs`. Readiness runs
-//! models or their state, so it stays in the worker; learning is
+//! on them and the events stream are answered here from `kass.db`, and
+//! readiness from the model files; uploading, refining and retranscribing
+//! one are `routes::capture_jobs`. Learning is
 //! `routes::learning`, and stats are `routes::usage`. A correction is
 //! saved here with the words it fixed (`store::learn_words`) and learned
 //! from there: the worker is told what changed (`worker::reports_changed`),
@@ -36,7 +36,9 @@ use crate::captures::{
 };
 use crate::dictionary::store::delete_added_by;
 use crate::events::{mac_of, query_pairs, Kind};
-use crate::proxy::{forward, to_worker};
+use crate::models::cache;
+use crate::models::registry::{self, Engine, Model};
+use crate::proxy::forward;
 use crate::worker;
 use crate::{learned, AppState};
 
@@ -59,6 +61,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/capture/feedback/export", get(export))
         .route("/captures/apps", get(apps))
+        .route("/capture/readiness", get(readiness))
         .layer(cors());
     Router::new()
         .merge(answered_here)
@@ -72,7 +75,6 @@ pub fn router() -> Router<AppState> {
                 .layer(cors())
                 .fallback(forward),
         )
-        .route("/capture/readiness", to_worker())
         .route(
             "/captures/{capture_id}/refine",
             post(capture_jobs::refine).layer(cors()).fallback(forward),
@@ -83,6 +85,73 @@ pub fn router() -> Router<AppState> {
                 .layer(cors())
                 .fallback(forward),
         )
+}
+
+// -- readiness ----------------------------------------------------------------
+
+/// `backend/models.py`'s `ModelReadiness`: one row of the dictation
+/// readiness checklist. `model_name` is what `POST /models/download` takes.
+#[derive(Serialize)]
+struct ModelReadiness {
+    ready: bool,
+    model_name: &'static str,
+    display_name: &'static str,
+    size: &'static str,
+    size_mb: u32,
+}
+
+#[derive(Serialize)]
+struct Readiness {
+    stt: ModelReadiness,
+    llm: ModelReadiness,
+}
+
+fn model_readiness(cache: &std::path::Path, model: &Model) -> ModelReadiness {
+    ModelReadiness {
+        ready: cache::is_cached(cache, model.repo, cache::READY_WEIGHTS),
+        model_name: model.name,
+        display_name: model.display_name,
+        size: model.size,
+        size_mb: model.size_mb,
+    }
+}
+
+/// Whether the speech and cleanup models chosen in the capture settings are
+/// downloaded. The app gates the dictation hotkey on it, so a missing model
+/// doesn't leave the pill transcribing forever. It reads the files, not
+/// what's loaded, so the answer holds across restarts.
+async fn readiness(State(state): State<AppState>) -> Response {
+    let saved = match state.db.call(crate::settings::get).await {
+        Ok(saved) => saved,
+        Err(error) => return failed(error),
+    };
+    let (Some(stt), Some(llm)) = (
+        registry::sized(Engine::Whisper, &saved.stt_model),
+        registry::sized(Engine::Qwen, &saved.llm_model),
+    ) else {
+        // Saving settings only takes known sizes; say so rather than
+        // answer half.
+        return detail(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!(
+                "No model config for stt={} or llm={}",
+                saved.stt_model, saved.llm_model
+            ),
+        );
+    };
+    let cache = state.models.cache().to_path_buf();
+    let answer = tokio::task::spawn_blocking(move || Readiness {
+        stt: model_readiness(&cache, stt),
+        llm: model_readiness(&cache, llm),
+    })
+    .await;
+    match answer {
+        Ok(answer) => Json(answer).into_response(),
+        Err(error) => {
+            eprintln!("[server] readiness: {error}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+        }
+    }
 }
 
 // -- answers ------------------------------------------------------------------
