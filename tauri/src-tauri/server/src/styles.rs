@@ -783,7 +783,7 @@ pub enum Corrections {
 }
 
 /// Put `bundle_id` in `style_id`; this also confirms a new app's style.
-/// `teaching` is the style being taught, from the worker.
+/// `teaching` is the style being taught (`teach`).
 pub fn assign_app(
     conn: &mut Connection,
     bundle_id: &str,

@@ -23,6 +23,7 @@ pub mod settings;
 pub mod stream;
 pub mod styles;
 pub mod sync;
+pub mod teach;
 pub mod usage;
 mod warmth;
 mod worker;
@@ -80,6 +81,8 @@ pub struct AppState {
     /// Captures being refined or retranscribed, which the history sweep
     /// leaves alone.
     pub in_use: Arc<captures::in_use::InUse>,
+    /// Teach sessions that are open.
+    pub teach: Arc<teach::Sessions>,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -131,6 +134,8 @@ pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> Ap
         streams: Arc::default(),
         models: models::Models::new(None),
         stand_in: None,
+        in_use: Arc::default(),
+        teach: Arc::default(),
     }
 }
 
@@ -162,6 +167,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
             .as_deref()
             .map(|url| Arc::new(sync::StandIn::new(url))),
         in_use: Arc::default(),
+        teach: Arc::default(),
     };
     let listener = TcpListener::bind(config.listen)
         .await

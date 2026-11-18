@@ -306,50 +306,42 @@ pub async fn model_rollback(proxy: &Proxy) -> Result<Result<Value, String>, Stri
 }
 
 /// Writing styles or app assignments changed: the worker rereads them before
-/// the next dictation. `examples` drops the examples it grouped by style,
-/// and `deleted` ends teach sessions in that style. Awaited, so the page
-/// reloads the new state.
-pub async fn styles_changed(proxy: &Proxy, examples: bool, deleted: Option<&str>) {
-    let body = json!({ "examples": examples, "deleted": deleted });
+/// the next dictation. `examples` drops the examples it grouped by style.
+/// Awaited, so the page reloads the new state.
+pub async fn styles_changed(proxy: &Proxy, examples: bool) {
+    let body = json!({ "examples": examples });
     if let Err(error) = post(proxy, "/worker/styles/changed", body).await {
         eprintln!("[server] couldn't tell the model worker the styles changed: {error}");
     }
 }
 
 /// The learned files changed (`learned`): the worker rereads them and the
-/// examples grouped from them; `forget_teaching` also ends teach sessions in
-/// that style. Awaited, so the next cleanup uses what changed.
-pub async fn learned_changed(proxy: &Proxy, forget_teaching: Option<&str>) {
-    let body = json!({ "forget_teaching": forget_teaching });
-    if let Err(error) = post(proxy, "/worker/learned/changed", body).await {
+/// examples grouped from them. Awaited, so the next cleanup uses what
+/// changed.
+pub async fn learned_changed(proxy: &Proxy) {
+    if let Err(error) = post(proxy, "/worker/learned/changed", json!({})).await {
         eprintln!("[server] couldn't tell the model worker what was learned changed: {error}");
     }
 }
 
-/// What only the worker knows about styles.
-#[derive(Debug, Default)]
-pub struct StylesState {
-    /// The largest prompt cache one style takes, in MB, once it's known.
-    pub cache_mb_per_style: Option<i64>,
-    /// The style a teach session is open on, which Kass's own window uses.
-    pub teaching_style: Option<String>,
-}
-
-/// Empty while the worker doesn't answer: the page then shows no cache size,
-/// and Kass's own window uses its assigned style.
-pub async fn styles_state(proxy: &Proxy) -> StylesState {
+/// The largest prompt cache one style takes, in MB, once the worker knows
+/// it; None while it doesn't answer, and the page shows no cache size.
+pub async fn cache_mb_per_style(proxy: &Proxy) -> Option<i64> {
     match post(proxy, "/worker/styles/state", json!({})).await {
-        Ok(answer) => StylesState {
-            cache_mb_per_style: answer.get("cache_mb_per_style").and_then(Value::as_i64),
-            teaching_style: answer
-                .get("teaching_style")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-        },
+        Ok(answer) => answer.get("cache_mb_per_style").and_then(Value::as_i64),
         Err(error) => {
             eprintln!("[server] couldn't read the styles state from the model worker: {error}");
-            StylesState::default()
+            None
         }
+    }
+}
+
+/// The style a teach session is open on (None: none is), for the dictations
+/// the worker still files itself; it lapses after `ttl_seconds` untold.
+pub async fn teaching(proxy: &Proxy, style: Option<&str>, ttl_seconds: f64) {
+    let body = json!({ "style": style, "ttl_seconds": ttl_seconds });
+    if let Err(error) = post(proxy, "/worker/styles/teaching", body).await {
+        eprintln!("[server] couldn't tell the model worker the style being taught: {error}");
     }
 }
 

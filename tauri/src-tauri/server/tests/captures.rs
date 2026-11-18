@@ -62,11 +62,6 @@ async fn events(State(worker): State<Worker>) -> Response {
         .unwrap()
 }
 
-/// A teach session is open for the "chat" style.
-async fn styles_state() -> Json<Value> {
-    Json(json!({ "teaching_style": "chat", "cache_mb_per_style": 100 }))
-}
-
 async fn preflight() -> Response {
     (StatusCode::OK, [("x-worker", "yes")], "worker").into_response()
 }
@@ -77,7 +72,6 @@ async fn start_worker(worker: Worker) -> SocketAddr {
         .route("/worker/captures/take-back", post(take_back))
         .route("/worker/captures/reports-changed", post(reports_changed))
         .route("/worker/captures/events", get(events))
-        .route("/worker/styles/state", post(styles_state))
         .fallback(preflight)
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -272,6 +266,11 @@ async fn lists_the_apps_captures_came_from_with_their_styles() {
                  '2026-03-04 10:00:00.250000');",
     )
     .unwrap();
+    // A teach session is open for the "chat" style.
+    let (status, _) = kass
+        .call("POST", "/writing-style/teach?style=chat", None)
+        .await;
+    assert_eq!(status, 200);
 
     let (status, listed) = kass.call("GET", "/captures/apps", None).await;
     assert_eq!(status, 200);

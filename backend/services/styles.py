@@ -374,11 +374,11 @@ def delete_style(db: Session, style_id: str) -> bool:
     db.delete(row)
     db.commit()
     _changed(examples=True)
-    from . import dictionary, teach
+    from . import dictionary
 
     dictionary.move_style(db, style_id, default_id())
-    # What the style learned is forgotten by the Rust server (learned.rs).
-    teach.forget_style(style_id)
+    # What the style learned, and its teach sessions, are forgotten by the
+    # Rust server (learned.rs).
     return True
 
 

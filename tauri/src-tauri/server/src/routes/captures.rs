@@ -207,9 +207,9 @@ async fn list(State(state): State<AppState>, RawQuery(query): RawQuery) -> Respo
 }
 
 /// How many captures each app has, most first, with the style each uses.
-/// Kass's own window follows the style being taught, which the worker knows.
+/// Kass's own window follows the style being taught.
 async fn apps(State(state): State<AppState>) -> Response {
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     match state
         .db
         .call(move |conn| crate::styles::capture_apps(conn, teaching))

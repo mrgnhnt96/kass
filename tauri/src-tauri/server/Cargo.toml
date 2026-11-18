@@ -39,6 +39,8 @@ kass-text = { path = "../text" }
 reqwest = { version = "0.12", default-features = false, features = ["default-tls", "stream", "http2", "json"] }
 # Calibration examples' ids, as Python hashes them (`cleanup_inputs`).
 sha2 = "0.10"
+# Which written turn, seed and dictionary word a teach session uses (`teach`).
+fastrand = "2"
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

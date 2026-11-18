@@ -348,11 +348,8 @@ impl Session {
             .await
             .map_err(|e| e.to_string())?;
         let start = Start::parse(start, Some(&settings.language), &settings.stt_model)?;
-        let (stt_model, styles_state) = tokio::join!(
-            models::speech_model(&app.proxy, &start.stt_model),
-            worker::styles_state(&app.proxy),
-        );
-        let stt_model = stt_model?;
+        let stt_model = models::speech_model(&app.proxy, &start.stt_model).await?;
+        let teaching = app.teach.teaching_style();
         let data_dir = app
             .db
             .path()
@@ -365,7 +362,7 @@ impl Session {
         let (snapshot, inputs, dictionary) = app
             .db
             .call(move |conn| {
-                let snapshot = styles::load(conn, styles_state.teaching_style)?;
+                let snapshot = styles::load(conn, teaching)?;
                 let inputs = cleanup_inputs::load(conn, &dir, &snapshot, None, self_correction)?;
                 let dictionary = dictionaries.for_app(conn, None, None)?;
                 Ok((snapshot, inputs, dictionary))
