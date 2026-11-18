@@ -2078,7 +2078,7 @@ impl Session {
         self.app.events.publish(Kind::Learned);
         let row = &saved.report;
         let changed = [(row.target.clone(), row.source.clone())];
-        worker::reports_changed(&self.app.proxy, &changed, saved.replaced.is_some(), None).await;
+        worker::reports_changed(&self.app, &changed, saved.replaced.is_some(), None).await;
         learned::reports_changed(&self.app, &changed).await;
         Ok(())
     }

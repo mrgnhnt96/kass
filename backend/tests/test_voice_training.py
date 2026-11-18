@@ -401,7 +401,7 @@ def learning(data_dir, monkeypatch):
     engine = create_engine(f"sqlite:///{data_dir}/learning.sqlite")
     Base.metadata.create_all(engine)
     monkeypatch.setattr(manager.database_session, "SessionLocal", sessionmaker(bind=engine))
-    for name, value in (("_state", None), ("_root", None), ("_active", {}), ("_process", None), ("_thread", None)):
+    for name, value in (("_root", None), ("_active", {}), ("_process", None)):
         monkeypatch.setattr(manager, name, value)
     monkeypatch.setattr(manager.correction_learning, "_state", {"rules": []})
     monkeypatch.setattr(manager, "_reload_speech", lambda: None)
@@ -419,7 +419,6 @@ def voice_candidate(data_dir, name):
 
 def voice_plan():
     return {
-        "baseline_revision": manager._state["revision"],
         "pipeline": manager.pipeline_id(),
         "rules": [],
         "configured_stt": "turbo",
@@ -427,21 +426,28 @@ def voice_plan():
     }
 
 
+def judge(folder, result, resume=None):
+    """Judge a run and use what it picks, as the server does; the resume point after."""
+    judged = manager._judge(voice_plan(), folder, result, resume)
+    manager.use(judged["active"])
+    return judged["voice_resume"]
+
+
 def test_passing_voice_adapter_is_used_for_turbo_and_can_be_undone(learning):
     folder = voice_candidate(learning, "first")
-    manager._promote(voice_plan(), folder, {"voice": {"rows": gate_rows(), "training": {"updates": 5}}}, "fp-1")
+    judged = manager._judge(voice_plan(), folder, {"voice": {"rows": gate_rows(), "training": {"updates": 5}}}, None)
     path = str(folder / "voice")
+    assert judged["voice_resume"] == path
+    assert judged["metrics"]["voice_training"] == {"updates": 5}
+    assert judged["active"]["voice"]["id"] == "first"
+    assert judged["active"]["voice"]["activated"]
+    manager.use(judged["active"])
     assert manager.voice_adapter("turbo") == path
     assert manager.voice_adapter("large") is None
-    assert manager._state["voice_resume"] == path
-    status = manager.status()["voice"]
-    assert status["active"] == "first"
-    assert status["can_undo"]
 
-    manager.rollback()
+    # The server rolled back.
+    manager.use({})
     assert manager.voice_adapter("turbo") is None
-    assert manager._state["voice_resume"] is None
-    assert "fp-1" in manager._state["blocked"]
 
 
 def test_big_win_in_noise_may_cost_a_few_clean_words(learning):
@@ -450,7 +456,7 @@ def test_big_win_in_noise_may_cost_a_few_clean_words(learning):
     for row in [r for r in rows if r["condition"] == "clean"][:2]:
         row["candidate"] = "Commit, push."
     first = voice_candidate(learning, "first")
-    manager._promote(voice_plan(), first, {"voice": {"rows": rows}}, "fp")
+    judge(first, {"voice": {"rows": rows}})
     assert manager.voice_adapter("turbo") == str(first / "voice")
 
 
@@ -499,35 +505,34 @@ def test_training_continues_only_from_a_candidate_no_worse_than_the_model_in_use
 
     # Better in noise, one clean word off: the next run builds on it.
     first = voice_candidate(learning, "first")
-    manager._promote(voice_plan(), first, {"voice": {"rows": on_its_way(1)}}, "fp")
-    assert manager._state["voice_resume"] == str(first / "voice")
+    resume = judge(first, {"voice": {"rows": on_its_way(1)}})
+    assert resume == str(first / "voice")
 
     # Better in noise but worse on clean takes than any allowance: not used,
     # and training doesn't continue from it.
     second = voice_candidate(learning, "second")
-    manager._promote(voice_plan(), second, {"voice": {"rows": on_its_way(6)}}, "fp-2")
+    resume = judge(second, {"voice": {"rows": on_its_way(6)}}, resume)
     assert manager.voice_adapter("turbo") == str(first / "voice")
-    assert manager._state["voice_resume"] == str(first / "voice")
+    assert resume == str(first / "voice")
 
     # No better in noise: nothing to continue from either.
     third = voice_candidate(learning, "third")
-    manager._promote(voice_plan(), third, {"voice": {"rows": gate_rows(candidate_noisy="Come here and push.")}}, "fp-3")
-    assert manager._state["voice_resume"] == str(first / "voice")
+    resume = judge(third, {"voice": {"rows": gate_rows(candidate_noisy="Come here and push.")}}, resume)
+    assert resume == str(first / "voice")
 
 
 def test_an_activated_model_becomes_the_resume_point_even_after_a_big_win(learning):
     # A big win in noise is used with two clean words off, which is more than
     # worth_continuing allows; training still continues from the model in use.
     older = voice_candidate(learning, "older")
-    manager._state["voice_resume"] = str(older / "voice")
     rows = gate_rows()
     for row in [r for r in rows if r["condition"] == "clean"][:2]:
         row["candidate"] = "Commit, push."
     assert not gate.worth_continuing(gate.score_voice(rows))
     used = voice_candidate(learning, "used")
-    manager._promote(voice_plan(), used, {"voice": {"rows": rows}}, "fp")
+    resume = judge(used, {"voice": {"rows": rows}}, str(older / "voice"))
     assert manager.voice_adapter("turbo") == str(used / "voice")
-    assert manager._state["voice_resume"] == str(used / "voice")
+    assert resume == str(used / "voice")
 
 
 def test_a_resume_point_chosen_under_a_looser_rule_is_dropped(learning):
@@ -548,11 +553,14 @@ def test_a_resume_point_chosen_under_a_looser_rule_is_dropped(learning):
 
 def test_tampered_voice_adapter_is_dropped_on_restart(learning, monkeypatch):
     folder = voice_candidate(learning, "first")
-    manager._promote(voice_plan(), folder, {"voice": {"rows": gate_rows()}}, "fp")
+    judged = manager._judge(voice_plan(), folder, {"voice": {"rows": gate_rows()}}, None)
+    state = learning / "model-improvement" / "state.json"
+    state.write_text(json.dumps({"version": 1, "active": judged["active"]}))
     (folder / "voice" / lora.ADAPTER_FILE).write_bytes(b"changed")
-    monkeypatch.setattr(manager, "_state", None)
+    monkeypatch.setattr(manager, "_root", None)
     manager.initialize()
     assert manager.voice_adapter("turbo") is None
+    assert [r["kind"] for r in manager.reports()] == ["voice"]
 
 
 def test_speech_backend_merges_the_active_adapter_and_reloads_when_it_changes(monkeypatch):
@@ -593,43 +601,13 @@ def test_voice_trains_once_the_refinement_model_has_nothing_new(learning, monkey
     monkeypatch.setattr(manager, "_scan_bank", lambda db, settings: {"train": 500, "test": 80})
     monkeypatch.setattr(manager, "_voice_plan", lambda *args: {"bank_digest": "bank", "resume": None})
 
-    plan, refinement, ready = manager._prepare()
+    plan, refinement, ready, _ = manager._prepare([], None, [])
     assert ready
     assert plan["train_ready"]
     assert plan["voice"] is None
 
-    manager._state["attempted"].append(refinement)
-    plan, fingerprint, ready = manager._prepare()
+    plan, fingerprint, ready, _ = manager._prepare([], None, [refinement])
     assert ready
     assert plan["voice"]
     assert not plan["train_ready"]
     assert fingerprint != refinement
-
-
-def test_sound_download_resumes_after_a_dropped_connection(tmp_path, monkeypatch):
-    import io
-    import urllib.request
-
-    from backend.services.voice_training import sounds
-
-    payload = bytes(range(256)) * 40
-    requests = []
-
-    class Response(io.BytesIO):
-        def __init__(self, body, status, length):
-            super().__init__(body)
-            self.status, self.headers = status, {"Content-Length": str(length)}
-
-    def urlopen(request, timeout):
-        start = int((request.get_header("Range") or "bytes=0-")[6:-1])
-        requests.append(start)
-        if start == 0:  # the connection drops halfway
-            return Response(payload[: len(payload) // 2], 200, len(payload))
-        return Response(payload[start:], 206, len(payload) - start)
-
-    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(sounds.time, "sleep", lambda seconds: None)
-    target = tmp_path / "archive.tar.gz"
-    sounds._fetch(["https://example.test/a"], target, lambda count: None)
-    assert target.read_bytes() == payload
-    assert requests == [0, len(payload) // 2]

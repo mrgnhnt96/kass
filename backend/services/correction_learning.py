@@ -20,10 +20,6 @@ _path = None
 _compiled = ()
 # Words the speaker says for punctuation marks, and where a mark word stays a word.
 _punctuation = ({}, frozenset())
-# The rules changed since the cleanup adapter last looked; a withdrawn report
-# also needs the adapter retrained.
-_rules_changed = False
-_retrain = False
 
 
 def _empty():
@@ -72,35 +68,12 @@ def initialize():
 
 def reload():
     """Read the file again after the server changed it."""
-    global _state, _rules_changed
+    global _state
     with _lock:
-        before = _state["rules"] if _state else None
         _state = None
         initialize()
-        if before is not None and _state["rules"] != before:
-            _rules_changed = True
     capture_events.publish("learned")
     return status()
-
-
-def take_rules_changed():
-    """Whether the rules changed since the last call; clears it."""
-    global _rules_changed
-    changed, _rules_changed = _rules_changed, False
-    return changed
-
-
-def request_retrain():
-    """A withdrawn report may be in the cleanup adapter's training data."""
-    global _retrain
-    _retrain = True
-
-
-def take_retrain():
-    """Whether a withdrawn report asked for an adapter run; clears the request."""
-    global _retrain
-    retrain, _retrain = _retrain, False
-    return retrain
 
 
 def apply_learned_corrections(text, language=None):

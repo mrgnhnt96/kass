@@ -221,19 +221,13 @@ def learn(examples=None):
     return learning.reload()
 
 
-def test_reload_reads_the_servers_rules_and_notes_a_change(storage, monkeypatch):
-    monkeypatch.setattr(learning, "_rules_changed", False)
+def test_reload_reads_the_servers_rules(storage):
     learning.initialize()
     assert learning.apply_learned_corrections(samples()[0].original) == samples()[0].original
     status = learn()
     assert status["active_rules"] == 1
     assert status["revision"] == 1
     assert learning.apply_learned_corrections(samples()[0].original) == samples()[0].expected
-    assert learning.take_rules_changed()
-    assert not learning.take_rules_changed()
-    # The same rules again: nothing for the adapter to retest.
-    learn()
-    assert not learning.take_rules_changed()
 
 
 @pytest.mark.asyncio
@@ -276,16 +270,3 @@ def report(storage, capture_id, original, expected, source="manual"):
             ),
             db,
         )
-
-
-def test_only_a_withdrawal_asks_for_the_adapter_to_retrain(storage, monkeypatch):
-    from backend.services.capture_feedback import withdraw_feedback
-
-    monkeypatch.setattr(learning, "_retrain", False)
-    saved = report(storage, "again", "Please use voice box today at noon.", "Please use Voicebox today at noon.")
-    assert not learning.take_retrain()
-    with storage() as db:
-        assert not withdraw_feedback("other", saved.id, db)
-        assert withdraw_feedback("again", saved.id, db)
-    assert learning.take_retrain()
-    assert not learning.take_retrain()

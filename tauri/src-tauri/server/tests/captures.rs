@@ -347,7 +347,7 @@ async fn keeps_a_correction_and_the_words_it_fixed() {
     assert_eq!(
         kass.learned(),
         vec![json!({
-            "changed": [{"target": "raw", "source": "manual", "withdrawn": false}],
+            "changed": [{"target": "raw", "source": "manual"}],
             "forgotten": null,
         })]
     );
@@ -373,7 +373,8 @@ async fn keeps_a_correction_and_the_words_it_fixed() {
         json!({"snapshot": seen, "target": "raw", "expected_text": "Right word", "replaces": id});
     let (status, amended) = kass.report("a", amend.clone()).await;
     assert_eq!(status, 200, "{amended}");
-    assert_eq!(kass.learned()[2]["changed"][0]["withdrawn"], true);
+    // The amended report is relearned; whether to retrain is the server's.
+    assert_eq!(kass.learned()[2]["changed"], json!([{"target": "raw", "source": "manual"}]));
     assert!(!kass.words().iter().any(|(_, by)| by == id));
     let (_, reports) = kass.call("GET", "/captures/a/feedback", None).await;
     assert_eq!(reports.as_array().unwrap().len(), 3);
@@ -468,8 +469,8 @@ async fn withdrawing_a_report_takes_its_changes_out_of_newer_ones() {
         kass.learned(),
         vec![json!({
             "changed": [
-                {"target": "raw", "source": "manual", "withdrawn": true},
-                {"target": "raw", "source": "redictation", "withdrawn": true},
+                {"target": "raw", "source": "manual"},
+                {"target": "raw", "source": "redictation"},
             ],
             "forgotten": null,
         })]
@@ -508,7 +509,7 @@ async fn deleting_a_capture_removes_its_audio_reports_and_words() {
     assert_eq!(
         kass.learned(),
         vec![json!({
-            "changed": [{"target": "raw", "source": "manual", "withdrawn": true}],
+            "changed": [{"target": "raw", "source": "manual"}],
             "forgotten": "a",
         })]
     );

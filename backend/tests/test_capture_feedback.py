@@ -241,7 +241,7 @@ def worker(monkeypatch):
     monkeypatch.setattr(
         capture_feedback,
         "reports_changed",
-        lambda target, source, db, withdrawn=False: changed.append((target, source, withdrawn)),
+        lambda target, source, db: changed.append((target, source)),
     )
     with Session(engine) as session:
         app = FastAPI()
@@ -261,13 +261,13 @@ def test_the_worker_learns_from_reports_the_server_saved(worker, monkeypatch):
     monkeypatch.setattr(bank, "forget", forgotten.append)
     monkeypatch.setattr(dictionary, "invalidate", lambda: reread.append(True))
     body = {
-        "changed": [{"target": "refined", "source": "manual", "withdrawn": True}],
+        "changed": [{"target": "refined", "source": "manual"}],
         "forgotten": "gone",
     }
     assert client.post("/worker/captures/reports-changed", json=body).json() == {"ok": True}
     # The server wrote the words the reports fixed; the worker rereads them.
     assert reread == [True]
     assert _words(session) == []
-    assert changed == [("refined", "manual", True)]
+    assert changed == [("refined", "manual")]
     assert forgotten == ["gone"]
     assert client.post("/worker/captures/reports-changed", json={}).json() == {"ok": True}

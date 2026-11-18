@@ -19,7 +19,7 @@ use tower_http::services::ServeFile;
 
 use crate::events::Kind;
 use crate::sync::{import, mirror};
-use crate::{learned, worker, AppState};
+use crate::{learned, model_improvement, worker, AppState};
 
 /// A batch's changes, as JSON: its rows' text, never its recordings.
 const MAX_CHANGES_BYTES: usize = 32 * 1024 * 1024;
@@ -57,17 +57,7 @@ fn data_dir(state: &AppState) -> std::path::PathBuf {
 
 /// What a stand-in copies from this Kass.
 async fn snapshot(State(state): State<AppState>) -> Response {
-    // Without the trained models in use the stand-in would drop its copies
-    // of them; it tries again in a few seconds instead.
-    let in_use = match worker::adapters_in_use(&state.proxy).await {
-        Ok(in_use) => in_use,
-        Err(error) => {
-            eprintln!(
-                "[server] the model worker didn't say which trained models are in use: {error}"
-            );
-            return detail(StatusCode::BAD_GATEWAY, "The model worker didn't answer");
-        }
-    };
+    let in_use = model_improvement::in_use(&state).await;
     let rows = match state.db.call(|conn| mirror::snapshot_rows(conn)).await {
         Ok(rows) => rows,
         Err(error) => return failed(error),
@@ -90,9 +80,7 @@ async fn adapter_file(
     request: Request,
 ) -> Response {
     let not_found = || detail(StatusCode::NOT_FOUND, "No such model file in use");
-    let Ok(in_use) = worker::adapters_in_use(&state.proxy).await else {
-        return not_found();
-    };
+    let in_use = model_improvement::in_use(&state).await;
     let Some(path) = mirror::adapter_file(&in_use, &kind, &name) else {
         return not_found();
     };
@@ -190,12 +178,12 @@ async fn import_changes(State(state): State<AppState>, request: Request) -> Resp
         reports.entry(withdrawn).or_default().push(pair);
     }
     for (withdrawn, changed) in &reports {
-        worker::reports_changed(&state.proxy, changed, *withdrawn, None).await;
+        worker::reports_changed(&state, changed, *withdrawn, None).await;
     }
     let changed: Vec<_> = reports.into_values().flatten().collect();
     learned::reports_changed(&state, &changed).await;
     for capture in &applied.forgotten {
-        worker::reports_changed(&state.proxy, &[], true, Some(capture)).await;
+        worker::reports_changed(&state, &[], true, Some(capture)).await;
     }
     state.events.publish(Kind::Changed);
     state.events.publish(Kind::Learned);

@@ -41,6 +41,12 @@ reqwest = { version = "0.12", default-features = false, features = ["default-tls
 sha2 = "0.10"
 # Which written turn, seed and dictionary word a teach session uses (`teach`).
 fastrand = "2"
+# The voice-training sounds' download (`voice_sounds`): LibriSpeech's
+# .tar.gz of FLAC files, DEMAND's zipped WAVs, and the .npz files it keeps.
+flate2 = "1"
+tar = "0.4"
+claxon = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

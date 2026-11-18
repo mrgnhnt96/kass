@@ -25,7 +25,7 @@ def learning(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path}/learning.sqlite")
     Base.metadata.create_all(engine)
     monkeypatch.setattr(manager.database_session, "SessionLocal", sessionmaker(bind=engine))
-    for name, value in (("_state", None), ("_root", None), ("_active", {}), ("_process", None), ("_thread", None)):
+    for name, value in (("_root", None), ("_active", {}), ("_process", None)):
         monkeypatch.setattr(manager, name, value)
     monkeypatch.setattr(manager.correction_learning, "_state", {"rules": []})
     monkeypatch.setattr(manager, "_reload_speech", lambda: None)
@@ -120,7 +120,7 @@ def test_a_shared_voice_adapter_that_fails_to_load_is_set_aside(learning, shippe
     assert manager.voice_adapter("turbo") is None
 
 
-def voice_plan(monkeypatch):
+def voice_plan(monkeypatch, resume=None):
     from backend.services.voice_training import bank, sounds
 
     monkeypatch.setattr(bank, "takes", list)
@@ -128,7 +128,7 @@ def voice_plan(monkeypatch):
     monkeypatch.setattr(bank, "digest", lambda: "bank")
     monkeypatch.setattr(sounds, "ready", lambda: True)
     monkeypatch.setattr(manager, "_cached", lambda repo: True)
-    return manager._voice_plan({"train": 200, "test": 20}, manager._active, [], None)
+    return manager._voice_plan({"train": 200, "test": 20}, manager._active, [], None, resume)
 
 
 def trained_voice(folder, shared=None):
@@ -152,9 +152,8 @@ def test_voice_training_starts_from_the_shared_adapter(learning, shipped, monkey
 
     # A candidate already built on the shared one is continued.
     candidate = trained_voice(runs / "candidate", shared="voice-one")
-    manager._state["voice_resume"] = candidate
     monkeypatch.setattr(manager, "_still_worth_continuing", lambda path: True)
-    plan = voice_plan(monkeypatch)
+    plan = voice_plan(monkeypatch, candidate)
     assert (plan["resume"], plan["production"], plan["shared"]) == (candidate, stock, "voice-one")
 
 
@@ -162,19 +161,17 @@ def test_voice_training_drops_a_resume_point_that_no_longer_passes(learning, shi
     shared = str(shipped / "voice-turbo")
     runs = learning / "model-improvement" / "runs"
     candidate = trained_voice(runs / "candidate", shared="voice-one")
-    manager._state["voice_resume"] = candidate
     monkeypatch.setattr(manager, "_still_worth_continuing", lambda path: False)
-    assert voice_plan(monkeypatch)["resume"] == shared
+    assert voice_plan(monkeypatch, candidate)["resume"] == shared
 
     monkeypatch.setattr(manager, "_still_worth_continuing", lambda path: path == candidate)
-    assert voice_plan(monkeypatch)["resume"] == candidate
+    assert voice_plan(monkeypatch, candidate)["resume"] == candidate
 
 
 def test_voice_training_without_shared_adapters_starts_from_plain_turbo(learning, shipped, monkeypatch):
     shared_adapters._enabled = False
     runs = learning / "model-improvement" / "runs"
-    manager._state["voice_resume"] = trained_voice(runs / "candidate", shared="voice-one")
-    plan = voice_plan(monkeypatch)
+    plan = voice_plan(monkeypatch, trained_voice(runs / "candidate", shared="voice-one"))
     assert (plan["resume"], plan["production"], plan["shared"]) == (None, None, None)
 
 
@@ -194,7 +191,7 @@ def prepare(monkeypatch):
     )
     monkeypatch.setattr(styles, "load", lambda db: SimpleNamespace(styles=[]))
     monkeypatch.setattr(manager, "_scan_bank", lambda db, settings: None)
-    plan, _, _ = manager._prepare()
+    plan, _, _, _ = manager._prepare([], None, [])
     return plan["start_adapter"], plan["baseline_adapter"], plan["shared"]
 
 

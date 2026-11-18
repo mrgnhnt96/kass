@@ -337,7 +337,7 @@ async fn delete_capture(State(state): State<AppState>, Path(capture_id): Path<St
         .map(|(_, target, source)| (target, source))
         .collect();
     let changed: Vec<_> = changed.into_iter().collect();
-    worker::reports_changed(&state.proxy, &changed, true, Some(&capture_id)).await;
+    worker::reports_changed(&state, &changed, true, Some(&capture_id)).await;
     learned::reports_changed(&state, &changed).await;
     Json(json!({ "message": format!("Capture {capture_id} deleted") })).into_response()
 }
@@ -568,7 +568,7 @@ async fn report(
     state.events.publish(Kind::Learned);
     let row = &saved.report;
     let changed = [(row.target.clone(), row.source.clone())];
-    worker::reports_changed(&state.proxy, &changed, saved.replaced.is_some(), None).await;
+    worker::reports_changed(&state, &changed, saved.replaced.is_some(), None).await;
     learned::reports_changed(&state, &changed).await;
     Json(ReportModel::from(saved.report)).into_response()
 }
@@ -649,7 +649,7 @@ async fn withdraw(
         .map(|report| (report.target.clone(), report.source.clone()))
         .collect();
     let changed: Vec<_> = changed.into_iter().collect();
-    worker::reports_changed(&state.proxy, &changed, true, None).await;
+    worker::reports_changed(&state, &changed, true, None).await;
     learned::reports_changed(&state, &changed).await;
     StatusCode::NO_CONTENT.into_response()
 }

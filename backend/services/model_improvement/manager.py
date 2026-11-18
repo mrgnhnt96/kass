@@ -1,6 +1,14 @@
-"""Idle scheduling, child-process supervision and atomic model promotion."""
+"""The worker's half of model improvement: the trained models dictation
+uses, and planning, training and judging a run.
 
-import asyncio
+The Rust server owns the state in ``model-improvement/state.json``, the
+schedule, status and rollback (server/src/model_improvement.rs). It asks the
+worker to ``prepare`` a run, ``train`` it and ``use`` the trained models it
+picks; the worker reads the models in use from state.json on start and never
+writes it. A trained model the worker stops using (it failed its checks or
+didn't load) is ``reported`` for the server to record.
+"""
+
 import hashlib
 import json
 import logging
@@ -26,19 +34,18 @@ from .evaluation import score_rows, score_speech
 
 logger = logging.getLogger(__name__)
 _lock = threading.RLock()
-_state = None
 _root = None
 _active = {}
-_thread = None
 _process = None
 _generation = 0
 _last_activity = time.monotonic()
-_last_attempt = 0.0
 _foreground_count = 0
 _recording_until = 0.0
-_run_directory = None
+# Runs being prepared or trained: the models aren't idle meanwhile.
+_runs = 0
+# Trained models dropped since the server last asked (``reports``).
+_reports = []
 IDLE_SECONDS = 120
-INTERVAL_SECONDS = 6 * 3600
 
 
 @lru_cache(maxsize=1)
@@ -73,27 +80,6 @@ def pipeline_id():
     return digest([functions, prompts, refinement.REFINEMENT_EXAMPLES])
 
 
-def _empty():
-    return {
-        "version": 1,
-        "revision": 0,
-        "phase": "waiting",
-        "active": {},
-        "history": [],
-        "groups": [],
-        "attempted": [],
-        "blocked": [],
-        "counts": {},
-        "last_run": None,
-        "metrics": None,
-        "error": None,
-        "evaluated_report_ids": [],
-        # The last trained voice adapter, promoted or not, that the next run
-        # continues from (docs/plans/VOICE_TRAINING.md).
-        "voice_resume": None,
-    }
-
-
 def _valid_adapter(item):
     try:
         path = Path(item["path"])
@@ -124,65 +110,84 @@ def _valid_voice(item):
         return False
 
 
+_INVALID = {
+    "llm": "The saved adapter failed integrity or pipeline checks; using the base model.",
+    "voice": "The saved voice model failed its integrity check; using plain turbo.",
+}
+
+
 def initialize():
-    global _root, _state, _active
+    """Use the trained models the server's state.json names, once per data folder.
+
+    One that fails its checks is left out and reported (:func:`reports`).
+    """
+    global _root, _active
     with _lock:
         root = config.get_data_dir() / "model-improvement"
-        if _root == root and _state is not None:
+        if _root == root:
             return
         _root = root
-        state = _empty()
-        path = root / "state.json"
-        if path.exists():
-            try:
-                loaded = json.loads(path.read_text())
-                if loaded["version"] != 1:
-                    raise ValueError("Unsupported learning state")
-                state.update(loaded)
-            except (OSError, ValueError, KeyError, TypeError):
-                logger.exception("Could not read model improvement state")
-        _state = state
-        _active = deepcopy(state["active"])
-        if "llm" in _active and not _valid_adapter(_active["llm"]):
-            _active.pop("llm")
-            state["active"] = deepcopy(_active)
-            state["error"] = "The saved adapter failed integrity or pipeline checks; using the base model."
-        if "voice" in _active and not _valid_voice(_active["voice"]):
-            _active.pop("voice")
-            state["active"] = deepcopy(_active)
-            state["error"] = "The saved voice model failed its integrity check; using plain turbo."
-        if state["phase"] in ("preparing", "training", "evaluating", "queued"):
-            state["phase"] = "interrupted"
+        active = {}
+        try:
+            loaded = json.loads((root / "state.json").read_text())
+            if loaded["version"] != 1:
+                raise ValueError("Unsupported learning state")
+            active = dict(loaded.get("active") or {})
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError):
+            logger.exception("Could not read model improvement state")
+        _active = _checked(active, report=True)
 
 
-def _save():
-    _root.mkdir(parents=True, exist_ok=True)
-    temp = _root / "state.tmp"
-    with temp.open("w") as stream:
-        json.dump(_state, stream, indent=2)
-        stream.flush()
-        os.fsync(stream.fileno())
-    temp.replace(_root / "state.json")
-    capture_events.publish("learned")
+def _checked(active, report=False):
+    """``active`` without the trained models that fail their checks."""
+    checks = {"llm": _valid_adapter, "voice": _valid_voice}
+    kept = {}
+    for kind, item in active.items():
+        if kind not in checks or checks[kind](item):
+            kept[kind] = deepcopy(item)
+        elif report:
+            _reports.append({"kind": kind, "id": item.get("id"), "error": _INVALID[kind], "block": False})
+    return kept
 
 
-def status():
+def check(active):
+    """The trained models in ``active`` that pass their checks, for the server to save before :func:`use`."""
+    initialize()
+    return _checked(active)
+
+
+def use(active):
+    """Use the trained models the server saved; one that fails its checks is
+    left out. Returns those in use."""
+    global _active
+    initialize()
+    kept = _checked(active)
+    with _lock:
+        voice_changed = kept.get("voice") != _active.get("voice")
+        _active = kept
+    if voice_changed:
+        _reload_speech()
+    return deepcopy(kept)
+
+
+def reports():
+    """The trained models dropped since the last call, for the server to
+    record: ``block`` ones failed while in use and aren't tried again."""
     initialize()
     with _lock:
-        result = {key: deepcopy(_state[key]) for key in ("phase", "revision", "counts", "last_run", "metrics", "error")}
-        result["active_adapter"] = _active.get("llm", {}).get("id")
-        result["speech_model"] = _active.get("speech", {}).get("model")
-        result["can_rollback"] = bool(_state["history"])
-        result["voice"] = _voice_status()
-        result["running"] = bool(_thread and _thread.is_alive())
-        if result["running"] and _run_directory and result["phase"] in ("training", "evaluating"):
-            try:
-                progress = json.loads((_run_directory / "progress.json").read_text())
-                if progress["phase"].startswith("evaluating"):
-                    result["phase"] = "evaluating"
-            except (OSError, ValueError, KeyError):
-                pass
-        return result
+        taken = list(_reports)
+        _reports.clear()
+    return taken
+
+
+def _report(kind, message):
+    """Stop using the ``kind`` trained model and report it; the caller holds the lock."""
+    global _active
+    _reports.append({"kind": kind, "id": _active[kind].get("id"), "error": message, "block": True})
+    _active = {key: value for key, value in _active.items() if key != kind}
+    capture_events.publish("learned")
 
 
 def active_adapter(model_size, flags):
@@ -204,25 +209,6 @@ def _personal_adapter(model_size, flags):
     return item["path"]
 
 
-def _voice_status():
-    from ..voice_training import bank, sounds
-
-    item = _active.get("voice")
-    return {
-        "active": item["id"] if item else None,
-        "active_since": item.get("activated") if item else None,
-        "bank": bank.summary(),
-        "sounds": sounds.status(),
-        "metrics": (_state.get("metrics") or {}).get("voice"),
-        "training": (_state.get("metrics") or {}).get("voice_training"),
-        "min_train": VOICE_MIN_TRAIN,
-        "min_test": VOICE_MIN_TEST,
-        # Undo restores the previous model version; offer it here only when
-        # that would undo a voice model change.
-        "can_undo": bool(_state["history"]) and _state["history"][-1]["active"].get("voice") != item,
-    }
-
-
 def _personal_voice(model_size):
     item = _active.get("voice")
     if not item or item["model_size"] != model_size or not shared_adapters.usable(item.get("shared")):
@@ -237,20 +223,13 @@ def voice_adapter(model_size):
 
 def quarantine_voice(message, path=None):
     """Stop using a voice adapter that failed to load; plain turbo takes over."""
-    global _active
     initialize()
     with _lock:
         if "voice" not in _active or (path and path != _active["voice"]["path"]):
             if path:
                 shared_adapters.quarantine(path)
             return
-        _state["blocked"].append(_active["voice"]["id"])
-        _active = {key: value for key, value in _active.items() if key != "voice"}
-        _state["active"] = deepcopy(_active)
-        _state["voice_resume"] = None
-        _state["error"] = message
-        _state["phase"] = "reverted"
-        _save()
+        _report("voice", message)
 
 
 def speech_model(configured):
@@ -259,19 +238,13 @@ def speech_model(configured):
 
 
 def quarantine_adapter(message, path=None):
-    global _active
     initialize()
     with _lock:
         if "llm" not in _active or (path and path != _active["llm"]["path"]):
             if path:
                 shared_adapters.quarantine(path)
             return
-        _state["blocked"].append(_active["llm"]["id"])
-        _active = {key: value for key, value in _active.items() if key != "llm"}
-        _state["active"] = deepcopy(_active)
-        _state["error"] = message
-        _state["phase"] = "reverted"
-        _save()
+        _report("llm", message)
 
 
 def in_use():
@@ -289,17 +262,9 @@ def mirrored_root():
 
 def use_mirrored(active):
     """Use a shared Kass's trained models, already copied under :func:`mirrored_root`.
-    One that fails its checks is left out, so dictation uses the base model."""
-    global _active
-    initialize()
-    checks = {"llm": _valid_adapter, "voice": _valid_voice}
-    kept = {kind: item for kind, item in active.items() if kind not in checks or checks[kind](item)}
-    with _lock:
-        if kept == _active:
-            return
-        _active = deepcopy(kept)
-        _state["active"] = deepcopy(kept)
-        _save()
+    One that fails its checks is left out, so dictation uses the base model.
+    Returns those in use, for the server to save."""
+    return use(active)
 
 
 def _stop_process(process):
@@ -336,12 +301,7 @@ def idle_generation():
     """
     with _lock:
         now = time.monotonic()
-        busy = (
-            _foreground_count
-            or now < _recording_until
-            or now - _last_activity < IDLE_SECONDS
-            or (_thread and _thread.is_alive())
-        )
+        busy = _foreground_count or now < _recording_until or now - _last_activity < IDLE_SECONDS or _runs
         return None if busy else _generation
 
 
@@ -361,11 +321,9 @@ def interrupted(generation):
     return generation != _generation
 
 
-def cancel():
-    global _last_attempt
+def stop():
+    """Stop a run in progress: a dictation, the user or shutting down."""
     foreground_activity()
-    _last_attempt = time.monotonic()
-    return status()
 
 
 def begin_foreground():
@@ -395,7 +353,10 @@ def _cached(repo):
         return None
 
 
-def _prepare():
+def _prepare(groups, voice_resume, skip):
+    """The plan for a run from the reports in kass.db, its fingerprint, whether
+    it has anything to train or evaluate, and what the server keeps: the
+    recording groups (``groups``, updated in place) and the counts."""
     from ...backends import WHISPER_HF_REPOS
     from ...backends.qwen_llm_backend import MLX_HF_REPOS
     from ..settings import get_capture_settings
@@ -403,7 +364,6 @@ def _prepare():
     # The server learns the rules and has the worker reload them.
     correction_learning.initialize()
     with _lock:
-        groups = deepcopy(_state["groups"])
         active = deepcopy(_active)
     with database_session.SessionLocal() as db:
         from ..styles import flags_for, load as load_styles
@@ -458,7 +418,6 @@ def _prepare():
         "shared": lineage,
         "train_ready": train_ready and bool(path),
         "has_training_data": train_ready,
-        "baseline_revision": _state["revision"],
         "voice": None,
         "style_flags": style_flags,
         # Prompts for learned punctuation read each style's habits from here.
@@ -476,20 +435,18 @@ def _prepare():
     )
     # The refinement model trains first when it has new data; otherwise the
     # run trains the voice adapter. One at a time fits the worker's 30 minutes.
-    with _lock:
-        refinement_due = plan["train_ready"] and fingerprint not in _state["attempted"] + _state["blocked"]
+    refinement_due = plan["train_ready"] and fingerprint not in skip
     if voice_bank and current_stt == "turbo" and not refinement_due:
-        plan["voice"] = _voice_plan(voice_bank, active, samples, language)
+        plan["voice"] = _voice_plan(voice_bank, active, samples, language, voice_resume)
         if plan["voice"]:
             plan["train_ready"] = False
             fingerprint = digest([fingerprint, plan["voice"]["bank_digest"], plan["voice"]["resume"]])
-    with _lock:
-        _state["groups"] = groups
-        _state["counts"] = counts | {"speech_test": len(raw_tests)}
-        _state["evaluated_report_ids"] = [s["id"] for s in samples]
-        _save()
     ready = plan["train_ready"] or (len(raw_tests) >= 5 and bool(speech_candidates)) or bool(plan["voice"])
-    return plan, fingerprint, ready
+    kept = {
+        "counts": counts | {"speech_test": len(raw_tests)},
+        "evaluated_report_ids": [s["id"] for s in samples],
+    }
+    return plan, fingerprint, ready, kept
 
 
 VOICE_MIN_TRAIN = 100
@@ -506,7 +463,7 @@ def _scan_bank(db, settings):
         return None
 
 
-def _voice_plan(summary, active, samples, language):
+def _voice_plan(summary, active, samples, language, resume):
     """The voice-training part of a run, or None until there's enough to train on."""
     from ...backends import WHISPER_HF_REPOS
     from ..voice_training import bank, sounds
@@ -523,7 +480,6 @@ def _voice_plan(summary, active, samples, language):
             continue
         takes.append(take)
     personal = active.get("voice")
-    resume = _state.get("voice_resume")
     try:
         resume = str(_inside_root(resume)) if resume and (Path(resume) / "adapter.safetensors").is_file() else None
     except ValueError:
@@ -622,14 +578,14 @@ def _command(plan):
     ]
 
 
-def _promote(plan, directory, result, fingerprint):
-    """Recompute gates in the parent; publish one reversible deployment."""
-    global _active
-    if plan["baseline_revision"] != _state["revision"]:
-        raise ValueError("The production model changed during evaluation")
+def _judge(plan, directory, result, voice_resume):
+    """Recompute the gates here, not in the child: the trained models to use
+    next (the ones in use unless a candidate passed), the measurements, and
+    the voice adapter the next run continues from."""
     if plan["pipeline"] != pipeline_id() or digest(plan["rules"]) != digest(correction_learning._state["rules"]):
         raise ValueError("The refinement pipeline changed during evaluation")
-    active = deepcopy(_active)
+    with _lock:
+        active = deepcopy(_active)
     metrics = {}
     if result.get("adapter"):
         report = result["adapter"]
@@ -670,7 +626,6 @@ def _promote(plan, directory, result, fingerprint):
         ):
             winner = min(passing, key=lambda e: score_speech(e["rows"])["candidate_errors"])
             active["speech"] = {"model": winner["model"], "configured": plan["configured_stt"]}
-    voice_resume = _state.get("voice_resume")
     if result.get("voice"):
         from ..voice_training import lora
         from ..voice_training.gate import score_voice, worth_continuing
@@ -699,29 +654,7 @@ def _promote(plan, directory, result, fingerprint):
             # The model now in use is where training continues, even when it
             # won on noise by more clean words than worth_continuing allows.
             voice_resume = str(path)
-    previous = deepcopy(_state)
-    changed = active != _active
-    if changed:
-        _state["history"] = (_state["history"] + [{"active": deepcopy(_active), "fingerprint": fingerprint}])[-10:]
-        _state["revision"] += 1
-        _state["active"] = active
-    _state.update(
-        phase="activated" if changed else "rejected",
-        metrics=metrics,
-        last_run=datetime.now(UTC).isoformat(),
-        voice_resume=voice_resume,
-    )
-    _state["attempted"].append(fingerprint)
-    try:
-        _save()
-    except OSError:
-        _state.clear()
-        _state.update(previous)
-        raise
-    voice_changed = active.get("voice") != _active.get("voice")
-    _active = active
-    if voice_changed:
-        _reload_speech()
+    return {"active": active, "metrics": metrics, "voice_resume": voice_resume}
 
 
 def _reload_speech():
@@ -737,42 +670,87 @@ def _reload_speech():
         logger.exception("Couldn't reload the speech model; it reloads on next use")
 
 
-def _run(token):
-    global _process, _last_attempt, _run_directory
-    directory = None
-    try:
-        if platform.system() != "Darwin" or platform.machine() != "arm64":
-            with _lock:
-                _state["phase"] = "unsupported"
-                _last_attempt = time.monotonic()
-            return
-        plan, fingerprint, ready = _prepare()
-        with _lock:
-            if token != _generation:
-                _state["phase"] = "paused"
-                return
-            if not ready:
-                _state["phase"] = (
-                    "waiting_model" if plan.get("has_training_data") and not plan["model_path"] else "waiting_data"
-                )
-                _state["last_run"] = datetime.now(UTC).isoformat()
-                _save()
-                _last_attempt = time.monotonic()
-                return
-            if fingerprint in _state["attempted"] or fingerprint in _state["blocked"]:
-                _state["phase"] = "no_new_data"
-                _last_attempt = time.monotonic()
-                return
-            # Do not start a GPU training job under memory pressure.
-            import psutil
+class _Busy:
+    """The models aren't idle while a run is prepared or trained."""
 
-            if psutil.virtual_memory().available < 8 * 1024**3:
-                _state["phase"] = "waiting_memory"
-                return
-            directory = _root / "runs" / uuid.uuid4().hex
-            directory.mkdir(parents=True)
-            _run_directory = directory
-            (directory / "plan.json").write_text(json.dumps(plan, indent=2))
+    def __enter__(self):
+        global _runs
+        with _lock:
+            _runs += 1
+
+    def __exit__(self, *_):
+        global _runs
+        with _lock:
+            _runs -= 1
+
+
+# The plan :func:`prepare` made, until :func:`train` runs it.
+_prepared = None
+
+
+def prepare(groups, voice_resume, skip):
+    """Plan a run for the server, from the reports in kass.db.
+
+    ``skip`` is the fingerprints already tried or rolled back. The answer
+    says whether it's ``ready`` to train, or which phase it ``waits`` in, and
+    names the ``run`` for :func:`train`. A dictation that starts meanwhile
+    ``interrupted`` it.
+    """
+    global _prepared
+    initialize()
+    if platform.system() != "Darwin" or platform.machine() != "arm64":
+        return {"unsupported": True}
+    with _lock:
+        generation = _generation
+    with _Busy():
+        groups = deepcopy(groups)
+        plan, fingerprint, ready, kept = _prepare(groups, voice_resume, skip)
+    run = uuid.uuid4().hex
+    with _lock:
+        _prepared = {"run": run, "plan": plan, "fingerprint": fingerprint} if ready else None
+        interrupted = generation != _generation
+    waiting = None
+    if not ready:
+        waiting = "waiting_model" if plan.get("has_training_data") and not plan["model_path"] else "waiting_data"
+    return kept | {
+        "groups": groups,
+        "ready": ready,
+        "waiting": waiting,
+        "fingerprint": fingerprint,
+        "run": run if ready else None,
+        # Training, or only evaluating other speech models.
+        "trains": bool(plan["train_ready"] or plan["voice"]),
+        "generation": generation,
+        "interrupted": interrupted,
+    }
+
+
+def train(run, generation, voice_resume):
+    """Train and evaluate the run :func:`prepare` planned, in a child process.
+
+    Answers ``interrupted`` when a dictation stopped it, ``waiting_memory``
+    when the Mac is short of memory to start, else what to use next
+    (:func:`_judge`). Raises when the run fails.
+    """
+    global _process, _prepared
+    initialize()
+    with _lock:
+        prepared, _prepared = _prepared, None
+    if not prepared or prepared["run"] != run:
+        raise ValueError("That run wasn't prepared")
+    plan = prepared["plan"]
+    with _Busy():
+        # Do not start a GPU training job under memory pressure.
+        import psutil
+
+        if psutil.virtual_memory().available < 8 * 1024**3:
+            return {"waiting_memory": True}
+        directory = _root / "runs" / run
+        directory.mkdir(parents=True)
+        (directory / "plan.json").write_text(json.dumps(plan, indent=2))
+        with _lock:
+            if generation != _generation:
+                return {"interrupted": True}
             with (directory / "worker.log").open("w") as log:
                 _process = subprocess.Popen(
                     _command(directory / "plan.json"),
@@ -781,104 +759,20 @@ def _run(token):
                     start_new_session=True,
                     cwd=str(Path(__file__).resolve().parents[3]),
                 )
-            _state["phase"] = "training" if plan["train_ready"] or plan["voice"] else "evaluating"
             process = _process
         try:
-            exit_code = process.wait(timeout=1800)
-        except subprocess.TimeoutExpired:
-            _stop_process(process)
-            raise RuntimeError("Training/evaluation exceeded the 30-minute budget") from None
-        with _lock:
-            _process = None
-            if token != _generation:
-                _state["phase"] = "paused"
-                return
-            if exit_code:
-                raise RuntimeError(f"Model worker failed (exit {exit_code}); details: {directory / 'worker.log'}")
-            result = json.loads((directory / "result.json").read_text())
-            _promote(plan, directory, result, fingerprint)
-            _last_attempt = time.monotonic()
-    except Exception as error:
-        logger.exception("Model improvement failed; production model unchanged")
-        with _lock:
-            _state["phase"] = "failed"
-            _state["error"] = str(error)
-            _last_attempt = time.monotonic()
-            _save()
-    finally:
-        with _lock:
-            _process = None
-            # Detailed evaluation artifacts stay local for diagnosis and audit.
-            if _state["phase"] == "paused":
-                _save()
-
-
-def start():
-    global _thread
-    initialize()
-    with _lock:
-        if _thread and _thread.is_alive():
-            return status()
-        if _foreground_count or time.monotonic() < _recording_until:
-            _state["phase"] = "waiting_idle"
-            return status()
-        _state.update(phase="preparing", error=None)
-        _thread = threading.Thread(target=_run, args=(_generation,), daemon=True, name="model-improvement")
-        _thread.start()
-        return status()
-
-
-def rollback():
-    global _active
-    cancel()
-    with _lock:
-        if not _state["history"]:
-            raise ValueError("No previous model version is available")
-        previous = deepcopy(_state)
-        entry = _state["history"].pop()
-        active = entry["active"]
-        if "llm" in active and not _valid_adapter(active["llm"]):
-            active.pop("llm")
-        if "voice" in active and not _valid_voice(active["voice"]):
-            active.pop("voice")
-        _state["blocked"].append(entry["fingerprint"])
-        # Training continues from the restored voice model, not the undone one.
-        _state["voice_resume"] = active.get("voice", {}).get("path")
-        _state["active"] = active
-        _state["revision"] += 1
-        _state["phase"] = "rolled_back"
-        try:
-            _save()
-        except OSError:
-            _state.clear()
-            _state.update(previous)
-            raise
-        voice_changed = active.get("voice") != _active.get("voice")
-        _active = deepcopy(active)
-        if voice_changed:
-            _reload_speech()
-        return status()
-
-
-async def periodic_job():
-    initialize()
-    try:
-        while True:
-            await asyncio.sleep(60)
-            if idle_generation() is None:
-                continue
-            # A withdrawn report may be in the active adapter's training data.
-            retrain = correction_learning.take_retrain() and bool(_active.get("llm"))
-            if (
-                retrain
-                or time.monotonic() - _last_attempt >= INTERVAL_SECONDS
-                # The server learns from a saved or withdrawn report soon, not
-                # in six hours. The adapter was tested with the old rules, so
-                # new ones retest it.
-                or (correction_learning.take_rules_changed() and bool(_active.get("llm")))
-            ):
-                start()
-    finally:
-        await asyncio.to_thread(foreground_activity)
-        if _thread and _thread.is_alive():
-            await asyncio.to_thread(_thread.join, 5)
+            try:
+                exit_code = process.wait(timeout=1800)
+            except subprocess.TimeoutExpired:
+                _stop_process(process)
+                raise RuntimeError("Training/evaluation exceeded the 30-minute budget") from None
+        finally:
+            with _lock:
+                _process = None
+        if generation != _generation:
+            return {"interrupted": True}
+        if exit_code:
+            raise RuntimeError(f"Model worker failed (exit {exit_code}); details: {directory / 'worker.log'}")
+        # Detailed evaluation artifacts stay local for diagnosis and audit.
+        result = json.loads((directory / "result.json").read_text())
+        return _judge(plan, directory, result, voice_resume)

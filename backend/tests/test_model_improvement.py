@@ -1,4 +1,6 @@
-"""Training isolation, independent evaluation and reversible model deployment."""
+"""Training isolation, independent evaluation and using the trained models
+the server keeps (server/src/model_improvement.rs owns state, schedule and
+rollback)."""
 
 import json
 import sys
@@ -102,25 +104,35 @@ def storage(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "get_data_dir", lambda: tmp_path)
     monkeypatch.setattr(manager.database_session, "SessionLocal", factory)
     for name, value in (
-        ("_state", None),
         ("_root", None),
         ("_active", {}),
         ("_process", None),
-        ("_thread", None),
         ("_generation", 0),
         ("_foreground_count", 0),
         ("_recording_until", 0),
         ("_last_activity", 0),
-        ("_last_attempt", 0),
+        ("_runs", 0),
+        ("_reports", []),
+        ("_prepared", None),
     ):
         monkeypatch.setattr(manager, name, value)
     monkeypatch.setattr(manager.correction_learning, "_state", {"rules": []})
     manager.initialize()
     yield factory
     manager.foreground_activity()
-    if manager._thread:
-        manager._thread.join(5)
     engine.dispose()
+
+
+def save_state(tmp_path, active):
+    """The server saved ``active`` as the trained models in use."""
+    folder = tmp_path / "model-improvement"
+    folder.mkdir(exist_ok=True)
+    (folder / "state.json").write_text(json.dumps({"version": 1, "active": active}))
+
+
+def restart(monkeypatch):
+    monkeypatch.setattr(manager, "_root", None)
+    manager.initialize()
 
 
 def add_report(db, capture_id, raw, expected, target="refined", audio=None):
@@ -184,7 +196,6 @@ def candidate_directory(tmp_path):
 
 def plan():
     return {
-        "baseline_revision": 0,
         "model_size": "1.7B",
         "model_path": "/cached/base",
         "pipeline": manager.pipeline_id(),
@@ -193,58 +204,85 @@ def plan():
     }
 
 
-def test_promote_reload_rollback_and_no_reactivation(storage, tmp_path, monkeypatch):
+def adapter_result(rows=None):
+    return {"adapter": {"rows": rows or successful_rows(), "tested_flags": [{}]}}
+
+
+def test_a_passing_adapter_is_judged_used_and_kept_across_restarts(storage, tmp_path, monkeypatch):
     folder = candidate_directory(tmp_path)
-    result = {"adapter": {"rows": successful_rows(), "tested_flags": [{}]}}
-    manager._promote(plan(), folder, result, "fingerprint")
+    judged = manager._judge(plan(), folder, adapter_result(), None)
+    assert judged["metrics"]["adapter"]["passed"]
+    # Judging uses nothing yet: the server saves it, then says to use it.
+    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
+    assert manager.use(judged["active"]) == judged["active"]
     path = str(folder / "adapter")
     assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) == path
     assert manager.active_adapter("0.6B", RefinementFlags().to_dict()) is None
     assert manager.active_adapter("1.7B", RefinementFlags(self_correction=False).to_dict()) is None
-    monkeypatch.setattr(manager, "_state", None)
-    manager.initialize()
+    save_state(tmp_path, judged["active"])
+    restart(monkeypatch)
     assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) == path
-    assert manager.rollback()["active_adapter"] is None
-    assert "fingerprint" in manager._state["blocked"]
-    assert "fingerprint" in manager._state["attempted"]
+    assert manager.in_use()["llm"]["id"] == "candidate"
+    # The server rolled back.
+    manager.use({})
+    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
 
 
-def test_failed_gate_and_failed_publication_leave_active_model_intact(storage, tmp_path, monkeypatch):
+def test_a_failed_gate_keeps_the_models_in_use(storage, tmp_path):
     folder = candidate_directory(tmp_path)
     rows = successful_rows()
     rows[0]["candidate"] = "A completely unrelated answer."
-    manager._promote(plan(), folder, {"adapter": {"rows": rows, "tested_flags": [{}]}}, "rejected")
-    assert manager.status()["active_adapter"] is None
-    assert manager.status()["phase"] == "rejected"
-
-    def fail():
-        raise OSError("disk full")
-
-    monkeypatch.setattr(manager, "_save", fail)
-    with pytest.raises(OSError, match="disk full"):
-        manager._promote(plan(), folder, {"adapter": {"rows": successful_rows(), "tested_flags": [{}]}}, "valid")
-    assert manager._active == {}
-    assert manager._state["active"] == {}
+    judged = manager._judge(plan(), folder, adapter_result(rows), None)
+    assert judged["active"] == {}
+    assert not judged["metrics"]["adapter"]["passed"]
 
 
-def test_tampered_adapter_falls_back_to_base_on_restart(storage, tmp_path, monkeypatch):
+def test_new_rules_during_evaluation_refuse_the_run(storage, tmp_path, monkeypatch):
+    monkeypatch.setattr(manager.correction_learning, "_state", {"rules": [{"id": "new"}]})
+    with pytest.raises(ValueError, match="pipeline changed"):
+        manager._judge(plan(), candidate_directory(tmp_path), adapter_result(), None)
+
+
+def test_tampered_adapter_falls_back_to_base_on_restart_and_is_reported(storage, tmp_path, monkeypatch):
     folder = candidate_directory(tmp_path)
-    manager._promote(plan(), folder, {"adapter": {"rows": successful_rows(), "tested_flags": [{}]}}, "valid")
+    judged = manager._judge(plan(), folder, adapter_result(), None)
+    save_state(tmp_path, judged["active"])
     (folder / "adapter" / "adapters.safetensors").write_bytes(b"corrupted")
-    monkeypatch.setattr(manager, "_state", None)
-    manager.initialize()
-    assert manager.status()["active_adapter"] is None
+    restart(monkeypatch)
+    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
+    assert manager.check(judged["active"]) == {}
+    [report] = manager.reports()
+    assert (report["kind"], report["id"], report["block"]) == ("llm", "candidate", False)
+    assert manager.reports() == []
 
 
-def test_recording_preempts_child_and_prevents_starting_another(storage, monkeypatch):
+def test_an_adapter_that_fails_in_use_is_dropped_and_reported_to_block(storage, tmp_path):
+    judged = manager._judge(plan(), candidate_directory(tmp_path), adapter_result(), None)
+    manager.use(judged["active"])
+    manager.quarantine_adapter("bad weights", judged["active"]["llm"]["path"])
+    assert manager.in_use() == {}
+    assert manager.reports() == [{"kind": "llm", "id": "candidate", "error": "bad weights", "block": True}]
+
+
+def test_recording_preempts_child_and_says_a_dictation_is_on(storage, monkeypatch):
     process = object()
     manager._process = process
     stopped = []
     monkeypatch.setattr(manager, "_stop_process", stopped.append)
     manager.foreground_activity(recording=True)
     assert stopped == [process]
-    assert manager.start()["phase"] == "waiting_idle"
-    assert manager._thread is None
+    assert manager.dictating()
+    assert manager.idle_generation() is None
+
+
+def test_the_servers_stop_for_recording_opens_the_recording_window(storage, monkeypatch):
+    from backend.routes import learning
+
+    monkeypatch.setattr(manager, "_stop_process", lambda process: None)
+    learning.model_stop()
+    assert not manager.dictating()
+    learning.model_stop(learning.Stop(recording=True))
+    assert manager.dictating()
 
 
 @pytest.mark.asyncio
@@ -325,10 +363,10 @@ def test_cold_start_regression_is_rejected():
 def test_speech_is_not_promoted_without_final_pipeline_evaluation(storage, tmp_path):
     rows = [row for row in successful_rows() if row["kind"] == "audio"]
     result = {"speech": {"winner": "large", "evaluations": [{"model": "large", "rows": rows}]}}
-    manager._promote(plan(), candidate_directory(tmp_path), result, "speech-only")
-    assert manager.speech_model("turbo") == "turbo"
+    judged = manager._judge(plan(), candidate_directory(tmp_path), result, None)
+    assert "speech" not in judged["active"]
     result["speech"]["pipeline"] = {"rows": successful_rows()}
-    manager._promote(plan(), tmp_path, result, "speech-pipeline")
+    manager.use(manager._judge(plan(), tmp_path, result, None)["active"])
     assert manager.speech_model("turbo") == "large"
     assert manager.speech_model("small") == "small"
 
@@ -393,15 +431,21 @@ def plenty_of_memory(monkeypatch):
     monkeypatch.setattr(psutil, "virtual_memory", lambda: memory._replace(available=16 * 1024**3))
 
 
-def test_supervisor_runs_isolated_worker_and_promotes_only_complete_results(storage, monkeypatch):
-    import sys
-
+def ready_to_train(monkeypatch, fingerprint):
     manager_plan = plan()
-    manager_plan.update(train_ready=True)
-    monkeypatch.setattr(manager, "_prepare", lambda: (manager_plan, "supervised", True))
+    manager_plan.update(train_ready=True, voice=None)
+    kept = {"counts": {}, "evaluated_report_ids": []}
+    monkeypatch.setattr(manager, "_prepare", lambda *_: (manager_plan, fingerprint, True, kept))
     monkeypatch.setattr(manager.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(manager.platform, "machine", lambda: "arm64")
     plenty_of_memory(monkeypatch)
+    prepared = manager.prepare([], None, [])
+    assert (prepared["ready"], prepared["fingerprint"], prepared["trains"]) == (True, fingerprint, True)
+    return prepared
+
+
+def test_supervisor_runs_isolated_worker_and_judges_only_complete_results(storage, monkeypatch):
+    prepared = ready_to_train(monkeypatch, "supervised")
 
     def command(plan_path):
         script = """import json,sys
@@ -413,84 +457,40 @@ adapter.mkdir()
 (adapter/'adapters.safetensors').write_bytes(b'test adapter')
 (root/'result.json').write_text(sys.argv[2])
 """
-        return [
-            sys.executable,
-            "-c",
-            script,
-            str(plan_path),
-            json.dumps({"adapter": {"rows": successful_rows(), "tested_flags": [{}]}}),
-        ]
+        return [sys.executable, "-c", script, str(plan_path), json.dumps(adapter_result())]
 
     monkeypatch.setattr(manager, "_command", command)
-    manager.start()
-    manager._thread.join(5)
-    assert not manager._thread.is_alive()
-    assert manager.status()["phase"] == "activated"
-    assert manager.status()["active_adapter"]
+    judged = manager.train(prepared["run"], prepared["generation"], None)
+    assert judged["active"]["llm"]["id"] == prepared["run"]
+    assert judged["metrics"]["adapter"]["passed"]
+    # Only the run it prepared trains, once.
+    with pytest.raises(ValueError, match="wasn't prepared"):
+        manager.train(prepared["run"], prepared["generation"], None)
 
 
-def test_real_child_is_killed_on_recording_and_never_promoted(storage, monkeypatch):
-    import sys
+def test_real_child_is_killed_on_recording_and_never_judged(storage, monkeypatch):
+    import threading
     import time
 
-    manager_plan = plan()
-    manager_plan.update(train_ready=True)
-    monkeypatch.setattr(manager, "_prepare", lambda: (manager_plan, "interrupted", True))
-    monkeypatch.setattr(manager.platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(manager.platform, "machine", lambda: "arm64")
-    plenty_of_memory(monkeypatch)
+    prepared = ready_to_train(monkeypatch, "interrupted")
     monkeypatch.setattr(manager, "_command", lambda _: [sys.executable, "-c", "import time; time.sleep(60)"])
-    manager.start()
+    answers = []
+    thread = threading.Thread(
+        target=lambda: answers.append(manager.train(prepared["run"], prepared["generation"], None))
+    )
+    thread.start()
     deadline = time.monotonic() + 5
     while manager._process is None and time.monotonic() < deadline:
         time.sleep(0.01)
     process = manager._process
     assert process is not None
     manager.foreground_activity(recording=True)
-    manager._thread.join(5)
+    thread.join(5)
     assert process.poll() is not None
-    assert manager.status()["phase"] == "paused"
-    assert not manager.status()["active_adapter"]
+    assert answers == [{"interrupted": True}]
+    assert manager.in_use() == {}
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("rules_changed", "retrain", "adapter", "started"),
-    [
-        (False, False, True, False),
-        # The server learned new rules and the worker reloaded them.
-        (True, False, False, False),
-        # New rules invalidate the adapter tested with the old ones: retest it.
-        (True, False, True, True),
-        # A withdrawn report may be in the active adapter's training data.
-        (False, True, True, True),
-        (False, True, False, False),
-    ],
-)
-async def test_idle_tick_retests_the_adapter_after_new_rules(
-    storage, tmp_path, monkeypatch, rules_changed, retrain, adapter, started
-):
-    import asyncio
-    import time
-
-    calls = []
-    ticks = []
-    real_sleep = asyncio.sleep
-
-    async def sleep(seconds):
-        ticks.append(seconds)
-        if len(ticks) > 1:
-            raise asyncio.CancelledError
-        await real_sleep(0)
-
-    learning = manager.correction_learning
-    monkeypatch.setattr(manager.asyncio, "sleep", sleep)
-    monkeypatch.setattr(manager, "_last_attempt", time.monotonic())
-    monkeypatch.setattr(manager, "_active", {"llm": {"path": "adapter"}} if adapter else {})
-    monkeypatch.setattr(manager, "start", lambda: calls.append("start"))
-    monkeypatch.setattr(learning, "_rules_changed", rules_changed)
-    monkeypatch.setattr(learning, "_retrain", retrain)
-    with pytest.raises(asyncio.CancelledError):
-        await manager.periodic_job()
-    assert ("start" in calls) is started
-    assert not learning.take_retrain()
+def test_a_run_is_never_prepared_off_apple_silicon(storage, monkeypatch):
+    monkeypatch.setattr(manager.platform, "machine", lambda: "x86_64")
+    assert manager.prepare([], None, []) == {"unsupported": True}
