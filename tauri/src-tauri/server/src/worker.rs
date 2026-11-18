@@ -330,3 +330,34 @@ pub async fn unload_model(proxy: &Proxy, name: &str) -> Result<bool, String> {
     }
     Ok(answer["was_loaded"].as_bool().unwrap_or(false))
 }
+
+/// Load the models dictation starts with, as the worker does on start
+/// unless it stands in for a shared Kass: the app now dictates here.
+pub async fn load_startup_models(proxy: &Proxy) -> Result<(), String> {
+    post_within(proxy, "/worker/models/startup", json!({}), LOAD_TIMEOUT)
+        .await
+        .map(|_| ())
+}
+
+/// The trained models in use, by kind, each with the folder it's in
+/// (`manager.in_use()`), for a stand-in to copy.
+pub async fn adapters_in_use(proxy: &Proxy) -> Result<serde_json::Map<String, Value>, String> {
+    let answer = post(proxy, "/worker/sync/adapters", json!({})).await?;
+    match answer.get("in_use") {
+        Some(Value::Object(in_use)) => Ok(in_use.clone()),
+        _ => Err(format!("the worker's trained models didn't read: {answer}")),
+    }
+}
+
+/// A stand-in copied a shared Kass's settings, dictionary, learning and
+/// trained models: the worker uses `active` (already copied here) and
+/// rereads everything else.
+pub async fn use_mirrored(
+    proxy: &Proxy,
+    active: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    let body = json!({ "active": active });
+    post_within(proxy, "/worker/sync/mirrored", body, LEARNING_TIMEOUT)
+        .await
+        .map(|_| ())
+}
