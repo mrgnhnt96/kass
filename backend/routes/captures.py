@@ -224,23 +224,6 @@ async def retranscribe_capture_endpoint(
 # -- What the Rust server asks of the worker ----------------------------------
 
 
-class TextRequest(BaseModel):
-    text: str
-
-
-class TakeBackRequest(BaseModel):
-    before: str
-    removed: str
-    newer: list[str]
-
-
-class LearnedReport(BaseModel):
-    report_id: str
-    source: str
-    original: str
-    expected: str
-
-
 class ChangedReports(BaseModel):
     target: str
     source: str
@@ -248,38 +231,19 @@ class ChangedReports(BaseModel):
 
 
 class ReportsChangedRequest(BaseModel):
-    learn: list[LearnedReport] = []
     changed: list[ChangedReports] = []
     forgotten: str | None = None
 
 
-@worker_router.post("/join-spelling")
-def join_spelling_endpoint(request: TextRequest):
-    """Letters a user spelled aloud, joined as one word."""
-    from ..services.spelling import join_spelling
-
-    return {"text": join_spelling(request.text)}
-
-
-@worker_router.post("/take-back")
-def take_back_endpoint(request: TakeBackRequest):
-    """Each newer report's text without the changes ``removed`` made to ``before``."""
-    from ..services.text_merge import take_back
-
-    return {"texts": [take_back(request.before, request.removed, text) for text in request.newer]}
-
-
 @worker_router.post("/reports-changed")
 def reports_changed_endpoint(request: ReportsChangedRequest, db: Session = Depends(get_db)):
-    """The server saved, withdrew or deleted reports: learn the words they
-    fixed, relearn from them, and drop a deleted capture's voice take."""
+    """The server saved, withdrew or deleted reports: relearn from them, and
+    drop a deleted capture's voice take."""
     from ..services import capture_feedback, dictionary
     from ..services.voice_training import bank
 
-    # The server wrote the dictionary rows the reports added or took back.
+    # The server wrote the dictionary words the reports fixed or took back.
     dictionary.invalidate()
-    for item in request.learn:
-        capture_feedback.learn_words(item.source, item.original, item.expected, item.report_id, db)
     for item in request.changed:
         capture_feedback.reports_changed(item.target, item.source, db, withdrawn=item.withdrawn)
     if request.forgotten is not None:

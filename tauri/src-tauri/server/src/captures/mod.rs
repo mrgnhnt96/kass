@@ -8,9 +8,11 @@
 //! A capture's reports of one target stack, each made from the one before.
 //!
 //! This module holds the shapes and the checks pydantic made on them;
-//! [`store`] reads and writes `kass.db`. What a report teaches (dictionary
-//! words, the writing style, correction learning) is still learned in the
-//! Python worker, which this server tells whenever reports change.
+//! [`store`] reads and writes `kass.db`, and puts the words a report fixed
+//! in the dictionary ([`store::learn_words`]). What else a report teaches
+//! (the writing style, known names, examples, correction learning) is
+//! still learned in the Python worker, which this server tells whenever
+//! reports change.
 
 pub mod in_use;
 pub mod retention;

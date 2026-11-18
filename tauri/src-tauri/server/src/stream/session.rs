@@ -20,6 +20,7 @@ use kass_text::py;
 use kass_text::re;
 use kass_text::refinement::{self, Flags, Punctuation};
 use kass_text::sentence_tail;
+use kass_text::spelling;
 use kass_text::spoken_corrections::retracted_by;
 use kass_text::spoken_punctuation::period_after_closers;
 use kass_text::voice_commands::{commands_alone, mark_commands};
@@ -2034,7 +2035,7 @@ impl Session {
                 return Ok(());
             }
         };
-        let expected = worker::join_spelling(&self.app.proxy, &expected).await?;
+        let expected = spelling::join_spelling(&expected);
         let original = capture.output(target).unwrap_or_default().to_string();
         if expected == original {
             return Ok(());
@@ -2061,27 +2062,23 @@ impl Session {
                 if let Some(replaced) = &saved.replaced {
                     crate::dictionary::store::delete_added_by(conn, &replaced.id, sync)?;
                 }
+                let row = &saved.report;
+                captures::learn_words(
+                    conn,
+                    &row.id,
+                    &row.source,
+                    &original,
+                    &row.expected_text,
+                    sync,
+                );
                 Ok(Ok(saved))
             })
             .await
             .map_err(|e| e.to_string())??;
         self.app.events.publish(Kind::Learned);
         let row = &saved.report;
-        let learn = [worker::Learn {
-            report_id: &row.id,
-            source: &row.source,
-            original: &original,
-            expected: &row.expected_text,
-        }];
         let changed = [(row.target.clone(), row.source.clone())];
-        worker::reports_changed(
-            &self.app.proxy,
-            &learn,
-            &changed,
-            saved.replaced.is_some(),
-            None,
-        )
-        .await;
+        worker::reports_changed(&self.app.proxy, &changed, saved.replaced.is_some(), None).await;
         learned::reports_changed(&self.app, &changed).await;
         Ok(())
     }

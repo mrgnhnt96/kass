@@ -252,41 +252,22 @@ def worker(monkeypatch):
     engine.dispose()
 
 
-def test_the_worker_joins_spelling_and_takes_back_changes_for_the_server(worker):
-    from backend.services.text_merge import take_back
-
-    client, _, _ = worker
-    joined = client.post("/worker/captures/join-spelling", json={"text": "Thanks, M-E-G-H-A-N."})
-    assert joined.json() == {"text": "Thanks, MEGHAN."}
-    body = {"before": "wrong words", "removed": "Right words", "newer": ["Right words now", "wrong words here"]}
-    texts = client.post("/worker/captures/take-back", json=body).json()["texts"]
-    assert texts == [take_back("wrong words", "Right words", text) for text in body["newer"]]
-    assert client.post("/worker/captures/take-back", json={"before": "a", "removed": "b"}).status_code == 422
-
-
 def test_the_worker_learns_from_reports_the_server_saved(worker, monkeypatch):
-    from backend.database.models import DictionaryEntry
+    from backend.services import dictionary
     from backend.services.voice_training import bank
 
     client, session, changed = worker
-    forgotten = []
+    forgotten, reread = [], []
     monkeypatch.setattr(bank, "forget", forgotten.append)
-    learn = {
-        "report_id": "r1",
-        "source": "manual",
-        "original": "Test that Pikto works.",
-        "expected": "Test that Picto works.",
-    }
-    spoken = {**learn, "report_id": "r2", "source": "redictation"}
+    monkeypatch.setattr(dictionary, "invalidate", lambda: reread.append(True))
     body = {
-        "learn": [learn, spoken],
         "changed": [{"target": "refined", "source": "manual", "withdrawn": True}],
         "forgotten": "gone",
     }
     assert client.post("/worker/captures/reports-changed", json=body).json() == {"ok": True}
-    # Only explicit fixes teach words.
-    assert _words(session) == [("Picto", "correction")]
-    assert {row.added_by for row in session.query(DictionaryEntry)} == {"r1"}
+    # The server wrote the words the reports fixed; the worker rereads them.
+    assert reread == [True]
+    assert _words(session) == []
     assert changed == [("refined", "manual", True)]
     assert forgotten == ["gone"]
     assert client.post("/worker/captures/reports-changed", json={}).json() == {"ok": True}

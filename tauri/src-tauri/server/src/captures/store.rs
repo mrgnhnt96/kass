@@ -9,7 +9,7 @@ use rusqlite::types::ValueRef;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction, TransactionBehavior};
 
 use super::{stored_flags, stored_review, Capture};
-use crate::dictionary::store::{now, parse_stored, stored, Sync};
+use crate::dictionary::store::{add_corrected_words, now, parse_stored, stored, Sync};
 
 const COLUMNS: &str = "id, audio_path, source, language, duration_ms, transcript_raw, \
                        transcript_refined, stt_model, llm_model, refinement_flags, \
@@ -462,6 +462,26 @@ pub fn save_report(
     }))
 }
 
+/// Put the words a report fixed in the dictionary, so they aren't misheard
+/// again (`dictionary::store::add_corrected_words`). Only reports the user
+/// made on purpose teach words. Like Python, a failure is logged and the
+/// report stands.
+pub fn learn_words(
+    conn: &mut Connection,
+    report_id: &str,
+    source: &str,
+    original: &str,
+    expected: &str,
+    sync: Sync,
+) {
+    if !super::EXPLICIT_SOURCES.contains(&source) {
+        return;
+    }
+    if let Err(error) = add_corrected_words(conn, original, expected, report_id, sync) {
+        eprintln!("[server] couldn't add the corrected words to the dictionary: {error}");
+    }
+}
+
 /// A report and the capture's reports of the same target, oldest first,
 /// with where it is among them; None if the capture has no such report.
 pub fn stack(
@@ -833,5 +853,48 @@ mod tests {
         assert!(get(&conn, "take").unwrap().is_none());
         assert_eq!(delete(&mut conn, "take", STAND_IN).unwrap(), None);
         assert!(changes(&conn).contains(&("capture".into(), "take".into(), true)));
+    }
+
+    #[test]
+    fn only_reports_made_on_purpose_teach_words() {
+        let mut conn = database();
+        let written = |conn: &Connection| -> Vec<(String, String)> {
+            let mut query = conn
+                .prepare("SELECT written, added_by FROM dictionary_entries ORDER BY written")
+                .unwrap();
+            let rows = query
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap();
+            rows.map(Result::unwrap).collect()
+        };
+        learn_words(
+            &mut conn,
+            "r0",
+            "redictation",
+            "wrong words",
+            "Rong words",
+            STAND_IN,
+        );
+        assert!(written(&conn).is_empty());
+        learn_words(
+            &mut conn,
+            "r1",
+            "voice_fix",
+            "wrong words",
+            "Rong words",
+            STAND_IN,
+        );
+        learn_words(
+            &mut conn,
+            "r2",
+            "manual",
+            "wrong words",
+            "wrong Wordz",
+            STAND_IN,
+        );
+        assert_eq!(
+            written(&conn),
+            vec![("Rong".into(), "r1".into()), ("Wordz".into(), "r2".into())]
+        );
     }
 }

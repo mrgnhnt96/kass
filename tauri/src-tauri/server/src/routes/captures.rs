@@ -6,9 +6,10 @@
 //! refining and retranscribing one are `routes::capture_jobs`. Readiness runs
 //! models or their state, so it stays in the worker; learning is
 //! `routes::learning`, and stats are `routes::usage`. A correction is
-//! saved here and learned from there: the worker is told what changed
-//! (`worker::reports_changed`), and the writing style's habits are
-//! counted again (`learned::reports_changed`).
+//! saved here with the words it fixed (`store::learn_words`) and learned
+//! from there: the worker is told what changed (`worker::reports_changed`),
+//! and the writing style's habits are counted again
+//! (`learned::reports_changed`).
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -20,6 +21,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::NaiveDateTime;
+use kass_text::spelling::join_spelling;
+use kass_text::text_merge::take_back;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tower::ServiceExt;
@@ -34,7 +37,7 @@ use crate::captures::{
 use crate::dictionary::store::delete_added_by;
 use crate::events::{mac_of, query_pairs, Kind};
 use crate::proxy::{forward, to_worker};
-use crate::worker::{self, Learn};
+use crate::worker;
 use crate::{learned, AppState};
 
 pub fn router() -> Router<AppState> {
@@ -95,14 +98,6 @@ pub(super) fn capture_not_found() -> Response {
 fn failed(error: crate::db::DbError) -> Response {
     eprintln!("[server] captures: {error}");
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
-}
-
-fn worker_down(error: String) -> Response {
-    eprintln!("[server] the model worker didn't answer: {error}");
-    detail(
-        StatusCode::BAD_GATEWAY,
-        "The Kass model worker isn't answering",
-    )
 }
 
 pub(super) fn invalid(problems: Problems) -> Response {
@@ -342,7 +337,7 @@ async fn delete_capture(State(state): State<AppState>, Path(capture_id): Path<St
         .map(|(_, target, source)| (target, source))
         .collect();
     let changed: Vec<_> = changed.into_iter().collect();
-    worker::reports_changed(&state.proxy, &[], &changed, true, Some(&capture_id)).await;
+    worker::reports_changed(&state.proxy, &changed, true, Some(&capture_id)).await;
     learned::reports_changed(&state, &changed).await;
     Json(json!({ "message": format!("Capture {capture_id} deleted") })).into_response()
 }
@@ -526,10 +521,7 @@ async fn report(
     let expected = if request.source == "manual" {
         request.expected_text
     } else {
-        match worker::join_spelling(&state.proxy, &request.expected_text).await {
-            Ok(joined) => joined,
-            Err(error) => return worker_down(error),
-        }
+        join_spelling(&request.expected_text)
     };
     if expected == original {
         return conflict("Expected output must differ from the model output.");
@@ -555,6 +547,15 @@ async fn report(
             if let Some(replaced) = &saved.replaced {
                 delete_added_by(conn, &replaced.id, sync)?;
             }
+            let row = &saved.report;
+            store::learn_words(
+                conn,
+                &row.id,
+                &row.source,
+                &original,
+                &row.expected_text,
+                sync,
+            );
             Ok(Ok(saved))
         })
         .await;
@@ -566,21 +567,8 @@ async fn report(
     };
     state.events.publish(Kind::Learned);
     let row = &saved.report;
-    let learn = [Learn {
-        report_id: &row.id,
-        source: &row.source,
-        original: &original,
-        expected: &row.expected_text,
-    }];
     let changed = [(row.target.clone(), row.source.clone())];
-    worker::reports_changed(
-        &state.proxy,
-        &learn,
-        &changed,
-        saved.replaced.is_some(),
-        None,
-    )
-    .await;
+    worker::reports_changed(&state.proxy, &changed, saved.replaced.is_some(), None).await;
     learned::reports_changed(&state, &changed).await;
     Json(ReportModel::from(saved.report)).into_response()
 }
@@ -620,18 +608,23 @@ async fn withdraw(
         _ => stack[at - 1].expected_text.clone(),
     };
     let newer = &stack[at + 1..];
-    let texts: Vec<String> = newer.iter().map(|r| r.expected_text.clone()).collect();
-    let texts = match worker::take_back(&state.proxy, &before, &row.expected_text, &texts).await {
-        Ok(texts) => texts,
-        Err(error) => return worker_down(error),
-    };
     let updates: Vec<(String, Option<String>)> = newer
         .iter()
-        .zip(texts)
-        .map(|(report, text)| (report.id.clone(), (text != original).then_some(text)))
+        .map(|report| {
+            let text = take_back(&before, &row.expected_text, &report.expected_text);
+            (report.id.clone(), (text != original).then_some(text))
+        })
+        .collect();
+    // A newer report that still has the fix keeps its word.
+    let relearn: Vec<(String, String, String)> = newer
+        .iter()
+        .zip(&updates)
+        .filter_map(|(report, (_, text))| {
+            Some((report.id.clone(), report.source.clone(), text.clone()?))
+        })
         .collect();
     let sync = state.sync;
-    let (id, kept) = (row.id.clone(), updates.clone());
+    let (id, kept) = (row.id.clone(), updates);
     let withdrawn = state
         .db
         .call(move |conn| {
@@ -639,6 +632,9 @@ async fn withdraw(
                 return Ok(false);
             }
             delete_added_by(conn, &id, sync)?;
+            for (report_id, source, expected) in &relearn {
+                store::learn_words(conn, report_id, source, &original, expected, sync);
+            }
             Ok(true)
         })
         .await;
@@ -648,25 +644,12 @@ async fn withdraw(
         Err(error) => return failed(error),
     }
     state.events.publish(Kind::Learned);
-    // A newer report that still has the fix keeps its word.
-    let learn: Vec<Learn> = newer
-        .iter()
-        .zip(&updates)
-        .filter_map(|(report, (_, text))| {
-            Some(Learn {
-                report_id: &report.id,
-                source: &report.source,
-                original: &original,
-                expected: text.as_deref()?,
-            })
-        })
-        .collect();
     let changed: BTreeSet<(String, String)> = std::iter::once(&row)
         .chain(newer)
         .map(|report| (report.target.clone(), report.source.clone()))
         .collect();
     let changed: Vec<_> = changed.into_iter().collect();
-    worker::reports_changed(&state.proxy, &learn, &changed, true, None).await;
+    worker::reports_changed(&state.proxy, &changed, true, None).await;
     learned::reports_changed(&state, &changed).await;
     StatusCode::NO_CONTENT.into_response()
 }
