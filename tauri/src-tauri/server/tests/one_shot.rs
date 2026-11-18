@@ -114,6 +114,7 @@ impl Kass {
             shared_server: None,
             voice_model: None,
             models_dir: Some(data.join("models")),
+            app_version: "0.0.0-test".into(),
         })
         .await
         .unwrap();
