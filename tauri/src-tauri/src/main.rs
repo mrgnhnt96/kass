@@ -1087,6 +1087,7 @@ async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<
         shared_server: shared_server.clone(),
         voice_model: voice_model(app),
         models_dir: models_dir.as_deref().map(std::path::PathBuf::from),
+        app_version: env!("CARGO_PKG_VERSION").into(),
     })
     .await;
     let mut api = state.api.lock().unwrap();

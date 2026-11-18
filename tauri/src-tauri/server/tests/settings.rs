@@ -74,6 +74,7 @@ impl Kass {
             shared_server: standing_in.then(|| "http://shared.local:17493".to_string()),
             voice_model: None,
             models_dir: None,
+            app_version: "0.0.0-test".into(),
         })
         .await
         .unwrap();

@@ -1,0 +1,6076 @@
+{
+ "now": "2026-11-03T12:30:00",
+ "stats": {
+  "today/all": {
+   "period": "today",
+   "bucket": "hour",
+   "start": "2026-11-03",
+   "end": "2026-11-03",
+   "previous_start": "2026-11-02",
+   "previous_end": "2026-11-02",
+   "typing_wpm": 40,
+   "current": {
+    "words": 120,
+    "captures": 6,
+    "speaking_ms": 95321,
+    "pace_wpm": 26,
+    "time_saved_ms": 84679,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 6
+   },
+   "previous": {
+    "words": 196,
+    "captures": 4,
+    "speaking_ms": 14999,
+    "pace_wpm": 924,
+    "time_saved_ms": 279001,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 4
+   },
+   "all_apps": {
+    "words": 120,
+    "captures": 6,
+    "speaking_ms": 95321,
+    "pace_wpm": 26,
+    "time_saved_ms": 84679,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 6
+   },
+   "series": [
+    {
+     "start": "2026-11-03T00:00",
+     "words": 3,
+     "previous_start": "2026-11-02T00:00",
+     "previous_words": 90
+    },
+    {
+     "start": "2026-11-03T01:00",
+     "words": 15,
+     "previous_start": "2026-11-02T01:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T02:00",
+     "words": 1,
+     "previous_start": "2026-11-02T02:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T03:00",
+     "words": 90,
+     "previous_start": "2026-11-02T03:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T04:00",
+     "words": 0,
+     "previous_start": "2026-11-02T04:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T05:00",
+     "words": 0,
+     "previous_start": "2026-11-02T05:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T06:00",
+     "words": 8,
+     "previous_start": "2026-11-02T06:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T07:00",
+     "words": 0,
+     "previous_start": "2026-11-02T07:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T08:00",
+     "words": 0,
+     "previous_start": "2026-11-02T08:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T09:00",
+     "words": 0,
+     "previous_start": "2026-11-02T09:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T10:00",
+     "words": 0,
+     "previous_start": "2026-11-02T10:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T11:00",
+     "words": 0,
+     "previous_start": "2026-11-02T11:00",
+     "previous_words": 90
+    },
+    {
+     "start": "2026-11-03T12:00",
+     "words": 3,
+     "previous_start": "2026-11-02T12:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T13:00",
+     "words": null,
+     "previous_start": "2026-11-02T13:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T14:00",
+     "words": null,
+     "previous_start": "2026-11-02T14:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T15:00",
+     "words": null,
+     "previous_start": "2026-11-02T15:00",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-11-03T16:00",
+     "words": null,
+     "previous_start": "2026-11-02T16:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T17:00",
+     "words": null,
+     "previous_start": "2026-11-02T17:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T18:00",
+     "words": null,
+     "previous_start": "2026-11-02T18:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T19:00",
+     "words": null,
+     "previous_start": "2026-11-02T19:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T20:00",
+     "words": null,
+     "previous_start": "2026-11-02T20:00",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-11-03T21:00",
+     "words": null,
+     "previous_start": "2026-11-02T21:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T22:00",
+     "words": null,
+     "previous_start": "2026-11-02T22:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T23:00",
+     "words": null,
+     "previous_start": "2026-11-02T23:00",
+     "previous_words": 0
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 18,
+     "captures": 2
+    },
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 12,
+     "captures": 3
+    },
+    {
+     "app_bundle_id": null,
+     "words": 90,
+     "captures": 1
+    }
+   ],
+   "heatmap": [
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     3,
+     15,
+     1,
+     90,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     0,
+     3,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     0,
+     0,
+     0,
+     3,
+     0,
+     1
+    ],
+    "p25_ms": 10000,
+    "median_ms": 12160,
+    "p75_ms": 25991
+   }
+  },
+  "today/mail": {
+   "period": "today",
+   "bucket": "hour",
+   "start": "2026-11-03",
+   "end": "2026-11-03",
+   "previous_start": "2026-11-02",
+   "previous_end": "2026-11-02",
+   "typing_wpm": 40,
+   "current": {
+    "words": 18,
+    "captures": 2,
+    "speaking_ms": 10000,
+    "pace_wpm": 90,
+    "time_saved_ms": 17000,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 2
+   },
+   "previous": {
+    "words": 98,
+    "captures": 2,
+    "speaking_ms": 3000,
+    "pace_wpm": 1800,
+    "time_saved_ms": 144000,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 2
+   },
+   "all_apps": {
+    "words": 120,
+    "captures": 6,
+    "speaking_ms": 95321,
+    "pace_wpm": 26,
+    "time_saved_ms": 84679,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 6
+   },
+   "series": [
+    {
+     "start": "2026-11-03T00:00",
+     "words": 3,
+     "previous_start": "2026-11-02T00:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T01:00",
+     "words": 15,
+     "previous_start": "2026-11-02T01:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T02:00",
+     "words": 0,
+     "previous_start": "2026-11-02T02:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T03:00",
+     "words": 0,
+     "previous_start": "2026-11-02T03:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T04:00",
+     "words": 0,
+     "previous_start": "2026-11-02T04:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T05:00",
+     "words": 0,
+     "previous_start": "2026-11-02T05:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T06:00",
+     "words": 0,
+     "previous_start": "2026-11-02T06:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T07:00",
+     "words": 0,
+     "previous_start": "2026-11-02T07:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T08:00",
+     "words": 0,
+     "previous_start": "2026-11-02T08:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T09:00",
+     "words": 0,
+     "previous_start": "2026-11-02T09:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T10:00",
+     "words": 0,
+     "previous_start": "2026-11-02T10:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T11:00",
+     "words": 0,
+     "previous_start": "2026-11-02T11:00",
+     "previous_words": 90
+    },
+    {
+     "start": "2026-11-03T12:00",
+     "words": 0,
+     "previous_start": "2026-11-02T12:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T13:00",
+     "words": null,
+     "previous_start": "2026-11-02T13:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T14:00",
+     "words": null,
+     "previous_start": "2026-11-02T14:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T15:00",
+     "words": null,
+     "previous_start": "2026-11-02T15:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T16:00",
+     "words": null,
+     "previous_start": "2026-11-02T16:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T17:00",
+     "words": null,
+     "previous_start": "2026-11-02T17:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T18:00",
+     "words": null,
+     "previous_start": "2026-11-02T18:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T19:00",
+     "words": null,
+     "previous_start": "2026-11-02T19:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T20:00",
+     "words": null,
+     "previous_start": "2026-11-02T20:00",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-11-03T21:00",
+     "words": null,
+     "previous_start": "2026-11-02T21:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T22:00",
+     "words": null,
+     "previous_start": "2026-11-02T22:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T23:00",
+     "words": null,
+     "previous_start": "2026-11-02T23:00",
+     "previous_words": 0
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 18,
+     "captures": 2
+    },
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 12,
+     "captures": 3
+    },
+    {
+     "app_bundle_id": null,
+     "words": 90,
+     "captures": 1
+    }
+   ],
+   "heatmap": [
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     3,
+     15,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     0,
+     0,
+     0,
+     1,
+     0,
+     0
+    ],
+    "p25_ms": 10000,
+    "median_ms": 10000,
+    "p75_ms": 10000
+   }
+  },
+  "today/unknown": {
+   "period": "today",
+   "bucket": "hour",
+   "start": "2026-11-03",
+   "end": "2026-11-03",
+   "previous_start": "2026-11-02",
+   "previous_end": "2026-11-02",
+   "typing_wpm": 40,
+   "current": {
+    "words": 90,
+    "captures": 1,
+    "speaking_ms": 0,
+    "pace_wpm": null,
+    "time_saved_ms": 135000,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 1
+   },
+   "previous": {
+    "words": 98,
+    "captures": 2,
+    "speaking_ms": 11999,
+    "pace_wpm": 48,
+    "time_saved_ms": 135001,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 2
+   },
+   "all_apps": {
+    "words": 120,
+    "captures": 6,
+    "speaking_ms": 95321,
+    "pace_wpm": 26,
+    "time_saved_ms": 84679,
+    "fixed_captures": 0,
+    "weekdays_dictated": 1,
+    "weekdays_in_period": 1,
+    "weekend_days": [],
+    "hours_dictated": 6
+   },
+   "series": [
+    {
+     "start": "2026-11-03T00:00",
+     "words": 0,
+     "previous_start": "2026-11-02T00:00",
+     "previous_words": 90
+    },
+    {
+     "start": "2026-11-03T01:00",
+     "words": 0,
+     "previous_start": "2026-11-02T01:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T02:00",
+     "words": 0,
+     "previous_start": "2026-11-02T02:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T03:00",
+     "words": 90,
+     "previous_start": "2026-11-02T03:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T04:00",
+     "words": 0,
+     "previous_start": "2026-11-02T04:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T05:00",
+     "words": 0,
+     "previous_start": "2026-11-02T05:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T06:00",
+     "words": 0,
+     "previous_start": "2026-11-02T06:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T07:00",
+     "words": 0,
+     "previous_start": "2026-11-02T07:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T08:00",
+     "words": 0,
+     "previous_start": "2026-11-02T08:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T09:00",
+     "words": 0,
+     "previous_start": "2026-11-02T09:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T10:00",
+     "words": 0,
+     "previous_start": "2026-11-02T10:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T11:00",
+     "words": 0,
+     "previous_start": "2026-11-02T11:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T12:00",
+     "words": 0,
+     "previous_start": "2026-11-02T12:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T13:00",
+     "words": null,
+     "previous_start": "2026-11-02T13:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T14:00",
+     "words": null,
+     "previous_start": "2026-11-02T14:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T15:00",
+     "words": null,
+     "previous_start": "2026-11-02T15:00",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-11-03T16:00",
+     "words": null,
+     "previous_start": "2026-11-02T16:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T17:00",
+     "words": null,
+     "previous_start": "2026-11-02T17:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T18:00",
+     "words": null,
+     "previous_start": "2026-11-02T18:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T19:00",
+     "words": null,
+     "previous_start": "2026-11-02T19:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T20:00",
+     "words": null,
+     "previous_start": "2026-11-02T20:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T21:00",
+     "words": null,
+     "previous_start": "2026-11-02T21:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T22:00",
+     "words": null,
+     "previous_start": "2026-11-02T22:00",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03T23:00",
+     "words": null,
+     "previous_start": "2026-11-02T23:00",
+     "previous_words": 0
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 18,
+     "captures": 2
+    },
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 12,
+     "captures": 3
+    },
+    {
+     "app_bundle_id": null,
+     "words": 90,
+     "captures": 1
+    }
+   ],
+   "heatmap": [
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "p25_ms": null,
+    "median_ms": null,
+    "p75_ms": null
+   }
+  },
+  "7d/all": {
+   "period": "7d",
+   "bucket": "day",
+   "start": "2026-10-28",
+   "end": "2026-11-03",
+   "previous_start": "2026-10-21",
+   "previous_end": "2026-10-27",
+   "typing_wpm": 40,
+   "current": {
+    "words": 609,
+    "captures": 21,
+    "speaking_ms": 240819,
+    "pace_wpm": 54,
+    "time_saved_ms": 672681,
+    "fixed_captures": 3,
+    "weekdays_dictated": 5,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 21
+   },
+   "previous": {
+    "words": 298,
+    "captures": 16,
+    "speaking_ms": 69218,
+    "pace_wpm": 150,
+    "time_saved_ms": 377782,
+    "fixed_captures": 0,
+    "weekdays_dictated": 5,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     }
+    ],
+    "hours_dictated": 14
+   },
+   "all_apps": {
+    "words": 609,
+    "captures": 21,
+    "speaking_ms": 240819,
+    "pace_wpm": 54,
+    "time_saved_ms": 672681,
+    "fixed_captures": 3,
+    "weekdays_dictated": 5,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 21
+   },
+   "series": [
+    {
+     "start": "2026-10-28",
+     "words": 1,
+     "previous_start": "2026-10-21",
+     "previous_words": 40
+    },
+    {
+     "start": "2026-10-29",
+     "words": 55,
+     "previous_start": "2026-10-22",
+     "previous_words": 106
+    },
+    {
+     "start": "2026-10-30",
+     "words": 145,
+     "previous_start": "2026-10-23",
+     "previous_words": 1
+    },
+    {
+     "start": "2026-10-31",
+     "words": 1,
+     "previous_start": "2026-10-24",
+     "previous_words": 68
+    },
+    {
+     "start": "2026-11-01",
+     "words": 91,
+     "previous_start": "2026-10-25",
+     "previous_words": 50
+    },
+    {
+     "start": "2026-11-02",
+     "words": 196,
+     "previous_start": "2026-10-26",
+     "previous_words": 3
+    },
+    {
+     "start": "2026-11-03",
+     "words": 120,
+     "previous_start": "2026-10-27",
+     "previous_words": 30
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 144,
+     "captures": 7
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 117,
+     "captures": 6
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 15,
+     "captures": 1
+    },
+    {
+     "app_bundle_id": null,
+     "words": 333,
+     "captures": 7
+    }
+   ],
+   "heatmap": [
+    [
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0
+    ],
+    [
+     3,
+     15,
+     1,
+     90,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     0,
+     3,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     15,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     15,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     2,
+     4,
+     2,
+     4,
+     0,
+     3
+    ],
+    "p25_ms": 3000,
+    "median_ms": 9999,
+    "p75_ms": 12160
+   }
+  },
+  "7d/mail": {
+   "period": "7d",
+   "bucket": "day",
+   "start": "2026-10-28",
+   "end": "2026-11-03",
+   "previous_start": "2026-10-21",
+   "previous_end": "2026-10-27",
+   "typing_wpm": 40,
+   "current": {
+    "words": 117,
+    "captures": 6,
+    "speaking_ms": 22999,
+    "pace_wpm": 945,
+    "time_saved_ms": 152501,
+    "fixed_captures": 0,
+    "weekdays_dictated": 3,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-31",
+      "words": 0
+     }
+    ],
+    "hours_dictated": 6
+   },
+   "previous": {
+    "words": 51,
+    "captures": 5,
+    "speaking_ms": 30000,
+    "pace_wpm": 90,
+    "time_saved_ms": 46500,
+    "fixed_captures": 0,
+    "weekdays_dictated": 3,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-24",
+      "words": 17
+     },
+     {
+      "date": "2026-10-25",
+      "words": 10
+     }
+    ],
+    "hours_dictated": 5
+   },
+   "all_apps": {
+    "words": 609,
+    "captures": 21,
+    "speaking_ms": 240819,
+    "pace_wpm": 54,
+    "time_saved_ms": 672681,
+    "fixed_captures": 3,
+    "weekdays_dictated": 5,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 21
+   },
+   "series": [
+    {
+     "start": "2026-10-28",
+     "words": 1,
+     "previous_start": "2026-10-21",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-29",
+     "words": 0,
+     "previous_start": "2026-10-22",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-10-30",
+     "words": 0,
+     "previous_start": "2026-10-23",
+     "previous_words": 1
+    },
+    {
+     "start": "2026-10-31",
+     "words": 0,
+     "previous_start": "2026-10-24",
+     "previous_words": 17
+    },
+    {
+     "start": "2026-11-01",
+     "words": 0,
+     "previous_start": "2026-10-25",
+     "previous_words": 10
+    },
+    {
+     "start": "2026-11-02",
+     "words": 98,
+     "previous_start": "2026-10-26",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03",
+     "words": 18,
+     "previous_start": "2026-10-27",
+     "previous_words": 15
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 144,
+     "captures": 7
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 117,
+     "captures": 6
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 15,
+     "captures": 1
+    },
+    {
+     "app_bundle_id": null,
+     "words": 333,
+     "captures": 7
+    }
+   ],
+   "heatmap": [
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0
+    ],
+    [
+     3,
+     15,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     0,
+     1,
+     1,
+     1,
+     0,
+     0
+    ],
+    "p25_ms": 6500,
+    "median_ms": 9999,
+    "p75_ms": 10000
+   }
+  },
+  "7d/unknown": {
+   "period": "7d",
+   "bucket": "day",
+   "start": "2026-10-28",
+   "end": "2026-11-03",
+   "previous_start": "2026-10-21",
+   "previous_end": "2026-10-27",
+   "typing_wpm": 40,
+   "current": {
+    "words": 333,
+    "captures": 7,
+    "speaking_ms": 22499,
+    "pace_wpm": 300,
+    "time_saved_ms": 477001,
+    "fixed_captures": 1,
+    "weekdays_dictated": 5,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-11-01",
+      "words": 90
+     }
+    ],
+    "hours_dictated": 7
+   },
+   "previous": {
+    "words": 148,
+    "captures": 6,
+    "speaking_ms": 23997,
+    "pace_wpm": 240,
+    "time_saved_ms": 198003,
+    "fixed_captures": 0,
+    "weekdays_dictated": 3,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-24",
+      "words": 48
+     },
+     {
+      "date": "2026-10-25",
+      "words": 40
+     }
+    ],
+    "hours_dictated": 6
+   },
+   "all_apps": {
+    "words": 609,
+    "captures": 21,
+    "speaking_ms": 240819,
+    "pace_wpm": 54,
+    "time_saved_ms": 672681,
+    "fixed_captures": 3,
+    "weekdays_dictated": 5,
+    "weekdays_in_period": 5,
+    "weekend_days": [
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 21
+   },
+   "series": [
+    {
+     "start": "2026-10-28",
+     "words": 0,
+     "previous_start": "2026-10-21",
+     "previous_words": 40
+    },
+    {
+     "start": "2026-10-29",
+     "words": 40,
+     "previous_start": "2026-10-22",
+     "previous_words": 5
+    },
+    {
+     "start": "2026-10-30",
+     "words": 15,
+     "previous_start": "2026-10-23",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-31",
+     "words": 0,
+     "previous_start": "2026-10-24",
+     "previous_words": 48
+    },
+    {
+     "start": "2026-11-01",
+     "words": 90,
+     "previous_start": "2026-10-25",
+     "previous_words": 40
+    },
+    {
+     "start": "2026-11-02",
+     "words": 98,
+     "previous_start": "2026-10-26",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03",
+     "words": 90,
+     "previous_start": "2026-10-27",
+     "previous_words": 15
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 144,
+     "captures": 7
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 117,
+     "captures": 6
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 15,
+     "captures": 1
+    },
+    {
+     "app_bundle_id": null,
+     "words": 333,
+     "captures": 7
+    }
+   ],
+   "heatmap": [
+    [
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     15,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     2,
+     2,
+     0,
+     1,
+     0,
+     0
+    ],
+    "p25_ms": 2000,
+    "median_ms": 3000,
+    "p75_ms": 5500
+   }
+  },
+  "30d/all": {
+   "period": "30d",
+   "bucket": "day",
+   "start": "2026-10-05",
+   "end": "2026-11-03",
+   "previous_start": "2026-09-05",
+   "previous_end": "2026-10-04",
+   "typing_wpm": 40,
+   "current": {
+    "words": 2543,
+    "captures": 91,
+    "speaking_ms": 918834,
+    "pace_wpm": 90,
+    "time_saved_ms": 2895666,
+    "fixed_captures": 16,
+    "weekdays_dictated": 21,
+    "weekdays_in_period": 22,
+    "weekend_days": [
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 85
+   },
+   "previous": {
+    "words": 2104,
+    "captures": 102,
+    "speaking_ms": 1112353,
+    "pace_wpm": 60,
+    "time_saved_ms": 2043647,
+    "fixed_captures": 17,
+    "weekdays_dictated": 20,
+    "weekdays_in_period": 20,
+    "weekend_days": [
+     {
+      "date": "2026-09-05",
+      "words": 16
+     },
+     {
+      "date": "2026-09-06",
+      "words": 5
+     },
+     {
+      "date": "2026-09-12",
+      "words": 107
+     },
+     {
+      "date": "2026-09-13",
+      "words": 113
+     },
+     {
+      "date": "2026-09-19",
+      "words": 50
+     },
+     {
+      "date": "2026-09-20",
+      "words": 126
+     },
+     {
+      "date": "2026-09-26",
+      "words": 135
+     },
+     {
+      "date": "2026-09-27",
+      "words": 98
+     },
+     {
+      "date": "2026-10-03",
+      "words": 105
+     },
+     {
+      "date": "2026-10-04",
+      "words": 112
+     }
+    ],
+    "hours_dictated": 98
+   },
+   "all_apps": {
+    "words": 2543,
+    "captures": 91,
+    "speaking_ms": 918834,
+    "pace_wpm": 90,
+    "time_saved_ms": 2895666,
+    "fixed_captures": 16,
+    "weekdays_dictated": 21,
+    "weekdays_in_period": 22,
+    "weekend_days": [
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 85
+   },
+   "series": [
+    {
+     "start": "2026-10-05",
+     "words": 183,
+     "previous_start": "2026-09-05",
+     "previous_words": 16
+    },
+    {
+     "start": "2026-10-06",
+     "words": 92,
+     "previous_start": "2026-09-06",
+     "previous_words": 5
+    },
+    {
+     "start": "2026-10-07",
+     "words": 275,
+     "previous_start": "2026-09-07",
+     "previous_words": 30
+    },
+    {
+     "start": "2026-10-08",
+     "words": 130,
+     "previous_start": "2026-09-08",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-09",
+     "words": 70,
+     "previous_start": "2026-09-09",
+     "previous_words": 92
+    },
+    {
+     "start": "2026-10-10",
+     "words": 57,
+     "previous_start": "2026-09-10",
+     "previous_words": 61
+    },
+    {
+     "start": "2026-10-11",
+     "words": 196,
+     "previous_start": "2026-09-11",
+     "previous_words": 97
+    },
+    {
+     "start": "2026-10-12",
+     "words": 0,
+     "previous_start": "2026-09-12",
+     "previous_words": 107
+    },
+    {
+     "start": "2026-10-13",
+     "words": 15,
+     "previous_start": "2026-09-13",
+     "previous_words": 113
+    },
+    {
+     "start": "2026-10-14",
+     "words": 17,
+     "previous_start": "2026-09-14",
+     "previous_words": 15
+    },
+    {
+     "start": "2026-10-15",
+     "words": 108,
+     "previous_start": "2026-09-15",
+     "previous_words": 33
+    },
+    {
+     "start": "2026-10-16",
+     "words": 104,
+     "previous_start": "2026-09-16",
+     "previous_words": 43
+    },
+    {
+     "start": "2026-10-17",
+     "words": 16,
+     "previous_start": "2026-09-17",
+     "previous_words": 31
+    },
+    {
+     "start": "2026-10-18",
+     "words": 82,
+     "previous_start": "2026-09-18",
+     "previous_words": 9
+    },
+    {
+     "start": "2026-10-19",
+     "words": 196,
+     "previous_start": "2026-09-19",
+     "previous_words": 50
+    },
+    {
+     "start": "2026-10-20",
+     "words": 95,
+     "previous_start": "2026-09-20",
+     "previous_words": 126
+    },
+    {
+     "start": "2026-10-21",
+     "words": 40,
+     "previous_start": "2026-09-21",
+     "previous_words": 4
+    },
+    {
+     "start": "2026-10-22",
+     "words": 106,
+     "previous_start": "2026-09-22",
+     "previous_words": 184
+    },
+    {
+     "start": "2026-10-23",
+     "words": 1,
+     "previous_start": "2026-09-23",
+     "previous_words": 16
+    },
+    {
+     "start": "2026-10-24",
+     "words": 68,
+     "previous_start": "2026-09-24",
+     "previous_words": 241
+    },
+    {
+     "start": "2026-10-25",
+     "words": 50,
+     "previous_start": "2026-09-25",
+     "previous_words": 61
+    },
+    {
+     "start": "2026-10-26",
+     "words": 3,
+     "previous_start": "2026-09-26",
+     "previous_words": 135
+    },
+    {
+     "start": "2026-10-27",
+     "words": 30,
+     "previous_start": "2026-09-27",
+     "previous_words": 98
+    },
+    {
+     "start": "2026-10-28",
+     "words": 1,
+     "previous_start": "2026-09-28",
+     "previous_words": 23
+    },
+    {
+     "start": "2026-10-29",
+     "words": 55,
+     "previous_start": "2026-09-29",
+     "previous_words": 4
+    },
+    {
+     "start": "2026-10-30",
+     "words": 145,
+     "previous_start": "2026-09-30",
+     "previous_words": 9
+    },
+    {
+     "start": "2026-10-31",
+     "words": 1,
+     "previous_start": "2026-10-01",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-01",
+     "words": 91,
+     "previous_start": "2026-10-02",
+     "previous_words": 284
+    },
+    {
+     "start": "2026-11-02",
+     "words": 196,
+     "previous_start": "2026-10-03",
+     "previous_words": 105
+    },
+    {
+     "start": "2026-11-03",
+     "words": 120,
+     "previous_start": "2026-10-04",
+     "previous_words": 112
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 654,
+     "captures": 26
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 597,
+     "captures": 25
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 368,
+     "captures": 16
+    },
+    {
+     "app_bundle_id": null,
+     "words": 924,
+     "captures": 24
+    }
+   ],
+   "heatmap": [
+    [
+     90,
+     90,
+     0,
+     1,
+     0,
+     1,
+     90,
+     0,
+     0,
+     0,
+     0,
+     90,
+     90,
+     0,
+     0,
+     8,
+     90,
+     0,
+     0,
+     0,
+     8,
+     18,
+     0,
+     2
+    ],
+    [
+     5,
+     15,
+     1,
+     90,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     3,
+     0,
+     3,
+     0,
+     0,
+     89,
+     0,
+     30,
+     0,
+     0,
+     15,
+     3,
+     0,
+     90
+    ],
+    [
+     15,
+     90,
+     1,
+     0,
+     0,
+     1,
+     0,
+     3,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     92,
+     0,
+     40,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     5,
+     15,
+     0,
+     11,
+     90,
+     90,
+     40,
+     0,
+     8,
+     0,
+     1,
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0,
+     8,
+     0,
+     1,
+     0
+    ],
+    [
+     0,
+     0,
+     14,
+     15,
+     0,
+     0,
+     0,
+     0,
+     30,
+     0,
+     0,
+     0,
+     0,
+     1,
+     90,
+     0,
+     90,
+     0,
+     0,
+     40,
+     0,
+     0,
+     40,
+     0
+    ],
+    [
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     3,
+     40,
+     8,
+     14,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     57,
+     0,
+     3,
+     15
+    ],
+    [
+     0,
+     0,
+     135,
+     0,
+     50,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     15,
+     80,
+     0,
+     90,
+     8,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     19,
+     15,
+     17,
+     14,
+     2,
+     9
+    ],
+    "p25_ms": 2750,
+    "median_ms": 6000,
+    "p75_ms": 10000
+   }
+  },
+  "30d/mail": {
+   "period": "30d",
+   "bucket": "day",
+   "start": "2026-10-05",
+   "end": "2026-11-03",
+   "previous_start": "2026-09-05",
+   "previous_end": "2026-10-04",
+   "typing_wpm": 40,
+   "current": {
+    "words": 597,
+    "captures": 25,
+    "speaking_ms": 205439,
+    "pace_wpm": 90,
+    "time_saved_ms": 690061,
+    "fixed_captures": 3,
+    "weekdays_dictated": 14,
+    "weekdays_in_period": 22,
+    "weekend_days": [
+     {
+      "date": "2026-10-11",
+      "words": 90
+     },
+     {
+      "date": "2026-10-17",
+      "words": 15
+     },
+     {
+      "date": "2026-10-24",
+      "words": 17
+     },
+     {
+      "date": "2026-10-25",
+      "words": 10
+     },
+     {
+      "date": "2026-10-31",
+      "words": 0
+     }
+    ],
+    "hours_dictated": 25
+   },
+   "previous": {
+    "words": 529,
+    "captures": 27,
+    "speaking_ms": 190717,
+    "pace_wpm": 64,
+    "time_saved_ms": 602783,
+    "fixed_captures": 3,
+    "weekdays_dictated": 14,
+    "weekdays_in_period": 20,
+    "weekend_days": [
+     {
+      "date": "2026-09-05",
+      "words": 15
+     },
+     {
+      "date": "2026-09-20",
+      "words": 3
+     },
+     {
+      "date": "2026-09-26",
+      "words": 83
+     },
+     {
+      "date": "2026-09-27",
+      "words": 8
+     },
+     {
+      "date": "2026-10-03",
+      "words": 105
+     }
+    ],
+    "hours_dictated": 26
+   },
+   "all_apps": {
+    "words": 2543,
+    "captures": 91,
+    "speaking_ms": 918834,
+    "pace_wpm": 90,
+    "time_saved_ms": 2895666,
+    "fixed_captures": 16,
+    "weekdays_dictated": 21,
+    "weekdays_in_period": 22,
+    "weekend_days": [
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 85
+   },
+   "series": [
+    {
+     "start": "2026-10-05",
+     "words": 1,
+     "previous_start": "2026-09-05",
+     "previous_words": 15
+    },
+    {
+     "start": "2026-10-06",
+     "words": 0,
+     "previous_start": "2026-09-06",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-07",
+     "words": 93,
+     "previous_start": "2026-09-07",
+     "previous_words": 23
+    },
+    {
+     "start": "2026-10-08",
+     "words": 0,
+     "previous_start": "2026-09-08",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-09",
+     "words": 40,
+     "previous_start": "2026-09-09",
+     "previous_words": 2
+    },
+    {
+     "start": "2026-10-10",
+     "words": 0,
+     "previous_start": "2026-09-10",
+     "previous_words": 12
+    },
+    {
+     "start": "2026-10-11",
+     "words": 90,
+     "previous_start": "2026-09-11",
+     "previous_words": 7
+    },
+    {
+     "start": "2026-10-12",
+     "words": 0,
+     "previous_start": "2026-09-12",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-13",
+     "words": 0,
+     "previous_start": "2026-09-13",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-14",
+     "words": 1,
+     "previous_start": "2026-09-14",
+     "previous_words": 12
+    },
+    {
+     "start": "2026-10-15",
+     "words": 9,
+     "previous_start": "2026-09-15",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-16",
+     "words": 0,
+     "previous_start": "2026-09-16",
+     "previous_words": 3
+    },
+    {
+     "start": "2026-10-17",
+     "words": 15,
+     "previous_start": "2026-09-17",
+     "previous_words": 15
+    },
+    {
+     "start": "2026-10-18",
+     "words": 0,
+     "previous_start": "2026-09-18",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-19",
+     "words": 180,
+     "previous_start": "2026-09-19",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-20",
+     "words": 0,
+     "previous_start": "2026-09-20",
+     "previous_words": 3
+    },
+    {
+     "start": "2026-10-21",
+     "words": 0,
+     "previous_start": "2026-09-21",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-22",
+     "words": 8,
+     "previous_start": "2026-09-22",
+     "previous_words": 90
+    },
+    {
+     "start": "2026-10-23",
+     "words": 1,
+     "previous_start": "2026-09-23",
+     "previous_words": 15
+    },
+    {
+     "start": "2026-10-24",
+     "words": 17,
+     "previous_start": "2026-09-24",
+     "previous_words": 30
+    },
+    {
+     "start": "2026-10-25",
+     "words": 10,
+     "previous_start": "2026-09-25",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-26",
+     "words": 0,
+     "previous_start": "2026-09-26",
+     "previous_words": 83
+    },
+    {
+     "start": "2026-10-27",
+     "words": 15,
+     "previous_start": "2026-09-27",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-10-28",
+     "words": 1,
+     "previous_start": "2026-09-28",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-10-29",
+     "words": 0,
+     "previous_start": "2026-09-29",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-30",
+     "words": 0,
+     "previous_start": "2026-09-30",
+     "previous_words": 8
+    },
+    {
+     "start": "2026-10-31",
+     "words": 0,
+     "previous_start": "2026-10-01",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-01",
+     "words": 0,
+     "previous_start": "2026-10-02",
+     "previous_words": 90
+    },
+    {
+     "start": "2026-11-02",
+     "words": 98,
+     "previous_start": "2026-10-03",
+     "previous_words": 105
+    },
+    {
+     "start": "2026-11-03",
+     "words": 18,
+     "previous_start": "2026-10-04",
+     "previous_words": 0
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 654,
+     "captures": 26
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 597,
+     "captures": 25
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 368,
+     "captures": 16
+    },
+    {
+     "app_bundle_id": null,
+     "words": 924,
+     "captures": 24
+    }
+   ],
+   "heatmap": [
+    [
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0
+    ],
+    [
+     3,
+     15,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     15,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     3,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     17,
+     0,
+     0,
+     15
+    ],
+    [
+     0,
+     0,
+     90,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     5,
+     4,
+     4,
+     6,
+     0,
+     2
+    ],
+    "p25_ms": 3000,
+    "median_ms": 6000,
+    "p75_ms": 10000
+   }
+  },
+  "30d/unknown": {
+   "period": "30d",
+   "bucket": "day",
+   "start": "2026-10-05",
+   "end": "2026-11-03",
+   "previous_start": "2026-09-05",
+   "previous_end": "2026-10-04",
+   "typing_wpm": 40,
+   "current": {
+    "words": 924,
+    "captures": 24,
+    "speaking_ms": 182416,
+    "pace_wpm": 159,
+    "time_saved_ms": 1203584,
+    "fixed_captures": 3,
+    "weekdays_dictated": 13,
+    "weekdays_in_period": 22,
+    "weekend_days": [
+     {
+      "date": "2026-10-10",
+      "words": 40
+     },
+     {
+      "date": "2026-10-18",
+      "words": 80
+     },
+     {
+      "date": "2026-10-24",
+      "words": 48
+     },
+     {
+      "date": "2026-10-25",
+      "words": 40
+     },
+     {
+      "date": "2026-11-01",
+      "words": 90
+     }
+    ],
+    "hours_dictated": 22
+   },
+   "previous": {
+    "words": 444,
+    "captures": 23,
+    "speaking_ms": 188639,
+    "pace_wpm": 114,
+    "time_saved_ms": 477361,
+    "fixed_captures": 5,
+    "weekdays_dictated": 9,
+    "weekdays_in_period": 20,
+    "weekend_days": [
+     {
+      "date": "2026-09-06",
+      "words": 5
+     },
+     {
+      "date": "2026-09-12",
+      "words": 92
+     },
+     {
+      "date": "2026-09-13",
+      "words": 40
+     },
+     {
+      "date": "2026-09-19",
+      "words": 39
+     },
+     {
+      "date": "2026-09-20",
+      "words": 40
+     },
+     {
+      "date": "2026-09-26",
+      "words": 12
+     },
+     {
+      "date": "2026-10-03",
+      "words": 0
+     }
+    ],
+    "hours_dictated": 23
+   },
+   "all_apps": {
+    "words": 2543,
+    "captures": 91,
+    "speaking_ms": 918834,
+    "pace_wpm": 90,
+    "time_saved_ms": 2895666,
+    "fixed_captures": 16,
+    "weekdays_dictated": 21,
+    "weekdays_in_period": 22,
+    "weekend_days": [
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 85
+   },
+   "series": [
+    {
+     "start": "2026-10-05",
+     "words": 90,
+     "previous_start": "2026-09-05",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-06",
+     "words": 0,
+     "previous_start": "2026-09-06",
+     "previous_words": 5
+    },
+    {
+     "start": "2026-10-07",
+     "words": 0,
+     "previous_start": "2026-09-07",
+     "previous_words": 7
+    },
+    {
+     "start": "2026-10-08",
+     "words": 0,
+     "previous_start": "2026-09-08",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-09",
+     "words": 30,
+     "previous_start": "2026-09-09",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-10",
+     "words": 40,
+     "previous_start": "2026-09-10",
+     "previous_words": 5
+    },
+    {
+     "start": "2026-10-11",
+     "words": 0,
+     "previous_start": "2026-09-11",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-12",
+     "words": 0,
+     "previous_start": "2026-09-12",
+     "previous_words": 92
+    },
+    {
+     "start": "2026-10-13",
+     "words": 0,
+     "previous_start": "2026-09-13",
+     "previous_words": 40
+    },
+    {
+     "start": "2026-10-14",
+     "words": 0,
+     "previous_start": "2026-09-14",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-15",
+     "words": 98,
+     "previous_start": "2026-09-15",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-16",
+     "words": 0,
+     "previous_start": "2026-09-16",
+     "previous_words": 40
+    },
+    {
+     "start": "2026-10-17",
+     "words": 0,
+     "previous_start": "2026-09-17",
+     "previous_words": 4
+    },
+    {
+     "start": "2026-10-18",
+     "words": 80,
+     "previous_start": "2026-09-18",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-19",
+     "words": 15,
+     "previous_start": "2026-09-19",
+     "previous_words": 39
+    },
+    {
+     "start": "2026-10-20",
+     "words": 90,
+     "previous_start": "2026-09-20",
+     "previous_words": 40
+    },
+    {
+     "start": "2026-10-21",
+     "words": 40,
+     "previous_start": "2026-09-21",
+     "previous_words": 4
+    },
+    {
+     "start": "2026-10-22",
+     "words": 5,
+     "previous_start": "2026-09-22",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-23",
+     "words": 0,
+     "previous_start": "2026-09-23",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-24",
+     "words": 48,
+     "previous_start": "2026-09-24",
+     "previous_words": 98
+    },
+    {
+     "start": "2026-10-25",
+     "words": 40,
+     "previous_start": "2026-09-25",
+     "previous_words": 40
+    },
+    {
+     "start": "2026-10-26",
+     "words": 0,
+     "previous_start": "2026-09-26",
+     "previous_words": 12
+    },
+    {
+     "start": "2026-10-27",
+     "words": 15,
+     "previous_start": "2026-09-27",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-28",
+     "words": 0,
+     "previous_start": "2026-09-28",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-29",
+     "words": 40,
+     "previous_start": "2026-09-29",
+     "previous_words": 3
+    },
+    {
+     "start": "2026-10-30",
+     "words": 15,
+     "previous_start": "2026-09-30",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-10-31",
+     "words": 0,
+     "previous_start": "2026-10-01",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-01",
+     "words": 90,
+     "previous_start": "2026-10-02",
+     "previous_words": 15
+    },
+    {
+     "start": "2026-11-02",
+     "words": 98,
+     "previous_start": "2026-10-03",
+     "previous_words": 0
+    },
+    {
+     "start": "2026-11-03",
+     "words": 90,
+     "previous_start": "2026-10-04",
+     "previous_words": 0
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 654,
+     "captures": 26
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 597,
+     "captures": 25
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 368,
+     "captures": 16
+    },
+    {
+     "app_bundle_id": null,
+     "words": 924,
+     "captures": 24
+    }
+   ],
+   "heatmap": [
+    [
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     0,
+     0,
+     15,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     15,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     5,
+     0,
+     0,
+     0,
+     0,
+     90,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     15,
+     0,
+     0,
+     0,
+     0,
+     30,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     8,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     80,
+     0,
+     90,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     8,
+     2,
+     5,
+     3,
+     1,
+     1
+    ],
+    "p25_ms": 1999,
+    "median_ms": 5750,
+    "p75_ms": 9999
+   }
+  },
+  "all/all": {
+   "period": "all",
+   "bucket": "week",
+   "start": "2026-07-20",
+   "end": "2026-11-03",
+   "previous_start": null,
+   "previous_end": null,
+   "typing_wpm": 40,
+   "current": {
+    "words": 5891,
+    "captures": 261,
+    "speaking_ms": 2819946,
+    "pace_wpm": 80,
+    "time_saved_ms": 6016554,
+    "fixed_captures": 47,
+    "weekdays_dictated": 63,
+    "weekdays_in_period": 77,
+    "weekend_days": [
+     {
+      "date": "2026-07-26",
+      "words": 34
+     },
+     {
+      "date": "2026-08-01",
+      "words": 0
+     },
+     {
+      "date": "2026-08-02",
+      "words": 30
+     },
+     {
+      "date": "2026-08-08",
+      "words": 8
+     },
+     {
+      "date": "2026-08-15",
+      "words": 12
+     },
+     {
+      "date": "2026-08-16",
+      "words": 12
+     },
+     {
+      "date": "2026-08-22",
+      "words": 92
+     },
+     {
+      "date": "2026-08-23",
+      "words": 17
+     },
+     {
+      "date": "2026-08-29",
+      "words": 57
+     },
+     {
+      "date": "2026-08-30",
+      "words": 0
+     },
+     {
+      "date": "2026-09-05",
+      "words": 16
+     },
+     {
+      "date": "2026-09-06",
+      "words": 5
+     },
+     {
+      "date": "2026-09-12",
+      "words": 107
+     },
+     {
+      "date": "2026-09-13",
+      "words": 113
+     },
+     {
+      "date": "2026-09-19",
+      "words": 50
+     },
+     {
+      "date": "2026-09-20",
+      "words": 126
+     },
+     {
+      "date": "2026-09-26",
+      "words": 135
+     },
+     {
+      "date": "2026-09-27",
+      "words": 98
+     },
+     {
+      "date": "2026-10-03",
+      "words": 105
+     },
+     {
+      "date": "2026-10-04",
+      "words": 112
+     },
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 250
+   },
+   "previous": null,
+   "all_apps": {
+    "words": 5891,
+    "captures": 261,
+    "speaking_ms": 2819946,
+    "pace_wpm": 80,
+    "time_saved_ms": 6016554,
+    "fixed_captures": 47,
+    "weekdays_dictated": 63,
+    "weekdays_in_period": 77,
+    "weekend_days": [
+     {
+      "date": "2026-07-26",
+      "words": 34
+     },
+     {
+      "date": "2026-08-01",
+      "words": 0
+     },
+     {
+      "date": "2026-08-02",
+      "words": 30
+     },
+     {
+      "date": "2026-08-08",
+      "words": 8
+     },
+     {
+      "date": "2026-08-15",
+      "words": 12
+     },
+     {
+      "date": "2026-08-16",
+      "words": 12
+     },
+     {
+      "date": "2026-08-22",
+      "words": 92
+     },
+     {
+      "date": "2026-08-23",
+      "words": 17
+     },
+     {
+      "date": "2026-08-29",
+      "words": 57
+     },
+     {
+      "date": "2026-08-30",
+      "words": 0
+     },
+     {
+      "date": "2026-09-05",
+      "words": 16
+     },
+     {
+      "date": "2026-09-06",
+      "words": 5
+     },
+     {
+      "date": "2026-09-12",
+      "words": 107
+     },
+     {
+      "date": "2026-09-13",
+      "words": 113
+     },
+     {
+      "date": "2026-09-19",
+      "words": 50
+     },
+     {
+      "date": "2026-09-20",
+      "words": 126
+     },
+     {
+      "date": "2026-09-26",
+      "words": 135
+     },
+     {
+      "date": "2026-09-27",
+      "words": 98
+     },
+     {
+      "date": "2026-10-03",
+      "words": 105
+     },
+     {
+      "date": "2026-10-04",
+      "words": 112
+     },
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 250
+   },
+   "series": [
+    {
+     "start": "2026-07-20",
+     "words": 58,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-07-27",
+     "words": 54,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-03",
+     "words": 68,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-10",
+     "words": 24,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-17",
+     "words": 385,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-24",
+     "words": 486,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-31",
+     "words": 190,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-07",
+     "words": 500,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-14",
+     "words": 307,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-21",
+     "words": 739,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-28",
+     "words": 537,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-05",
+     "words": 1003,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-12",
+     "words": 342,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-19",
+     "words": 556,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-26",
+     "words": 326,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-11-02",
+     "words": 316,
+     "previous_start": null,
+     "previous_words": null
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 1501,
+     "captures": 75
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 1461,
+     "captures": 66
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 1205,
+     "captures": 51
+    },
+    {
+     "app_bundle_id": null,
+     "words": 1724,
+     "captures": 69
+    }
+   ],
+   "heatmap": [
+    [
+     94,
+     90,
+     0,
+     1,
+     0,
+     1,
+     90,
+     0,
+     0,
+     10,
+     0,
+     91,
+     90,
+     0,
+     0,
+     16,
+     114,
+     1,
+     0,
+     15,
+     8,
+     33,
+     15,
+     10
+    ],
+    [
+     50,
+     108,
+     1,
+     90,
+     8,
+     0,
+     38,
+     93,
+     2,
+     0,
+     3,
+     94,
+     3,
+     0,
+     0,
+     89,
+     3,
+     45,
+     0,
+     0,
+     16,
+     3,
+     12,
+     90
+    ],
+    [
+     22,
+     90,
+     131,
+     0,
+     40,
+     2,
+     8,
+     3,
+     0,
+     0,
+     0,
+     90,
+     16,
+     90,
+     43,
+     92,
+     0,
+     40,
+     31,
+     1,
+     0,
+     5,
+     0,
+     33
+    ],
+    [
+     44,
+     9,
+     27,
+     32,
+     11,
+     102,
+     192,
+     80,
+     0,
+     23,
+     5,
+     1,
+     90,
+     180,
+     98,
+     90,
+     0,
+     4,
+     44,
+     0,
+     16,
+     0,
+     16,
+     15
+    ],
+    [
+     90,
+     40,
+     14,
+     30,
+     41,
+     90,
+     8,
+     0,
+     70,
+     90,
+     0,
+     0,
+     0,
+     95,
+     90,
+     8,
+     112,
+     2,
+     0,
+     40,
+     5,
+     0,
+     41,
+     92
+    ],
+    [
+     26,
+     89,
+     1,
+     0,
+     0,
+     42,
+     4,
+     0,
+     0,
+     47,
+     58,
+     9,
+     14,
+     0,
+     40,
+     100,
+     43,
+     0,
+     15,
+     16,
+     57,
+     102,
+     46,
+     15
+    ],
+    [
+     30,
+     0,
+     135,
+     3,
+     140,
+     59,
+     40,
+     40,
+     8,
+     70,
+     30,
+     129,
+     14,
+     0,
+     0,
+     0,
+     3,
+     15,
+     86,
+     40,
+     93,
+     8,
+     0,
+     23
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     50,
+     36,
+     39,
+     45,
+     8,
+     29
+    ],
+    "p25_ms": 3000,
+    "median_ms": 6000,
+    "p75_ms": 14321
+   }
+  },
+  "all/mail": {
+   "period": "all",
+   "bucket": "week",
+   "start": "2026-07-20",
+   "end": "2026-11-03",
+   "previous_start": null,
+   "previous_end": null,
+   "typing_wpm": 40,
+   "current": {
+    "words": 1461,
+    "captures": 66,
+    "speaking_ms": 521055,
+    "pace_wpm": 89,
+    "time_saved_ms": 1670445,
+    "fixed_captures": 10,
+    "weekdays_dictated": 37,
+    "weekdays_in_period": 77,
+    "weekend_days": [
+     {
+      "date": "2026-07-26",
+      "words": 34
+     },
+     {
+      "date": "2026-08-08",
+      "words": 4
+     },
+     {
+      "date": "2026-09-05",
+      "words": 15
+     },
+     {
+      "date": "2026-09-20",
+      "words": 3
+     },
+     {
+      "date": "2026-09-26",
+      "words": 83
+     },
+     {
+      "date": "2026-09-27",
+      "words": 8
+     },
+     {
+      "date": "2026-10-03",
+      "words": 105
+     },
+     {
+      "date": "2026-10-11",
+      "words": 90
+     },
+     {
+      "date": "2026-10-17",
+      "words": 15
+     },
+     {
+      "date": "2026-10-24",
+      "words": 17
+     },
+     {
+      "date": "2026-10-25",
+      "words": 10
+     },
+     {
+      "date": "2026-10-31",
+      "words": 0
+     }
+    ],
+    "hours_dictated": 65
+   },
+   "previous": null,
+   "all_apps": {
+    "words": 5891,
+    "captures": 261,
+    "speaking_ms": 2819946,
+    "pace_wpm": 80,
+    "time_saved_ms": 6016554,
+    "fixed_captures": 47,
+    "weekdays_dictated": 63,
+    "weekdays_in_period": 77,
+    "weekend_days": [
+     {
+      "date": "2026-07-26",
+      "words": 34
+     },
+     {
+      "date": "2026-08-01",
+      "words": 0
+     },
+     {
+      "date": "2026-08-02",
+      "words": 30
+     },
+     {
+      "date": "2026-08-08",
+      "words": 8
+     },
+     {
+      "date": "2026-08-15",
+      "words": 12
+     },
+     {
+      "date": "2026-08-16",
+      "words": 12
+     },
+     {
+      "date": "2026-08-22",
+      "words": 92
+     },
+     {
+      "date": "2026-08-23",
+      "words": 17
+     },
+     {
+      "date": "2026-08-29",
+      "words": 57
+     },
+     {
+      "date": "2026-08-30",
+      "words": 0
+     },
+     {
+      "date": "2026-09-05",
+      "words": 16
+     },
+     {
+      "date": "2026-09-06",
+      "words": 5
+     },
+     {
+      "date": "2026-09-12",
+      "words": 107
+     },
+     {
+      "date": "2026-09-13",
+      "words": 113
+     },
+     {
+      "date": "2026-09-19",
+      "words": 50
+     },
+     {
+      "date": "2026-09-20",
+      "words": 126
+     },
+     {
+      "date": "2026-09-26",
+      "words": 135
+     },
+     {
+      "date": "2026-09-27",
+      "words": 98
+     },
+     {
+      "date": "2026-10-03",
+      "words": 105
+     },
+     {
+      "date": "2026-10-04",
+      "words": 112
+     },
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 250
+   },
+   "series": [
+    {
+     "start": "2026-07-20",
+     "words": 34,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-07-27",
+     "words": 0,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-03",
+     "words": 34,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-10",
+     "words": 0,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-17",
+     "words": 49,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-24",
+     "words": 130,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-31",
+     "words": 103,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-07",
+     "words": 44,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-14",
+     "words": 33,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-21",
+     "words": 226,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-28",
+     "words": 211,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-05",
+     "words": 224,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-12",
+     "words": 25,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-19",
+     "words": 216,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-26",
+     "words": 16,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-11-02",
+     "words": 116,
+     "previous_start": null,
+     "previous_words": null
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 1501,
+     "captures": 75
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 1461,
+     "captures": 66
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 1205,
+     "captures": 51
+    },
+    {
+     "app_bundle_id": null,
+     "words": 1724,
+     "captures": 69
+    }
+   ],
+   "heatmap": [
+    [
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     8,
+     102,
+     0,
+     0,
+     0,
+     8,
+     0,
+     15,
+     8
+    ],
+    [
+     3,
+     105,
+     0,
+     0,
+     8,
+     0,
+     30,
+     90,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     15,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     1,
+     0,
+     40,
+     1,
+     8,
+     3,
+     0,
+     0,
+     0,
+     0,
+     15,
+     90,
+     3,
+     0,
+     0,
+     0,
+     31,
+     0,
+     0,
+     1,
+     0,
+     3
+    ],
+    [
+     0,
+     0,
+     12,
+     30,
+     8,
+     0,
+     12,
+     40,
+     0,
+     23,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0
+    ],
+    [
+     90,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     7,
+     0,
+     0,
+     0,
+     4,
+     0,
+     40,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     42,
+     1,
+     0,
+     0,
+     0,
+     15,
+     0,
+     0,
+     0,
+     40,
+     0,
+     4,
+     0,
+     0,
+     15,
+     17,
+     90,
+     0,
+     15
+    ],
+    [
+     30,
+     0,
+     90,
+     0,
+     10,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     0,
+     4,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     3,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     16,
+     6,
+     9,
+     11,
+     1,
+     5
+    ],
+    "p25_ms": 2000,
+    "median_ms": 6000,
+    "p75_ms": 10000
+   }
+  },
+  "all/unknown": {
+   "period": "all",
+   "bucket": "week",
+   "start": "2026-07-20",
+   "end": "2026-11-03",
+   "previous_start": null,
+   "previous_end": null,
+   "typing_wpm": 40,
+   "current": {
+    "words": 1724,
+    "captures": 69,
+    "speaking_ms": 731696,
+    "pace_wpm": 61,
+    "time_saved_ms": 1854304,
+    "fixed_captures": 12,
+    "weekdays_dictated": 36,
+    "weekdays_in_period": 77,
+    "weekend_days": [
+     {
+      "date": "2026-08-01",
+      "words": 0
+     },
+     {
+      "date": "2026-08-23",
+      "words": 12
+     },
+     {
+      "date": "2026-08-29",
+      "words": 3
+     },
+     {
+      "date": "2026-08-30",
+      "words": 0
+     },
+     {
+      "date": "2026-09-06",
+      "words": 5
+     },
+     {
+      "date": "2026-09-12",
+      "words": 92
+     },
+     {
+      "date": "2026-09-13",
+      "words": 40
+     },
+     {
+      "date": "2026-09-19",
+      "words": 39
+     },
+     {
+      "date": "2026-09-20",
+      "words": 40
+     },
+     {
+      "date": "2026-09-26",
+      "words": 12
+     },
+     {
+      "date": "2026-10-03",
+      "words": 0
+     },
+     {
+      "date": "2026-10-10",
+      "words": 40
+     },
+     {
+      "date": "2026-10-18",
+      "words": 80
+     },
+     {
+      "date": "2026-10-24",
+      "words": 48
+     },
+     {
+      "date": "2026-10-25",
+      "words": 40
+     },
+     {
+      "date": "2026-11-01",
+      "words": 90
+     }
+    ],
+    "hours_dictated": 67
+   },
+   "previous": null,
+   "all_apps": {
+    "words": 5891,
+    "captures": 261,
+    "speaking_ms": 2819946,
+    "pace_wpm": 80,
+    "time_saved_ms": 6016554,
+    "fixed_captures": 47,
+    "weekdays_dictated": 63,
+    "weekdays_in_period": 77,
+    "weekend_days": [
+     {
+      "date": "2026-07-26",
+      "words": 34
+     },
+     {
+      "date": "2026-08-01",
+      "words": 0
+     },
+     {
+      "date": "2026-08-02",
+      "words": 30
+     },
+     {
+      "date": "2026-08-08",
+      "words": 8
+     },
+     {
+      "date": "2026-08-15",
+      "words": 12
+     },
+     {
+      "date": "2026-08-16",
+      "words": 12
+     },
+     {
+      "date": "2026-08-22",
+      "words": 92
+     },
+     {
+      "date": "2026-08-23",
+      "words": 17
+     },
+     {
+      "date": "2026-08-29",
+      "words": 57
+     },
+     {
+      "date": "2026-08-30",
+      "words": 0
+     },
+     {
+      "date": "2026-09-05",
+      "words": 16
+     },
+     {
+      "date": "2026-09-06",
+      "words": 5
+     },
+     {
+      "date": "2026-09-12",
+      "words": 107
+     },
+     {
+      "date": "2026-09-13",
+      "words": 113
+     },
+     {
+      "date": "2026-09-19",
+      "words": 50
+     },
+     {
+      "date": "2026-09-20",
+      "words": 126
+     },
+     {
+      "date": "2026-09-26",
+      "words": 135
+     },
+     {
+      "date": "2026-09-27",
+      "words": 98
+     },
+     {
+      "date": "2026-10-03",
+      "words": 105
+     },
+     {
+      "date": "2026-10-04",
+      "words": 112
+     },
+     {
+      "date": "2026-10-10",
+      "words": 57
+     },
+     {
+      "date": "2026-10-11",
+      "words": 196
+     },
+     {
+      "date": "2026-10-17",
+      "words": 16
+     },
+     {
+      "date": "2026-10-18",
+      "words": 82
+     },
+     {
+      "date": "2026-10-24",
+      "words": 68
+     },
+     {
+      "date": "2026-10-25",
+      "words": 50
+     },
+     {
+      "date": "2026-10-31",
+      "words": 1
+     },
+     {
+      "date": "2026-11-01",
+      "words": 91
+     }
+    ],
+    "hours_dictated": 250
+   },
+   "series": [
+    {
+     "start": "2026-07-20",
+     "words": 0,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-07-27",
+     "words": 16,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-03",
+     "words": 30,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-10",
+     "words": 0,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-17",
+     "words": 145,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-24",
+     "words": 94,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-08-31",
+     "words": 76,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-07",
+     "words": 144,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-14",
+     "words": 123,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-21",
+     "words": 154,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-09-28",
+     "words": 18,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-05",
+     "words": 160,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-12",
+     "words": 178,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-19",
+     "words": 238,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-10-26",
+     "words": 160,
+     "previous_start": null,
+     "previous_words": null
+    },
+    {
+     "start": "2026-11-02",
+     "words": 188,
+     "previous_start": null,
+     "previous_words": null
+    }
+   ],
+   "apps": [
+    {
+     "app_bundle_id": "com.microsoft.VSCode",
+     "words": 1501,
+     "captures": 75
+    },
+    {
+     "app_bundle_id": "com.apple.mail",
+     "words": 1461,
+     "captures": 66
+    },
+    {
+     "app_bundle_id": "com.tinyspeck.slackmacgap",
+     "words": 1205,
+     "captures": 51
+    },
+    {
+     "app_bundle_id": null,
+     "words": 1724,
+     "captures": 69
+    }
+   ],
+   "heatmap": [
+    [
+     94,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     7,
+     0,
+     1,
+     90,
+     0,
+     0,
+     8,
+     12,
+     0,
+     0,
+     0,
+     0,
+     15,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     90,
+     0,
+     0,
+     0,
+     3,
+     0,
+     0,
+     0,
+     4,
+     0,
+     0,
+     0,
+     0,
+     0,
+     30,
+     0,
+     0,
+     0,
+     0,
+     0,
+     90
+    ],
+    [
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     0,
+     30
+    ],
+    [
+     4,
+     5,
+     0,
+     1,
+     0,
+     0,
+     180,
+     40,
+     0,
+     0,
+     5,
+     0,
+     0,
+     0,
+     98,
+     90,
+     0,
+     0,
+     0,
+     0,
+     8,
+     0,
+     0,
+     15
+    ],
+    [
+     0,
+     40,
+     0,
+     15,
+     0,
+     0,
+     0,
+     0,
+     70,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     15,
+     2,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0
+    ],
+    [
+     0,
+     89,
+     0,
+     0,
+     0,
+     0,
+     3,
+     0,
+     0,
+     0,
+     43,
+     8,
+     0,
+     0,
+     0,
+     0,
+     39,
+     0,
+     0,
+     0,
+     40,
+     12,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     12,
+     40,
+     40,
+     0,
+     0,
+     0,
+     40,
+     0,
+     0,
+     0,
+     0,
+     2,
+     0,
+     83,
+     0,
+     90,
+     0,
+     0,
+     0
+    ]
+   ],
+   "lengths": {
+    "bin_edges_s": [
+     3,
+     6,
+     10,
+     20,
+     40
+    ],
+    "counts": [
+     13,
+     10,
+     10,
+     12,
+     4,
+     6
+    ],
+    "p25_ms": 3000,
+    "median_ms": 6000,
+    "p75_ms": 14321
+   }
+  }
+ },
+ "sent": 13,
+ "batches": [
+  [
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1792605600000,
+    "insert_id": "device-2403-2026-10-21",
+    "event_properties": {
+     "day": "2026-10-21",
+     "dictations": 1,
+     "words": 40,
+     "speaking_seconds": 10,
+     "time_saved_seconds": 50,
+     "pace_wpm": 240,
+     "fixed_dictations": 0,
+     "delivered_takes": 1,
+     "failed_takes": 1,
+     "command_takes": 0,
+     "latency_p50_ms": 1500,
+     "latency_p95_ms": 1500
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1792692000000,
+    "insert_id": "device-2403-2026-10-22",
+    "event_properties": {
+     "day": "2026-10-22",
+     "dictations": 4,
+     "words": 106,
+     "speaking_seconds": 18,
+     "time_saved_seconds": 141,
+     "pace_wpm": 309,
+     "fixed_dictations": 0,
+     "delivered_takes": 5,
+     "failed_takes": 3,
+     "command_takes": 2,
+     "latency_p50_ms": 333,
+     "latency_p95_ms": 1280
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1792778400000,
+    "insert_id": "device-2403-2026-10-23",
+    "event_properties": {
+     "day": "2026-10-23",
+     "dictations": 1,
+     "words": 1,
+     "speaking_seconds": 2,
+     "time_saved_seconds": 0,
+     "pace_wpm": 30,
+     "fixed_dictations": 0,
+     "delivered_takes": 2,
+     "failed_takes": 2,
+     "command_takes": 3,
+     "latency_p50_ms": 1500,
+     "latency_p95_ms": 1500
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1792864800000,
+    "insert_id": "device-2403-2026-10-24",
+    "event_properties": {
+     "day": "2026-10-24",
+     "dictations": 5,
+     "words": 68,
+     "speaking_seconds": 16,
+     "time_saved_seconds": 86,
+     "pace_wpm": 99,
+     "fixed_dictations": 0,
+     "delivered_takes": 2,
+     "failed_takes": 1,
+     "command_takes": 2,
+     "latency_p50_ms": 810,
+     "latency_p95_ms": 1431
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1792951200000,
+    "insert_id": "device-2403-2026-10-25",
+    "event_properties": {
+     "day": "2026-10-25",
+     "dictations": 2,
+     "words": 50,
+     "speaking_seconds": 10,
+     "time_saved_seconds": 65,
+     "pace_wpm": 48,
+     "fixed_dictations": 0,
+     "delivered_takes": 2,
+     "failed_takes": 1,
+     "command_takes": 1,
+     "latency_p50_ms": 185,
+     "latency_p95_ms": 244
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793037600000,
+    "insert_id": "device-2403-2026-10-26",
+    "event_properties": {
+     "day": "2026-10-26",
+     "dictations": 1,
+     "words": 3,
+     "speaking_seconds": 1,
+     "time_saved_seconds": 4,
+     "pace_wpm": null,
+     "fixed_dictations": 0,
+     "delivered_takes": 3,
+     "failed_takes": 1,
+     "command_takes": 1,
+     "latency_p50_ms": 250,
+     "latency_p95_ms": 385
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793124000000,
+    "insert_id": "device-2403-2026-10-27",
+    "event_properties": {
+     "day": "2026-10-27",
+     "dictations": 2,
+     "words": 30,
+     "speaking_seconds": 12,
+     "time_saved_seconds": 33,
+     "pace_wpm": 270,
+     "fixed_dictations": 0,
+     "delivered_takes": 1,
+     "failed_takes": 0,
+     "command_takes": 0,
+     "latency_p50_ms": 1500,
+     "latency_p95_ms": 1500
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793210400000,
+    "insert_id": "device-2403-2026-10-28",
+    "event_properties": {
+     "day": "2026-10-28",
+     "dictations": 2,
+     "words": 1,
+     "speaking_seconds": 6,
+     "time_saved_seconds": 0,
+     "pace_wpm": null,
+     "fixed_dictations": 0,
+     "delivered_takes": 5,
+     "failed_takes": 0,
+     "command_takes": 1,
+     "latency_p50_ms": 250,
+     "latency_p95_ms": 730
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793296800000,
+    "insert_id": "device-2403-2026-10-29",
+    "event_properties": {
+     "day": "2026-10-29",
+     "dictations": 2,
+     "words": 55,
+     "speaking_seconds": 0,
+     "time_saved_seconds": 82,
+     "pace_wpm": null,
+     "fixed_dictations": 2,
+     "delivered_takes": 5,
+     "failed_takes": 2,
+     "command_takes": 2,
+     "latency_p50_ms": 400,
+     "latency_p95_ms": 730
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793383200000,
+    "insert_id": "device-2403-2026-10-30",
+    "event_properties": {
+     "day": "2026-10-30",
+     "dictations": 3,
+     "words": 145,
+     "speaking_seconds": 49,
+     "time_saved_seconds": 168,
+     "pace_wpm": 300,
+     "fixed_dictations": 0,
+     "delivered_takes": 3,
+     "failed_takes": 1,
+     "command_takes": 0,
+     "latency_p50_ms": 1500,
+     "latency_p95_ms": 1500
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793469600000,
+    "insert_id": "device-2403-2026-10-31",
+    "event_properties": {
+     "day": "2026-10-31",
+     "dictations": 2,
+     "words": 1,
+     "speaking_seconds": 13,
+     "time_saved_seconds": 0,
+     "pace_wpm": 20,
+     "fixed_dictations": 1,
+     "delivered_takes": 2,
+     "failed_takes": 0,
+     "command_takes": 0,
+     "latency_p50_ms": 1156,
+     "latency_p95_ms": 1466
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793559600000,
+    "insert_id": "device-2403-2026-11-01",
+    "event_properties": {
+     "day": "2026-11-01",
+     "dictations": 2,
+     "words": 91,
+     "speaking_seconds": 63,
+     "time_saved_seconds": 74,
+     "pace_wpm": 1350,
+     "fixed_dictations": 0,
+     "delivered_takes": 3,
+     "failed_takes": 1,
+     "command_takes": 2,
+     "latency_p50_ms": 333,
+     "latency_p95_ms": 764
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   },
+   {
+    "event_type": "daily_usage",
+    "device_id": "device-2403",
+    "time": 1793646000000,
+    "insert_id": "device-2403-2026-11-02",
+    "event_properties": {
+     "day": "2026-11-02",
+     "dictations": 4,
+     "words": 196,
+     "speaking_seconds": 15,
+     "time_saved_seconds": 279,
+     "pace_wpm": 924,
+     "fixed_dictations": 0,
+     "delivered_takes": 4,
+     "failed_takes": 0,
+     "command_takes": 0,
+     "latency_p50_ms": 250,
+     "latency_p95_ms": 250
+    },
+    "user_properties": {
+     "speech_model": "turbo",
+     "cleanup_model": "0.6B",
+     "auto_refine": false,
+     "live_text": false,
+     "voice_edits": true,
+     "command_mode": false,
+     "sound_cues": true,
+     "keep_recordings": true,
+     "history_days": 30,
+     "styles": 1,
+     "dictionary_size": "11-50",
+     "voice_training": true,
+     "chip": "Apple M2",
+     "memory_gb": 16
+    },
+    "app_version": "9.9.9",
+    "platform": "macOS",
+    "os_name": "macOS",
+    "os_version": "26.0",
+    "device_manufacturer": "Apple",
+    "device_model": "Apple M2"
+   }
+  ]
+ ],
+ "sent_through": "2026-11-02",
+ "takes_left": 6
+}

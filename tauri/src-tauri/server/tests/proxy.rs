@@ -129,6 +129,7 @@ async fn start_server(worker: SocketAddr) -> kass_server::Running {
         shared_server: None,
         voice_model: None,
         models_dir: None,
+        app_version: "0.0.0-test".into(),
     })
     .await
     .unwrap()

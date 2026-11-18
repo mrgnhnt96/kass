@@ -31,6 +31,7 @@ async fn main() -> Result<(), String> {
                 .join("../../../backend/assets/silero_vad.onnx"),
         ),
         models_dir: std::env::var_os("KASS_MODELS_DIR").map(Into::into),
+        app_version: env!("CARGO_PKG_VERSION").into(),
     })
     .await?;
     println!("Kass API on {}, worker on {worker}", running.address());

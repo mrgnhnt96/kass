@@ -3,9 +3,9 @@
 //!
 //! Captures, their audio, the corrections reported on them and the events
 //! stream are answered here from `kass.db`. Saving, refining and
-//! retranscribing a capture, the app list, stats and readiness run
+//! retranscribing a capture, the app list and readiness run
 //! models or their state, so they stay in the worker; learning is
-//! `routes::learning`. A correction is
+//! `routes::learning`, and stats are `routes::usage`. A correction is
 //! saved here and learned from there: the worker is told what changed
 //! (`worker::reports_changed`).
 
@@ -61,7 +61,6 @@ pub fn router() -> Router<AppState> {
         .route("/captures", get(list).layer(cors()).fallback(forward))
         .route("/capture/readiness", to_worker())
         .route("/captures/apps", to_worker())
-        .route("/captures/stats", to_worker())
         .route("/captures/{capture_id}/refine", to_worker())
         .route("/captures/{capture_id}/retranscribe", to_worker())
 }

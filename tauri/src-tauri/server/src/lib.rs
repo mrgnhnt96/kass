@@ -21,6 +21,7 @@ pub mod settings;
 pub mod stream;
 pub mod styles;
 pub mod sync;
+pub mod usage;
 mod warmth;
 mod worker;
 
@@ -52,6 +53,8 @@ pub struct Config {
     /// The folder models download to, as the worker was given it
     /// (`KASS_MODELS_DIR`); None for Hugging Face's own cache.
     pub models_dir: Option<PathBuf>,
+    /// The app's version, for the daily usage report.
+    pub app_version: String,
 }
 
 /// What every route handler can reach.
@@ -82,11 +85,12 @@ pub struct Running {
     _learning: Relay,
     _warmth: Relay,
     _sync: Option<Relay>,
+    _usage: Relay,
 }
 
 /// A background task that stops when the server stops: passing on the
 /// worker's capture events, learning from reports, keeping models warm,
-/// syncing with the shared Kass.
+/// syncing with the shared Kass, and the daily usage report.
 struct Relay(tokio::task::JoinHandle<()>);
 
 impl Drop for Relay {
@@ -149,6 +153,10 @@ pub async fn start(config: Config) -> Result<Running, String> {
         .stand_in
         .clone()
         .map(|stand_in| Relay(tokio::spawn(sync::job::run(stand_in, state.clone()))));
+    let usage = Relay(tokio::spawn(usage::report::watch(
+        state.clone(),
+        config.app_version,
+    )));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
@@ -172,5 +180,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         _learning: learning,
         _warmth: warmth,
         _sync: sync,
+        _usage: usage,
     })
 }
