@@ -569,7 +569,7 @@ pub(super) async fn refine(
         Ok(request) => request,
         Err(problems) => return invalid(problems),
     };
-    let _held = in_use::hold(&state.in_use, &state.proxy, &capture_id).await;
+    let _held = in_use::hold(&state.in_use, &capture_id);
     answer(refine_capture(&state, &capture_id, flags, model_size).await)
 }
 
@@ -685,7 +685,7 @@ pub(super) async fn retranscribe(
         Ok(request) => request,
         Err(problems) => return invalid(problems),
     };
-    let _held = in_use::hold(&state.in_use, &state.proxy, &capture_id).await;
+    let _held = in_use::hold(&state.in_use, &capture_id);
     answer(retranscribe_capture(&state, &capture_id, model, language).await)
 }
 

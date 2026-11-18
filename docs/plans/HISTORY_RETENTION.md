@@ -18,7 +18,7 @@ When an unconfirmed window would delete nothing, the status call or the sweep co
 
 ## Sweep
 
-`services/history_retention.py` runs at server startup and then hourly. It deletes captures created before the window, in batches of 200. The newest capture (the current take) is never deleted, nor one being refined or retranscribed (`history_retention.in_use`). A dictation in progress has no row until it finishes, so it is never a candidate.
+The Rust server's `captures::retention` (`tauri/src-tauri/server/src/captures/retention.rs`) sweeps a minute after the server starts, then hourly, and right away when the user saves a window (`PUT /settings/captures`). A stand-in for a shared Kass doesn't run the hourly sweep: the shared Kass keeps the history. It deletes captures created before the window, in batches of 200. The newest capture (the current take) is never deleted, nor one being refined or retranscribed (`captures::in_use`). A dictation in progress has no row until it finishes, so it is never a candidate.
 
 Each batch is one transaction: fold everything the batch taught (below), then delete its rows, then commit. A crash before the commit rolls back both, so nothing is lost; a folded capture is deleted in the same commit, so it is never folded twice (and the stats table's primary key would refuse a second row anyway). Audio files are removed after the commit. A crash between the commit and the unlink leaves files with no capture; each sweep deletes files in the captures folder whose name is not a capture id and that are older than the window, which never touches a dictation still being written.
 
@@ -28,7 +28,7 @@ An unconfirmed window and Keep forever (0) both skip the sweep entirely.
 
 | Consumer | Reads from captures | Preserved by |
 | --- | --- | --- |
-| `capture_feedback.py` (correction reports) | `capture_feedback` rows, FK to captures, each with a full JSON snapshot of the capture | **Kept.** Reports are the learning records and are never deleted by retention. The capture's `app_bundle_id` and `teaches_style_id` are copied onto the report (new columns), and the capture's audio is copied to `correction-audio/` with the snapshot's `audio_path` updated. SQLite does not enforce the FK (no `PRAGMA foreign_keys`), and `capture_id` stays as the record's grouping key. |
+| `capture_feedback.py` (correction reports) | `capture_feedback` rows, FK to captures, each with a full JSON snapshot of the capture | **Kept.** Reports are the learning records and are never deleted by retention. The capture's `app_bundle_id` and `teaches_style_id` are copied onto the report (new columns), and the capture's audio is copied to `correction-audio/` with the snapshot's `audio_path` updated. The sweep turns off SQLite's FK check for its own transaction (the Rust server's connections enforce it; the Python worker's never did), and `capture_id` stays as the record's grouping key. |
 | `correction_learning.py` / `correction_rules.py` | `capture_feedback` snapshots only | Already durable: reports are kept; learned rules live in `correction-learning.json`. |
 | `correction_notes.py` | examples via `personal_examples`, state in `correction-notes.json` keyed by report id | Already durable: report ids are unchanged. |
 | `personal_examples.py` | reports joined to `captures.teaches_style_id` | Folded: reads `coalesce(capture, report)` for `teaches_style_id`, so an example stays in the same style. |

@@ -3,9 +3,9 @@
 //! `services/history_retention.py` (`status`, `count_expiring`) and
 //! `services/usage_report.py` (`record_take`).
 //!
-//! The worker reads the same row for dictation; sweeping old captures and
-//! reloading the speech model stay there, and the routes ask for them
-//! (`crate::worker`).
+//! The worker reads the same row for dictation; reloading the speech model
+//! stays there, and the routes ask for it (`crate::worker`). Sweeping old
+//! captures is `captures::retention`.
 
 use chrono::{Duration, NaiveDateTime};
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, TransactionBehavior};
@@ -561,7 +561,11 @@ pub fn cutoff(days: i64, at: NaiveDateTime) -> Option<NaiveDateTime> {
 /// How many captures a window of `days` would delete now. The newest
 /// capture, the current take, is never deleted.
 pub fn count_expiring(conn: &Connection, days: i64) -> rusqlite::Result<i64> {
-    let Some(before) = cutoff(days, now()) else {
+    count_expiring_at(conn, days, now())
+}
+
+fn count_expiring_at(conn: &Connection, days: i64, at: NaiveDateTime) -> rusqlite::Result<i64> {
+    let Some(before) = cutoff(days, at) else {
         return Ok(0);
     };
     conn.query_row(
@@ -576,9 +580,18 @@ pub fn count_expiring(conn: &Connection, days: i64) -> rusqlite::Result<i64> {
 /// delete. An unconfirmed window with nothing to delete is confirmed here:
 /// asking only matters when something would go.
 pub fn retention_status(conn: &mut Connection, sync: Sync) -> rusqlite::Result<(i64, bool, i64)> {
+    retention_status_at(conn, sync, now())
+}
+
+/// [`retention_status`] as of `at`.
+pub fn retention_status_at(
+    conn: &mut Connection,
+    sync: Sync,
+    at: NaiveDateTime,
+) -> rusqlite::Result<(i64, bool, i64)> {
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let before = read_or_create(&tx)?;
-    let expiring = count_expiring(&tx, before.history_retention_days)?;
+    let expiring = count_expiring_at(&tx, before.history_retention_days, at)?;
     let mut after = before.clone();
     if !before.history_retention_confirmed && expiring == 0 {
         after.history_retention_confirmed = true;

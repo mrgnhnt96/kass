@@ -19,6 +19,8 @@ use tokio::net::{TcpListener, TcpStream};
 #[derive(Clone, Default)]
 struct Worker {
     calls: Arc<Mutex<Vec<(String, Value)>>>,
+    /// Lets a cleanup of "hold on" finish.
+    go_on: Arc<tokio::sync::Notify>,
 }
 
 impl Worker {
@@ -57,6 +59,9 @@ async fn recognize_file(State(worker): State<Worker>, Json(body): Json<Value>) -
 async fn generate(State(worker): State<Worker>, Json(body): Json<Value>) -> Response {
     let prompt = body["prompt"].as_str().unwrap_or("").to_string();
     worker.record("/worker/cleanup/generate", body);
+    if prompt == "hold on" {
+        worker.go_on.notified().await;
+    }
     let lines = [
         json!({"partial": "Hello"}).to_string(),
         json!({"text": cleaned(&prompt), "model": "qwen", "stopped": false, "seconds": 0.1})
@@ -189,27 +194,6 @@ impl Kass {
             Err(_) => Vec::new(),
         }
     }
-
-    /// The worker's holds and releases of `capture_id` once they settle.
-    async fn holds(&self, capture_id: &str) -> (usize, usize) {
-        let count = |path: &str| {
-            self.worker
-                .bodies(path)
-                .iter()
-                .filter(|body| body["capture_id"] == capture_id)
-                .count()
-        };
-        for _ in 0..50 {
-            if count("/worker/history/release") == count("/worker/history/hold") {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        (
-            count("/worker/history/hold"),
-            count("/worker/history/release"),
-        )
-    }
 }
 
 impl Drop for Kass {
@@ -323,7 +307,7 @@ async fn bad_uploads_are_refused_and_leave_no_audio() {
 }
 
 #[tokio::test]
-async fn refines_a_capture_in_its_style_holding_it_meanwhile() {
+async fn refines_a_capture_in_its_style() {
     let kass = Kass::start().await;
     let (_, capture) = kass.upload("take.wav", &wav(), &[]).await;
     let id = capture["id"].as_str().unwrap();
@@ -337,7 +321,6 @@ async fn refines_a_capture_in_its_style_holding_it_meanwhile() {
     assert_eq!(refined["style_id"], "personal");
     assert_eq!(refined["refinement_flags"]["style"], "personal");
     assert!(refined["llm_model"].is_string());
-    assert_eq!(kass.holds(id).await, (1, 1));
 
     let (status, refined) = kass
         .post_json(
@@ -382,7 +365,6 @@ async fn refine_checks_its_request_and_the_capture() {
         (status, answer),
         (404, json!({"detail": "Capture not found"}))
     );
-    assert_eq!(kass.holds("nope").await, (1, 1));
 
     let (status, answer) = kass
         .post_json("/captures/nope/refine", json!({"model_size": "8B"}))
@@ -415,7 +397,6 @@ async fn retranscribing_clears_the_cleanup() {
     assert_eq!(again["refinement_flags"], Value::Null);
     assert_eq!(again["stt_model"], "small");
     assert_eq!(again["language"], "de");
-    assert_eq!(kass.holds(id).await, (2, 2));
     let asked = kass.worker.bodies("/worker/recognize/file");
     assert_eq!(asked.last().unwrap()["language"], "de");
 
@@ -466,4 +447,63 @@ async fn other_formats_are_converted_to_wav() {
     let duration = capture["duration_ms"].as_i64().unwrap();
     assert!((450..=600).contains(&duration), "{duration}");
     assert_eq!(kass.captures_dir(), [format!("{id}.wav")]);
+}
+
+#[tokio::test]
+async fn history_retention_leaves_a_capture_being_refined() {
+    let kass = Kass::start().await;
+    let (_, old) = kass.upload("old.wav", &wav(), &[]).await;
+    let old = old["id"].as_str().unwrap().to_string();
+    kass.upload("current.wav", &wav(), &[]).await;
+    let conn = rusqlite::Connection::open(kass.data.join("kass.db")).unwrap();
+    let long_ago = (chrono::Utc::now().naive_utc() - chrono::Duration::days(40))
+        .format("%Y-%m-%d %H:%M:%S%.6f")
+        .to_string();
+    conn.execute(
+        "UPDATE captures SET transcript_raw = 'hold on', created_at = ?2 WHERE id = ?1",
+        rusqlite::params![old, long_ago],
+    )
+    .unwrap();
+    let exists = |id: &str| {
+        conn.query_row("SELECT count(*) FROM captures WHERE id = ?1", [id], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap()
+            == 1
+    };
+    let window = || {
+        kass.send(
+            "PUT",
+            "/settings/captures",
+            "Content-Type: application/json\r\n",
+            br#"{"history_retention_days": 30}"#,
+        )
+    };
+
+    let path = format!("/captures/{old}/refine");
+    let refine = kass.post_json(&path, json!({}));
+    let meanwhile = async {
+        while !kass
+            .worker
+            .bodies("/worker/cleanup/generate")
+            .iter()
+            .any(|body| body["prompt"] == "hold on")
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        // Saving a window sweeps now; the capture being refined stays.
+        assert_eq!(window().await.0, 200);
+        assert!(exists(&old));
+        kass.worker.go_on.notify_one();
+    };
+    let ((status, refined), ()) = tokio::join!(refine, meanwhile);
+    assert_eq!(status, 200, "{refined}");
+    assert_eq!(refined["transcript_refined"], "Hold on.");
+
+    assert_eq!(window().await.0, 200);
+    assert!(!exists(&old));
+    assert!(!kass
+        .captures_dir()
+        .iter()
+        .any(|name| name.starts_with(&old)));
 }

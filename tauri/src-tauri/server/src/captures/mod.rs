@@ -13,6 +13,7 @@
 //! Python worker, which this server tells whenever reports change.
 
 pub mod in_use;
+pub mod retention;
 pub mod store;
 
 use std::path::{Component, Path, PathBuf};
