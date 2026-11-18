@@ -9,11 +9,12 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::NaiveDateTime;
 use kass_text::py;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction, TransactionBehavior};
 use serde::Serialize;
 
-use crate::dictionary::store::{now, Sync};
+use crate::dictionary::store::{now, parse_stored, Sync};
 
 mod spoken;
 
@@ -425,6 +426,62 @@ pub fn listing(conn: &Connection, teaching: Option<String>) -> rusqlite::Result<
     );
     Ok(Listing {
         styles: styles.styles,
+        apps,
+    })
+}
+
+/// One app in the Captures app list (`CaptureAppCount`): how many captures
+/// went to it, the style its dictation uses, whether the user chose it, and
+/// the style suggested for it until they do.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CaptureApp {
+    pub app_bundle_id: String,
+    pub app_name: Option<String>,
+    pub count: i64,
+    #[serde(serialize_with = "crate::captures::iso")]
+    pub last_captured_at: Option<NaiveDateTime>,
+    pub style_id: String,
+    pub confirmed: bool,
+    pub suggested_style_id: Option<String>,
+}
+
+/// `GET /captures/apps` (`CaptureAppsResponse`). `unknown_count` is the
+/// captures with no app recorded: uploads, and dictation from before the
+/// target app was saved.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CaptureApps {
+    pub total: i64,
+    pub unknown_count: i64,
+    pub apps: Vec<CaptureApp>,
+}
+
+/// How many captures each app has, most first, counted over every row
+/// rather than the page the list loads. Unlike [`listing`], only apps with
+/// captures, named only from them (`services/captures.py`,
+/// `list_capture_apps`).
+pub fn capture_apps(conn: &Connection, teaching: Option<String>) -> rusqlite::Result<CaptureApps> {
+    let styles = load(conn, teaching)?;
+    let suggested = suggest_styles(&app_categories(conn)?, &styles);
+    let unknown_count: i64 = conn.query_row(
+        "SELECT COUNT(id) FROM captures WHERE app_bundle_id IS NULL",
+        [],
+        |row| row.get(0),
+    )?;
+    let apps: Vec<CaptureApp> = captured_apps(conn)?
+        .into_iter()
+        .map(|app| CaptureApp {
+            app_name: app.name,
+            count: app.count,
+            last_captured_at: parse_stored(app.latest),
+            style_id: styles.for_app(Some(&app.bundle_id)).id.clone(),
+            confirmed: styles.assigned(&app.bundle_id).is_some(),
+            suggested_style_id: suggested.get(&app.bundle_id).cloned(),
+            app_bundle_id: app.bundle_id,
+        })
+        .collect();
+    Ok(CaptureApps {
+        total: apps.iter().map(|app| app.count).sum::<i64>() + unknown_count,
+        unknown_count,
         apps,
     })
 }
@@ -1350,6 +1407,117 @@ mod tests {
         assert_eq!(styles.for_app(Some("com.other")).id, "personal");
         let styles = load(&conn, Some("gone".into())).unwrap();
         assert_eq!(styles.for_app(Some(KASS_BUNDLE)).id, "personal");
+    }
+
+    #[test]
+    fn capture_apps_count_every_capture_and_name_apps_from_the_newest() {
+        let mut conn = db();
+        let chat = create_style(&mut conn, "Chat", OFF).unwrap().unwrap();
+        capture(
+            &conn,
+            "1",
+            "com.mail",
+            Some("Post"),
+            Some("productivity"),
+            "2026-01-01 00:00:00.000000",
+        );
+        capture(
+            &conn,
+            "2",
+            "com.mail",
+            Some("Mail"),
+            None,
+            "2026-01-03 00:00:00.000000",
+        );
+        capture(
+            &conn,
+            "3",
+            "com.mail",
+            Some("Mail"),
+            None,
+            "2026-01-04 00:00:00.500000",
+        );
+        capture(
+            &conn,
+            "4",
+            "net.whatsapp",
+            Some("WhatsApp"),
+            Some("social"),
+            "2026-01-02 00:00:00.000000",
+        );
+        capture(
+            &conn,
+            "5",
+            "com.signal",
+            Some("Signal"),
+            Some("social"),
+            "2026-01-02 00:00:00.000000",
+        );
+        conn.execute(
+            "INSERT INTO captures (id, audio_path, source, transcript_raw, audio_deleted, created_at) \
+             VALUES ('6', '', 'upload', '', 0, '2026-01-05 00:00:00.000000')",
+            [],
+        )
+        .unwrap();
+        assign_app(
+            &mut conn,
+            "net.whatsapp",
+            None,
+            &chat.id,
+            Corrections::Bring,
+            None,
+            OFF,
+        )
+        .unwrap()
+        .unwrap();
+        // Assigned without captures: on the Writing style page, not here.
+        assign_app(
+            &mut conn,
+            "com.notes",
+            Some("Notes"),
+            &chat.id,
+            Corrections::Bring,
+            None,
+            OFF,
+        )
+        .unwrap()
+        .unwrap();
+
+        let listed = capture_apps(&conn, None).unwrap();
+        assert_eq!((listed.total, listed.unknown_count), (6, 1));
+        let at = |text: &str| parse_stored(Some(text.into()));
+        assert_eq!(
+            listed.apps,
+            vec![
+                CaptureApp {
+                    app_bundle_id: "com.mail".into(),
+                    app_name: Some("Mail".into()),
+                    count: 3,
+                    last_captured_at: at("2026-01-04 00:00:00.500000"),
+                    style_id: "personal".into(),
+                    confirmed: false,
+                    suggested_style_id: Some("personal".into()),
+                },
+                CaptureApp {
+                    app_bundle_id: "com.signal".into(),
+                    app_name: Some("Signal".into()),
+                    count: 1,
+                    last_captured_at: at("2026-01-02 00:00:00.000000"),
+                    style_id: "personal".into(),
+                    confirmed: false,
+                    suggested_style_id: Some(chat.id.clone()),
+                },
+                CaptureApp {
+                    app_bundle_id: "net.whatsapp".into(),
+                    app_name: Some("WhatsApp".into()),
+                    count: 1,
+                    last_captured_at: at("2026-01-02 00:00:00.000000"),
+                    style_id: chat.id.clone(),
+                    confirmed: true,
+                    suggested_style_id: None,
+                },
+            ]
+        );
     }
 
     #[test]

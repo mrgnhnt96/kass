@@ -1,10 +1,10 @@
 //! Saved captures, their audio, feedback and events, and learning from them.
 //! Python: `backend/routes/captures.py`.
 //!
-//! Captures, their audio, the corrections reported on them and the events
-//! stream are answered here from `kass.db`. Saving, refining and
-//! retranscribing a capture, the app list and readiness run
-//! models or their state, so they stay in the worker; learning is
+//! Captures, their audio, the apps they came from, the corrections reported
+//! on them and the events stream are answered here from `kass.db`. Saving,
+//! refining and retranscribing a capture and readiness run models or their
+//! state, so they stay in the worker; learning is
 //! `routes::learning`, and stats are `routes::usage`. A correction is
 //! saved here and learned from there: the worker is told what changed
 //! (`worker::reports_changed`).
@@ -53,6 +53,7 @@ pub fn router() -> Router<AppState> {
             delete(withdraw),
         )
         .route("/capture/feedback/export", get(export))
+        .route("/captures/apps", get(apps))
         .layer(cors());
     Router::new()
         .merge(answered_here)
@@ -60,7 +61,6 @@ pub fn router() -> Router<AppState> {
         // its CORS preflights.
         .route("/captures", get(list).layer(cors()).fallback(forward))
         .route("/capture/readiness", to_worker())
-        .route("/captures/apps", to_worker())
         .route("/captures/{capture_id}/refine", to_worker())
         .route("/captures/{capture_id}/retranscribe", to_worker())
 }
@@ -185,6 +185,20 @@ async fn list(State(state): State<AppState>, RawQuery(query): RawQuery) -> Respo
         .await
     {
         Ok((items, total)) => Json(json!({ "items": items, "total": total })).into_response(),
+        Err(error) => failed(error),
+    }
+}
+
+/// How many captures each app has, most first, with the style each uses.
+/// Kass's own window follows the style being taught, which the worker knows.
+async fn apps(State(state): State<AppState>) -> Response {
+    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    match state
+        .db
+        .call(move |conn| crate::styles::capture_apps(conn, teaching))
+        .await
+    {
+        Ok(apps) => Json(apps).into_response(),
         Err(error) => failed(error),
     }
 }
