@@ -62,6 +62,11 @@ async fn events(State(worker): State<Worker>) -> Response {
         .unwrap()
 }
 
+/// A teach session is open for the "chat" style.
+async fn styles_state() -> Json<Value> {
+    Json(json!({ "teaching_style": "chat", "cache_mb_per_style": 100 }))
+}
+
 async fn preflight() -> Response {
     (StatusCode::OK, [("x-worker", "yes")], "worker").into_response()
 }
@@ -72,6 +77,7 @@ async fn start_worker(worker: Worker) -> SocketAddr {
         .route("/worker/captures/take-back", post(take_back))
         .route("/worker/captures/reports-changed", post(reports_changed))
         .route("/worker/captures/events", get(events))
+        .route("/worker/styles/state", post(styles_state))
         .fallback(preflight)
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -120,6 +126,7 @@ impl Kass {
             shared_server: None,
             voice_model: None,
             models_dir: None,
+            app_version: "0.0.0-test".into(),
         })
         .await
         .unwrap();
@@ -246,6 +253,57 @@ async fn lists_captures_newest_first_by_app_and_page() {
         kass.call("GET", "/captures/nope", None).await,
         (404, missing)
     );
+}
+
+#[tokio::test]
+async fn lists_the_apps_captures_came_from_with_their_styles() {
+    let kass = Kass::start().await;
+    let conn = rusqlite::Connection::open(kass.data.join("kass.db")).unwrap();
+    conn.execute_batch(
+        "INSERT INTO writing_styles (id, name, position, is_default, punctuation_style,
+             capitalize_first, smart_cleanup, preserve_technical, created_at)
+         VALUES ('personal', 'Personal', 0, 1, 'casual', 1, 1, 0, '2026-01-01 00:00:00.000000'),
+                ('chat', 'Chat', 1, 0, 'casual', 1, 1, 0, '2026-01-01 00:00:00.000000');
+         INSERT INTO app_styles (bundle_id, style_id, app_name, updated_at)
+         VALUES ('com.apple.mail', 'chat', 'Mail', '2026-01-01 00:00:00.000000');
+         INSERT INTO captures (id, audio_path, source, transcript_raw, app_bundle_id, app_name,
+             audio_deleted, created_at)
+         VALUES ('d', 'captures/d.wav', 'dictation', 'raw d', 'com.mrgnhnt.kass', 'Kass', 0,
+                 '2026-03-04 10:00:00.250000');",
+    )
+    .unwrap();
+
+    let (status, listed) = kass.call("GET", "/captures/apps", None).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        listed,
+        json!({
+            "total": 4,
+            "unknown_count": 1,
+            "apps": [
+                {
+                    "app_bundle_id": "com.apple.mail", "app_name": "Mail", "count": 2,
+                    "last_captured_at": "2026-03-03T10:00:00", "style_id": "chat",
+                    "confirmed": true, "suggested_style_id": null,
+                },
+                {
+                    "app_bundle_id": "com.mrgnhnt.kass", "app_name": "Kass", "count": 1,
+                    "last_captured_at": "2026-03-04T10:00:00.250000", "style_id": "chat",
+                    "confirmed": false, "suggested_style_id": "personal",
+                },
+            ],
+        })
+    );
+
+    let preflight = kass
+        .raw(
+            "OPTIONS /captures/apps HTTP/1.1\r\nHost: x\r\nOrigin: tauri://localhost\r\n\
+             Access-Control-Request-Method: GET\r\nConnection: close\r\n\r\n"
+                .into(),
+        )
+        .await
+        .to_lowercase();
+    assert!(!preflight.contains("x-worker"), "{preflight}");
 }
 
 #[tokio::test]

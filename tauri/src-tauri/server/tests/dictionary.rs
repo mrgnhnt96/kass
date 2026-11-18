@@ -89,6 +89,7 @@ impl Kass {
             shared_server: shared_server.map(str::to_string),
             voice_model: None,
             models_dir: None,
+            app_version: "0.0.0-test".into(),
         })
         .await
         .unwrap();

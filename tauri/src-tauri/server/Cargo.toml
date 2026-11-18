@@ -15,7 +15,7 @@ hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 http-body-util = "0.1"
 libc = "0.2"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "functions"] }
 serde = { version = "1.0", features = ["derive"] }
 # float_roundtrip: numbers read back exactly as Python wrote them (the
 # measurements saved with captures, `stream::prosody`).
@@ -33,7 +33,8 @@ hound = "3.5"
 # learning corrections from reports (`learning`), and the text stages:
 # dictionary matching, names (`dictionary::matching`, `known_names`).
 kass-text = { path = "../text" }
-# Model downloads from Hugging Face (`models::download`).
+# Model downloads from Hugging Face (`models::download`) and the daily usage
+# report's upload to Amplitude (`usage::report`).
 reqwest = { version = "0.12", default-features = false, features = ["default-tls", "stream", "http2", "json"] }
 # Calibration examples' ids, as Python hashes them (`cleanup_inputs`).
 sha2 = "0.10"

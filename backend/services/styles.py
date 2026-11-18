@@ -5,8 +5,7 @@ technical terms, and the user's own description of how they write in its
 apps (docs/plans/TEACH_BY_REPLYING.md).
 Its calibration, habits, examples and rules are kept per style by
 ``writing_style``, ``personal_examples`` and ``correction_notes``. An app the
-user hasn't assigned uses the default style; the style most apps of its App
-Store category use is suggested for it (``suggest_styles``).
+user hasn't assigned uses the default style.
 
 A correction teaches the style its app is in, unless the user left it behind
 when the app moved (``Capture.teaches_style_id``, ``correction_style``).
@@ -262,32 +261,6 @@ def spoken_style(text: str, styles: Snapshot) -> tuple[Style | None, str]:
                 rest = rest[0].upper() + rest[1:]
             return style, rest
     return None, text
-
-
-def suggest_styles(categories: dict[str, str | None], styles: Snapshot) -> dict[str, str]:
-    """A style for every app not assigned yet: the one most assigned apps of
-    its App Store category use.
-
-    ``categories`` maps bundle ids to categories. An app with no category, or
-    whose category no assigned app has, gets the default; ties go to the
-    style listed first.
-    """
-    votes: dict[str, dict[str, int]] = {}
-    for bundle_id, style_id in styles.apps.items():
-        category = categories.get(bundle_id)
-        if category and styles.get(style_id):
-            counted = votes.setdefault(category, {})
-            counted[style_id] = counted.get(style_id, 0) + 1
-    order = {style.id: index for index, style in enumerate(styles.styles)}
-    suggested = {}
-    for bundle_id, category in categories.items():
-        if bundle_id in styles.apps:
-            continue
-        counted = votes.get(category or "")
-        suggested[bundle_id] = (
-            min(counted, key=lambda style_id: (-counted[style_id], order[style_id])) if counted else styles.default.id
-        )
-    return suggested
 
 
 # --- Setup -----------------------------------------------------------------------

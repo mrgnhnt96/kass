@@ -1,20 +1,88 @@
-//! Usage reports. Python: `backend/routes/usage.py`.
+//! Usage: take reports for the daily usage report, and the stats behind the
+//! Captures summary card and the Insights tab. Python:
+//! `backend/routes/usage.py`, and `GET /captures/stats` in
+//! `backend/routes/captures.py`.
+
+use std::collections::HashMap;
 
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use axum::Router;
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use serde_json::{json, Map, Value};
 
-use super::request::{body, Problems};
+use super::request::{body, detail, Problems};
+use crate::captures::store::Apps;
+use crate::captures::{self, lax_bool};
+use crate::events::query_pairs;
+use crate::usage::stats::{self, Period};
 use crate::{settings, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/usage/takes", post(record_take))
+        .route("/captures/stats", get(capture_stats))
         .layer(axum::middleware::from_fn(crate::cors::layer))
+}
+
+/// The stats query, checked as FastAPI checks it: the last value of each
+/// parameter counts. Returns the period asked for, still to be checked, and
+/// which apps' captures count.
+fn stats_query(query: &str) -> Result<(String, Apps), captures::Problems> {
+    let params: HashMap<String, String> = query_pairs(query, true).into_iter().collect();
+    let unknown_app = match params.get("unknown_app") {
+        None => false,
+        Some(word) => match lax_bool(word) {
+            Some(flag) => flag,
+            None => {
+                let mut problems = captures::Problems::default();
+                let msg = "Input should be a valid boolean, unable to interpret input";
+                let loc = [json!("query"), json!("unknown_app")];
+                problems.add("bool_parsing", &loc, msg, &json!(word));
+                return Err(problems);
+            }
+        },
+    };
+    let apps = match params.get("app_bundle_id") {
+        _ if unknown_app => Apps::Unknown,
+        Some(bundle_id) if !bundle_id.is_empty() => Apps::One(bundle_id.clone()),
+        _ => Apps::All,
+    };
+    let period = params.get("period").cloned().unwrap_or_else(|| "7d".into());
+    Ok((period, apps))
+}
+
+/// Dictation stats for one period (today, 7d, 30d, all), in the Mac's local
+/// days. `app_bundle_id` and `unknown_app` narrow them like the capture list.
+async fn capture_stats(State(state): State<AppState>, RawQuery(query): RawQuery) -> Response {
+    let (period, apps) = match stats_query(query.as_deref().unwrap_or("")) {
+        Ok(query) => query,
+        Err(problems) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "detail": problems.0 })),
+            )
+                .into_response()
+        }
+    };
+    let Some(period) = Period::parse(&period) else {
+        let message = format!("period must be one of {}", Period::NAMES.join(", "));
+        return detail(StatusCode::BAD_REQUEST, &message);
+    };
+    let now = chrono::Local::now().naive_local();
+    match state
+        .db
+        .call(move |conn| stats::usage_stats(conn, period, &apps, now))
+        .await
+    {
+        Ok(stats) => Json(stats).into_response(),
+        Err(error) => {
+            eprintln!("[server] usage stats: {error}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+        }
+    }
 }
 
 /// How one take ended, for the daily usage report.
