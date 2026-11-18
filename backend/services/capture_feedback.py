@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..database.models import CaptureFeedback
 from ..models import CaptureFeedbackCreate, CaptureFeedbackResponse
-from . import correction_learning, dictionary, known_names, personal_examples
+from . import dictionary, known_names, personal_examples
 from .captures import get_capture
 from .spelling import join_spelling
 from .text_merge import take_back
@@ -70,7 +70,7 @@ def save_feedback(capture_id: str, request: CaptureFeedbackCreate, db: Session, 
     if replaced is not None:
         dictionary.delete_added_by(db, replaced.id)
     _learn_words(row, original, db)
-    reports_changed(row.target, row.source, db, withdrawn=replaced is not None)
+    reports_changed(row.target, row.source, db)
     return to_response(row)
 
 
@@ -95,8 +95,8 @@ def withdraw_feedback(capture_id: str, report_id: str, db: Session) -> bool:
     ones lose this one's changes and keep their own (text_merge); one left
     changing nothing goes too. Examples, habits and names are read from the
     reports, so they drop it at once. The server relearns the rules without
-    it, and the cleanup adapter is retrained at the next idle moment
-    (correction_learning.request_retrain).
+    it, and retrains the cleanup adapter at the next idle moment
+    (server/src/model_improvement.rs).
     """
     row = db.get(CaptureFeedback, report_id)
     if row is None or row.capture_id != capture_id:
@@ -127,7 +127,7 @@ def withdraw_feedback(capture_id: str, report_id: str, db: Session) -> bool:
         if inspect(newer).persistent:
             _learn_words(newer, original, db)
     for target, source in changed:
-        reports_changed(target, source, db, withdrawn=True)
+        reports_changed(target, source, db)
     return True
 
 
@@ -145,16 +145,13 @@ def forget_capture(capture_id: str, db: Session) -> None:
         db.delete(row)
     db.commit()
     for target, source in changed:
-        reports_changed(target, source, db, withdrawn=True)
+        reports_changed(target, source, db)
     dictionary.delete_added_by(db, capture_id)
     for row in rows:
         dictionary.delete_added_by(db, row.id)
 
 
-def reports_changed(target: str, source: str, db: Session, withdrawn: bool = False) -> None:
-    # A withdrawn report may be in the cleanup adapter's training data too.
-    if withdrawn:
-        correction_learning.request_retrain()
+def reports_changed(target: str, source: str, db: Session) -> None:
     if source not in CaptureFeedback.EXPLICIT_SOURCES:
         return
     known_names.invalidate()

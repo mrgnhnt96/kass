@@ -91,12 +91,11 @@ def create_app() -> FastAPI:
 
 
 def _jobs():
-    from .services.model_improvement.manager import periodic_job as learning_job
-
-    # The daily usage report, the correction notes job and the history
-    # retention sweep run in the app (tauri/src-tauri/server/src/usage,
-    # correction_notes.rs, captures/retention.rs).
-    return (learning_job,)
+    # The daily usage report, the correction notes job, the history retention
+    # sweep and model improvement's schedule run in the app
+    # (tauri/src-tauri/server/src/usage, correction_notes.rs,
+    # captures/retention.rs, model_improvement.rs).
+    return ()
 
 
 def _stand_in_jobs():
@@ -174,6 +173,13 @@ async def _run_startup(application: FastAPI) -> None:
 async def _run_shutdown() -> None:
     """Unload models on lifespan exit."""
     logger.info("Kass server shutting down...")
+    try:
+        from .services.model_improvement.manager import stop
+
+        # A training run's child process doesn't outlive the worker.
+        await asyncio.to_thread(stop)
+    except Exception:
+        logger.exception("Failed to stop model improvement")
     try:
         await transcribe.unload_whisper_model()
     except Exception:

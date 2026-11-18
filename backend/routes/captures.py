@@ -35,13 +35,6 @@ def pause_learning_for_recording():
     return {"paused": True}
 
 
-@router.post("/capture/learning/cancel")
-def cancel_model_learning():
-    from ..services.model_improvement.manager import cancel
-
-    return cancel()
-
-
 @router.post("/capture/learning/voice/sounds")
 def download_voice_sounds():
     """Start the one-time download of background sounds for voice training."""
@@ -227,7 +220,6 @@ async def retranscribe_capture_endpoint(
 class ChangedReports(BaseModel):
     target: str
     source: str
-    withdrawn: bool = False
 
 
 class ReportsChangedRequest(BaseModel):
@@ -245,7 +237,7 @@ def reports_changed_endpoint(request: ReportsChangedRequest, db: Session = Depen
     # The server wrote the dictionary words the reports fixed or took back.
     dictionary.invalidate()
     for item in request.changed:
-        capture_feedback.reports_changed(item.target, item.source, db, withdrawn=item.withdrawn)
+        capture_feedback.reports_changed(item.target, item.source, db)
     if request.forgotten is not None:
         bank.forget(request.forgotten)
     return {"ok": True}

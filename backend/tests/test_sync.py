@@ -97,9 +97,9 @@ def test_settings_made_with_defaults_or_only_this_macs_own_arent_changes(standin
     assert recorded(factory) == {("settings", "1"): False}
 
 
-def test_the_worker_says_which_trained_models_are_in_use_and_takes_the_shared_kass_s(monkeypatch):
-    """The Rust server asks the worker for its trained models to serve a
-    snapshot, and hands a stand-in's worker the copies it made."""
+def test_the_worker_takes_the_shared_kass_s_trained_models(monkeypatch):
+    """The Rust server hands a stand-in's worker the copies it made of the
+    shared Kass's trained models, and saves the ones the worker uses."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -107,10 +107,8 @@ def test_the_worker_says_which_trained_models_are_in_use_and_takes_the_shared_ka
     from backend.services import dictionary, styles, writing_style
     from backend.services.model_improvement import manager
 
-    in_use = {"llm": {"id": "run-1", "path": "/data/model-improvement/runs/run-1"}}
     used = []
-    monkeypatch.setattr(manager, "in_use", lambda: in_use)
-    monkeypatch.setattr(manager, "use_mirrored", used.append)
+    monkeypatch.setattr(manager, "use_mirrored", lambda active: used.append(active) or active)
     forgot = []
     monkeypatch.setattr(dictionary, "invalidate", lambda: forgot.append("dictionary"))
     monkeypatch.setattr(styles, "invalidate", lambda: forgot.append("styles"))
@@ -119,9 +117,9 @@ def test_the_worker_says_which_trained_models_are_in_use_and_takes_the_shared_ka
     app.include_router(router)
     client = TestClient(app)
 
-    assert client.post("/worker/sync/adapters").json() == {"in_use": in_use}
+    assert client.post("/worker/sync/adapters").status_code == 404
     active = {"llm": {"id": "run-1", "path": "/stand-in/model-improvement/mirrored/run-1/llm"}}
-    assert client.post("/worker/sync/mirrored", json={"active": active}).status_code == 200
+    assert client.post("/worker/sync/mirrored", json={"active": active}).json() == {"active": active}
     assert used == [active]
     assert forgot == ["styles", "dictionary"]
     assert writing_style._state is None

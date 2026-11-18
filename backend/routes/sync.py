@@ -1,9 +1,8 @@
 """The model calls the Rust server (kass-server) makes for sharing Kass.
 
 The Rust server serves /sync/* and runs a stand-in's sync with the shared
-Kass. The worker only says which trained models are in use, switches to the
-shared Kass's once they're copied, and loads its models when the app falls
-back to a stand-in.
+Kass. The worker only switches to the shared Kass's trained models once
+they're copied, and loads its models when the app falls back to a stand-in.
 """
 
 from fastapi import APIRouter
@@ -14,14 +13,6 @@ router = APIRouter(prefix="/worker", tags=["worker"])
 
 class Mirrored(BaseModel):
     active: dict
-
-
-@router.post("/sync/adapters")
-async def adapters_in_use():
-    """The trained models in use, by kind, each with the folder it's in."""
-    from ..services.model_improvement import manager
-
-    return {"in_use": manager.in_use()}
 
 
 @router.post("/sync/mirrored")
@@ -39,7 +30,7 @@ async def use_mirrored(request: Mirrored):
     )
     from ..services.model_improvement import manager
 
-    manager.use_mirrored(request.active)
+    active = manager.use_mirrored(request.active)
     writing_style._state = None
     correction_notes._state = None
     correction_learning._state = None
@@ -48,7 +39,8 @@ async def use_mirrored(request: Mirrored):
     known_names.invalidate()
     styles.invalidate()
     dictionary.invalidate()
-    return {}
+    # The server saves the ones in use as its own (model_improvement.rs).
+    return {"active": active}
 
 
 @router.post("/models/startup")

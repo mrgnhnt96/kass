@@ -2,10 +2,12 @@
 
 import asyncio
 
-# Background work and its questions: asking whether the models are idle
-# mustn't make them busy, and the Rust server's correction notes job
-# generates here (/worker/learning/generate) without counting as a dictation.
-# Being told which style a teach session is open in isn't a dictation either.
+# Background work and its questions: the server's model improvement and
+# learning calls must not count as a dictation and stop the run they drive,
+# asking whether the models are idle mustn't make them busy, and the Rust
+# server's correction notes job generates here (/worker/learning/generate)
+# without counting as a dictation. Being told which style a teach session is
+# open in isn't a dictation either.
 _BACKGROUND = (
     "/capture/learning",
     "/worker/learning/",
