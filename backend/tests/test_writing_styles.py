@@ -226,16 +226,22 @@ def feedback(storage, capture_id, app):
     correct(storage, capture_id, app, "x", "it works, ship it", refined="It works. Ship it.")
 
 
+def out_of_prompt(style_id):
+    """The style's examples left out of its prompt: what its notes are summarized from."""
+    shown = {example["id"] for example in personal_examples.in_prompt(style_id)}
+    return [example for example in personal_examples.all_examples(style_id) if example["id"] not in shown]
+
+
 def test_moved_corrections_become_pending_rules_for_the_new_style(storage, monkeypatch):
     seed(storage)
     formal = create(storage, "Formal")
     monkeypatch.setattr(personal_examples, "MAX_PROMPT_EXAMPLES", 1)
     for index in range(3):
         correct(storage, f"m{index}", MAIL, f"so the thing number {index}", f"The thing number {index}.")
-    assert len(correction_notes.pending("personal")) == 2
+    assert len(out_of_prompt("personal")) == 2
     assign(storage, MAIL, formal, "bring")
-    assert correction_notes.pending("personal") == []
-    assert len(correction_notes.pending(formal)) == 2
+    assert out_of_prompt("personal") == []
+    assert len(out_of_prompt(formal)) == 2
 
 
 # --- Cache size -----------------------------------------------------------------

@@ -24,6 +24,8 @@ const RECOGNIZE_TIMEOUT: Duration = Duration::from_secs(120);
 const RECOGNIZE_FILE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// A cleanup is one phrase, or the whole take; a model load may come first.
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(120);
+/// A background generation may wait for the model to load first.
+const BACKGROUND_TIMEOUT: Duration = Duration::from_secs(600);
 /// A rewrite may write up to 4096 tokens on the largest model.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 /// Paging a model back in reads gigabytes.
@@ -337,13 +339,27 @@ pub async fn generate_within(
     timeout: Duration,
     partial: impl FnMut(&str),
 ) -> Answer<Generated> {
-    tokio::time::timeout(timeout, read_generation(proxy, request, partial))
+    tokio::time::timeout(
+        timeout,
+        read_generation(proxy, "/worker/cleanup/generate", request, partial),
+    )
+    .await
+    .map_err(|_| format!("the cleanup didn't finish in {timeout:?}"))?
+}
+
+/// Run a generation for background work, such as the correction notes job:
+/// the worker doesn't count it as a dictation, so the job isn't interrupted
+/// by its own generations.
+pub async fn generate_in_background(proxy: &Proxy, request: &Generate) -> Answer<Generated> {
+    let generating = read_generation(proxy, "/worker/learning/generate", request, |_| {});
+    tokio::time::timeout(BACKGROUND_TIMEOUT, generating)
         .await
-        .map_err(|_| format!("the cleanup didn't finish in {timeout:?}"))?
+        .map_err(|_| format!("the generation didn't finish in {BACKGROUND_TIMEOUT:?}"))?
 }
 
 async fn read_generation(
     proxy: &Proxy,
+    path: &str,
     request: &Generate,
     mut partial: impl FnMut(&str),
 ) -> Answer<Generated> {
@@ -353,7 +369,7 @@ async fn read_generation(
         error: Option<String>,
     }
     let body = serde_json::to_vec(request).map_err(|e| e.to_string())?;
-    let mut body = send(proxy, "/worker/cleanup/generate", "application/json", body)
+    let mut body = send(proxy, path, "application/json", body)
         .await?
         .into_body();
     let mut pending = Vec::new();

@@ -8,6 +8,7 @@
 
 pub mod captures;
 pub mod cleanup_inputs;
+pub mod correction_notes;
 mod cors;
 pub mod db;
 pub mod dictionary;
@@ -87,6 +88,7 @@ pub struct Running {
     _warmth: Relay,
     _sync: Option<Relay>,
     _usage: Relay,
+    _notes: Relay,
 }
 
 /// A background task that stops when the server stops: passing on the
@@ -109,6 +111,24 @@ impl Running {
     /// Stop accepting connections and close the listening socket, so the
     /// port is free again. Requests already running finish on their own.
     pub fn stop(self) {}
+}
+
+/// A server's state over `database` (already prepared) and a worker at
+/// `worker`, without serving: for tests of a background job.
+#[cfg(test)]
+pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> AppState {
+    AppState {
+        proxy: proxy::Proxy::new(worker),
+        db: db::Db::new(database),
+        sync: dictionary::store::Sync { standing_in: false },
+        events: events::Events::default(),
+        dictionaries: Arc::default(),
+        known_names: Arc::default(),
+        voice: None,
+        streams: Arc::default(),
+        models: models::Models::new(None),
+        stand_in: None,
+    }
 }
 
 /// Bind the port and serve in the background on the
@@ -152,6 +172,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
     tokio::spawn(learned::recount_if_stale(state.clone()));
     let learning = Relay(tokio::spawn(learning::watch(state.clone())));
     let warmth = Relay(tokio::spawn(warmth::watch(state.clone())));
+    let notes = Relay(tokio::spawn(correction_notes::watch(state.clone())));
     let sync = state
         .stand_in
         .clone()
@@ -184,5 +205,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         _warmth: warmth,
         _sync: sync,
         _usage: usage,
+        _notes: notes,
     })
 }

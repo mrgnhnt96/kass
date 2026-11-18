@@ -207,13 +207,33 @@ pub async fn reports_changed(
 /// training running): when background learning may take the CPU. False
 /// when the worker doesn't answer.
 pub async fn models_idle(proxy: &Proxy) -> bool {
-    match post(proxy, "/worker/learning/idle", json!({})).await {
-        Ok(answer) => answer["idle"].as_bool().unwrap_or(false),
-        Err(error) => {
-            eprintln!("[server] couldn't ask the model worker whether it's idle: {error}");
-            false
-        }
+    idle_answer(proxy).await["idle"].as_bool().unwrap_or(false)
+}
+
+/// The worker's foreground generation while the models are idle, else
+/// None: it changes with every dictation, so a background job that started
+/// at it sees with [`foreground_generation`] whether one interrupted it.
+/// Python: `manager.idle_generation()`.
+pub async fn idle_generation(proxy: &Proxy) -> Option<u64> {
+    let answer = idle_answer(proxy).await;
+    match answer["idle"].as_bool() {
+        Some(true) => answer["generation"].as_u64(),
+        _ => None,
     }
+}
+
+/// The worker's foreground generation now; None when it doesn't answer.
+pub async fn foreground_generation(proxy: &Proxy) -> Option<u64> {
+    idle_answer(proxy).await["generation"].as_u64()
+}
+
+async fn idle_answer(proxy: &Proxy) -> Value {
+    post(proxy, "/worker/learning/idle", json!({}))
+        .await
+        .unwrap_or_else(|error| {
+            eprintln!("[server] couldn't ask the model worker whether it's idle: {error}");
+            Value::Null
+        })
 }
 
 /// Tell the worker the learned corrections changed, so dictations use them

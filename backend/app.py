@@ -91,12 +91,12 @@ def create_app() -> FastAPI:
 
 
 def _jobs():
-    from .services.correction_notes import periodic_job as notes_job
     from .services.history_retention import periodic_job as retention_job
     from .services.model_improvement.manager import periodic_job as learning_job
 
-    # The daily usage report runs in the app (tauri/src-tauri/server/src/usage).
-    return (learning_job, notes_job, retention_job)
+    # The daily usage report runs in the app (tauri/src-tauri/server/src/usage),
+    # and so does the correction notes job (correction_notes.rs).
+    return (learning_job, retention_job)
 
 
 def _stand_in_jobs():

@@ -9,9 +9,9 @@
 //! cleans up. Python: `backend/services/writing_style.py`,
 //! `personal_examples.py` and `correction_notes.py`.
 //!
-//! Two writers are still in the worker: a teach session's finish saves its
-//! replies (`writing_style.save_run`), and the notes job saves new notes.
-//! The teach finish is forwarded while holding [`FILES`]
+//! The notes are summarized here too (`correction_notes`). One writer is
+//! still in the worker: a teach session's finish saves its replies
+//! (`writing_style.save_run`). The teach finish is forwarded while holding [`FILES`]
 //! (`routes::writing_style`), so it can't land between a read and a write
 //! here.
 
@@ -280,25 +280,82 @@ fn texts(value: &Value) -> Vec<String> {
 /// no summary considered yet are pending.
 pub fn notes_status(notes: &Value, style_id: &str, all: &[PersonalExample]) -> Value {
     let state = notes_json(notes, style_id);
-    let shown: HashSet<String> = cleanup_inputs::in_prompt(all)
-        .into_iter()
-        .map(|example| example.id)
-        .collect();
-    let considered: HashSet<String> = texts(&state["considered_ids"]).into_iter().collect();
-    let pending = all
-        .iter()
-        .filter(|example| !shown.contains(&example.id) && !considered.contains(&example.id))
-        .count();
     let listed: Vec<Value> = texts(&state["notes"])
         .into_iter()
         .map(|note| json!({ "id": note_id(&note), "text": note }))
         .collect();
     json!({
         "notes": listed,
-        "pending": pending,
+        "pending": pending(notes, style_id, all).len(),
         "last_run": state["last_run"],
         "outcome": state["outcome"],
     })
+}
+
+/// `style_id`'s current notes.
+pub fn current_notes(notes: &Value, style_id: &str) -> Vec<String> {
+    texts(&notes_json(notes, style_id)["notes"])
+}
+
+/// The ids of `style_id`'s examples a summary already considered.
+pub fn considered(notes: &Value, style_id: &str) -> HashSet<String> {
+    texts(&notes_json(notes, style_id)["considered_ids"])
+        .into_iter()
+        .collect()
+}
+
+/// `style_id`'s examples out of the prompt that no summary considered yet,
+/// oldest first. `all` is every example of the style, newest first.
+pub fn pending(notes: &Value, style_id: &str, all: &[PersonalExample]) -> Vec<PersonalExample> {
+    let shown: HashSet<String> = cleanup_inputs::in_prompt(all)
+        .into_iter()
+        .map(|example| example.id)
+        .collect();
+    let considered = considered(notes, style_id);
+    all.iter()
+        .rev()
+        .filter(|example| !shown.contains(&example.id) && !considered.contains(&example.id))
+        .cloned()
+        .collect()
+}
+
+/// A summary of `style_id`'s examples finished: `chosen` replaces the
+/// notes when it differs, keeping the list before in the history, and the
+/// `batch` it summarized is marked considered either way. Whether the notes
+/// changed.
+fn summarized(
+    notes: &mut Value,
+    style_id: &str,
+    chosen: &[String],
+    batch: &[String],
+    metrics: Value,
+    at: &str,
+) -> bool {
+    let mut state = notes_json(notes, style_id);
+    let accepted = texts(&state["notes"]) != chosen;
+    if accepted {
+        let mut history = state["history"].as_array().cloned().unwrap_or_default();
+        history.push(json!({ "notes": state["notes"] }));
+        let keep = history.len().saturating_sub(MAX_NOTES_HISTORY);
+        state["history"] = Value::Array(history.split_off(keep));
+        state["notes"] = json!(chosen);
+    }
+    let mut considered: Vec<Value> = state["considered_ids"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut batch = batch.to_vec();
+    batch.sort();
+    considered.extend(batch.into_iter().map(Value::String));
+    state["considered_ids"] = Value::Array(considered);
+    state["last_run"] = json!(at);
+    state["outcome"] = json!(if accepted { "updated" } else { "no_change" });
+    state["metrics"] = metrics;
+    if !notes["styles"].is_object() {
+        notes["styles"] = json!({});
+    }
+    notes["styles"][style_id] = state;
+    accepted
 }
 
 /// Drop one of `style_id`'s notes, keeping the list before in its history;
@@ -371,6 +428,19 @@ impl Files {
     pub fn hide(&mut self, example_id: &str) {
         hide(&mut self.writing, example_id);
         self.writing_changed = true;
+    }
+
+    /// Save a summary of `style_id`'s examples; whether the notes changed.
+    pub fn summarized(
+        &mut self,
+        style_id: &str,
+        chosen: &[String],
+        batch: &[String],
+        metrics: Value,
+        at: &str,
+    ) -> bool {
+        self.notes_changed = true;
+        summarized(&mut self.notes, style_id, chosen, batch, metrics, at)
     }
 
     pub fn remove_note(&mut self, style_id: &str, id: &str) -> bool {
