@@ -91,7 +91,7 @@ fn thousands(n: usize) -> String {
     let digits = n.to_string();
     let mut out = String::new();
     for (at, digit) in digits.chars().enumerate() {
-        if at > 0 && (digits.len() - at) % 3 == 0 {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
             out.push(',');
         }
         out.push(digit);
@@ -201,7 +201,10 @@ mod tests {
 
     #[test]
     fn checks_match_python() {
-        assert_eq!(validate("  ", "x").unwrap_err(), "Select text to rewrite first");
+        assert_eq!(
+            validate("  ", "x").unwrap_err(),
+            "Select text to rewrite first"
+        );
         let long = "x".repeat(MAX_SELECTION_CHARS + 1);
         assert_eq!(
             validate(&long, "x").unwrap_err(),
@@ -209,7 +212,10 @@ mod tests {
         );
         assert_eq!(validate("hi", " ").unwrap_err(), "No instruction was heard");
         let long = "x".repeat(MAX_INSTRUCTION_CHARS + 1);
-        assert_eq!(validate("hi", &long).unwrap_err(), "Instruction is too long");
+        assert_eq!(
+            validate("hi", &long).unwrap_err(),
+            "Instruction is too long"
+        );
         assert!(validate("hi", "shorter").is_ok());
         // Code points, as Python counts them.
         assert!(validate(&"é".repeat(MAX_SELECTION_CHARS), "x").is_ok());

@@ -28,13 +28,19 @@ async fn rewrite(State(worker): State<Worker>, Json(body): Json<Value>) -> Respo
     let model = body["model_size"].as_str().unwrap().to_string();
     if model == "4B" {
         let detail = "Download Qwen3 4B in Models to use Command Mode";
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "detail": detail })))
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "detail": detail })),
+        )
             .into_response();
     }
     let instruction = body["instruction"].as_str().unwrap();
     if instruction == "explode" {
         let detail = "Metal ran out of memory";
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "detail": detail })))
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "detail": detail })),
+        )
             .into_response();
     }
     let text = if instruction.contains("Spanish") {
@@ -159,9 +165,15 @@ async fn rewrites_and_saves_a_command_capture() {
     assert_eq!(body["command_selection"], "Hello.");
     assert_eq!(body["command_instruction"], "translate to Spanish");
     assert_eq!(body["command_transform"], Value::Null);
-    assert_eq!((body["app_name"].clone(), body["app_bundle_id"].clone()), (json!("Notes"), Value::Null));
+    assert_eq!(
+        (body["app_name"].clone(), body["app_bundle_id"].clone()),
+        (json!("Notes"), Value::Null)
+    );
     assert_eq!(body["llm_model"], "qwen3-0.6b");
-    assert_eq!((body["audio_path"].clone(), body["audio_deleted"].clone()), (json!(""), json!(false)));
+    assert_eq!(
+        (body["audio_path"].clone(), body["audio_deleted"].clone()),
+        (json!(""), json!(false))
+    );
     assert_eq!(body["duration_ms"], Value::Null);
     let id = body["id"].as_str().unwrap();
     assert_eq!(id.len(), 36);
@@ -174,7 +186,9 @@ async fn rewrites_and_saves_a_command_capture() {
 #[tokio::test]
 async fn runs_a_transform_by_name() {
     let kass = Kass::start().await;
-    let (status, body) = kass.run(json!({"selection": "hi", "instruction": "Polish"})).await;
+    let (status, body) = kass
+        .run(json!({"selection": "hi", "instruction": "Polish"}))
+        .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["command_transform"], "Polish");
     let sent = &kass.rewrites()[0];
@@ -190,7 +204,9 @@ async fn uses_the_users_own_transforms_and_model() {
         "command_transforms": [{"id": "t", "name": "Pirate", "instruction": "Talk like a pirate."}],
     }))
     .await;
-    let (status, body) = kass.run(json!({"selection": "hi", "instruction": "pirate this"})).await;
+    let (status, body) = kass
+        .run(json!({"selection": "hi", "instruction": "pirate this"}))
+        .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["command_instruction"], "Talk like a pirate.");
     assert_eq!(body["command_transform"], "Pirate");
@@ -209,22 +225,46 @@ async fn turns_an_uploaded_command_recording_into_its_rewrite() {
     assert_eq!(body["transcript_refined"], "Hola.");
     assert_eq!(body["audio_path"], "captures/rec.wav");
     // Dictation's cleanup flags and review don't describe a rewrite.
-    assert_eq!((body["refinement_flags"].clone(), body["refinement_review"].clone()), (Value::Null, Value::Null));
+    assert_eq!(
+        (
+            body["refinement_flags"].clone(),
+            body["refinement_review"].clone()
+        ),
+        (Value::Null, Value::Null)
+    );
     assert_eq!(kass.query::<i64>("SELECT COUNT(*) FROM captures"), 1);
 
-    let (status, body) = kass.run(json!({"selection": "x", "capture_id": "missing"})).await;
-    assert_eq!((status, body), (404, json!({"detail": "Capture not found"})));
+    let (status, body) = kass
+        .run(json!({"selection": "x", "capture_id": "missing"}))
+        .await;
+    assert_eq!(
+        (status, body),
+        (404, json!({"detail": "Capture not found"}))
+    );
 }
 
 #[tokio::test]
 async fn reports_bad_requests_without_running_the_model() {
     let kass = Kass::start().await;
-    let (status, body) = kass.run(json!({"selection": "", "instruction": "shorter"})).await;
-    assert_eq!((status, body), (400, json!({"detail": "Select text to rewrite first"})));
-    let (status, body) = kass.run(json!({"selection": "hi", "instruction": "   "})).await;
-    assert_eq!((status, body), (400, json!({"detail": "No instruction was heard"})));
+    let (status, body) = kass
+        .run(json!({"selection": "", "instruction": "shorter"}))
+        .await;
+    assert_eq!(
+        (status, body),
+        (400, json!({"detail": "Select text to rewrite first"}))
+    );
+    let (status, body) = kass
+        .run(json!({"selection": "hi", "instruction": "   "}))
+        .await;
+    assert_eq!(
+        (status, body),
+        (400, json!({"detail": "No instruction was heard"}))
+    );
     let (status, body) = kass.run(json!({"selection": "hi"})).await;
-    assert_eq!((status, body), (400, json!({"detail": "No instruction was heard"})));
+    assert_eq!(
+        (status, body),
+        (400, json!({"detail": "No instruction was heard"}))
+    );
     assert!(kass.rewrites().is_empty());
 
     let (status, body) = kass.run(json!({"instruction": "shorter"})).await;
@@ -237,11 +277,18 @@ async fn reports_bad_requests_without_running_the_model() {
 #[tokio::test]
 async fn passes_on_what_the_worker_turned_down_or_failed() {
     let kass = Kass::start().await;
-    let (status, body) = kass.run(json!({"selection": "hi", "instruction": "explode"})).await;
-    assert_eq!((status, body), (500, json!({"detail": "Metal ran out of memory"})));
+    let (status, body) = kass
+        .run(json!({"selection": "hi", "instruction": "explode"}))
+        .await;
+    assert_eq!(
+        (status, body),
+        (500, json!({"detail": "Metal ran out of memory"}))
+    );
 
     kass.settings(json!({"llm_model": "4B"})).await;
-    let (status, body) = kass.run(json!({"selection": "hi", "instruction": "shorter"})).await;
+    let (status, body) = kass
+        .run(json!({"selection": "hi", "instruction": "shorter"}))
+        .await;
     let detail = "Download Qwen3 4B in Models to use Command Mode";
     assert_eq!((status, body), (400, json!({ "detail": detail })));
     // Nothing is saved for a command that didn't run.

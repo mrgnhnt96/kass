@@ -216,9 +216,9 @@ async fn fetch<T: for<'de> Deserialize<'de>>(
             .to_bytes();
         serde_json::from_slice(&bytes).map_err(|e| Failure::other(e.to_string()))
     };
-    tokio::time::timeout(timeout, answer).await.map_err(|_| {
-        Failure::other(format!("the model worker didn't answer in {timeout:?}"))
-    })?
+    tokio::time::timeout(timeout, answer)
+        .await
+        .map_err(|_| Failure::other(format!("the model worker didn't answer in {timeout:?}")))?
 }
 
 async fn call<T: for<'de> Deserialize<'de>>(
@@ -276,6 +276,38 @@ pub async fn recognize_file(proxy: &Proxy, request: &RecognizeFile) -> Answer<Re
     })
 }
 
+/// Whisper's text for an uploaded file in any format the worker decodes
+/// (`POST /transcribe`), and the audio's length in seconds. Silence is "".
+pub async fn transcribe_upload(
+    proxy: &Proxy,
+    path: &str,
+    language: Option<&str>,
+    stt_model: &str,
+) -> Result<(String, f64), Failure> {
+    #[derive(Deserialize)]
+    struct Transcribed {
+        text: String,
+        duration: f64,
+    }
+    let body = json!({
+        "path": path,
+        "language": language,
+        "stt_model": stt_model,
+        "check_speech": true,
+        "decode": true,
+    });
+    let body = serde_json::to_vec(&body).map_err(|e| Failure::other(e.to_string()))?;
+    let answer: Transcribed = fetch(
+        proxy,
+        "/worker/recognize/file",
+        "application/json",
+        body,
+        RECOGNIZE_FILE_TIMEOUT,
+    )
+    .await?;
+    Ok((answer.text, answer.duration))
+}
+
 /// The words of a phrase recognized with `alignment`, worked out in the
 /// worker off its model thread. Each alignment answers once.
 pub async fn alignment_words(proxy: &Proxy, alignment: &str) -> Answer<Vec<Word>> {
@@ -295,9 +327,19 @@ pub async fn generate(
     request: &Generate,
     partial: impl FnMut(&str),
 ) -> Answer<Generated> {
-    tokio::time::timeout(CLEANUP_TIMEOUT, read_generation(proxy, request, partial))
+    generate_within(proxy, request, CLEANUP_TIMEOUT, partial).await
+}
+
+/// [`generate`], given `timeout` to finish.
+pub async fn generate_within(
+    proxy: &Proxy,
+    request: &Generate,
+    timeout: Duration,
+    partial: impl FnMut(&str),
+) -> Answer<Generated> {
+    tokio::time::timeout(timeout, read_generation(proxy, request, partial))
         .await
-        .map_err(|_| format!("the cleanup didn't finish in {CLEANUP_TIMEOUT:?}"))?
+        .map_err(|_| format!("the cleanup didn't finish in {timeout:?}"))?
 }
 
 async fn read_generation(

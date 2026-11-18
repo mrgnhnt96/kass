@@ -98,6 +98,61 @@ def test_recognize_file_is_the_whole_file_fallback(worker, monkeypatch):
     path, _, _, options = whisper.calls[0]
     assert path == "/tmp/take.wav"
     assert options == {"previous_text": "and", "check_speech": False, "vocabulary": ()}
+    assert "duration" not in answer
+
+
+def test_recognize_file_decodes_an_upload_and_answers_its_length(worker, monkeypatch, tmp_path):
+    from backend.utils import audio as audio_utils
+
+    whisper = Whisper()
+    monkeypatch.setattr(stream_models, "get_whisper_model", lambda: whisper)
+    monkeypatch.setattr(audio_utils, "load_audio", lambda path: (np.zeros(36000, dtype=np.float32), 24000))
+    written = []
+
+    def save(audio, path, rate):
+        written.append((len(audio), rate))
+        open(path, "wb").close()
+
+    monkeypatch.setattr(audio_utils, "save_audio", save)
+    upload = tmp_path / "take.webm"
+    upload.write_bytes(b"webm")
+
+    body = {"path": str(upload), "stt_model": "base", "check_speech": True, "decode": True}
+    answer = worker.post("/worker/recognize/file", json=body).json()
+
+    assert (answer["text"], answer["duration"]) == ("The whole take.", 1.5)
+    path, _, model, options = whisper.calls[0]
+    # Whisper reads the WAV written from what librosa decoded, then it's gone.
+    assert (path, model, written) == (f"{upload}.stt.wav", "base", [(36000, 24000)])
+    assert options["check_speech"] is True
+    assert not (tmp_path / "take.webm.stt.wav").exists()
+
+
+def test_recognize_file_reads_a_wav_upload_as_it_is(worker, monkeypatch):
+    from backend.utils import audio as audio_utils
+
+    whisper = Whisper()
+    monkeypatch.setattr(stream_models, "get_whisper_model", lambda: whisper)
+    monkeypatch.setattr(audio_utils, "load_audio", lambda path: (np.zeros(12000, dtype=np.float32), 24000))
+
+    answer = worker.post("/worker/recognize/file", json={"path": "/tmp/up.WAV", "decode": True}).json()
+
+    assert answer["duration"] == 0.5
+    assert whisper.calls[0][0] == "/tmp/up.WAV"
+
+
+def test_recognize_file_answers_what_failed(worker, monkeypatch):
+    from backend.utils import audio as audio_utils
+
+    def broken(path):
+        raise RuntimeError("unsupported file format")
+
+    monkeypatch.setattr(stream_models, "get_whisper_model", lambda: Whisper())
+    monkeypatch.setattr(audio_utils, "load_audio", broken)
+
+    response = worker.post("/worker/recognize/file", json={"path": "/tmp/x.ogg", "decode": True})
+
+    assert (response.status_code, response.json()) == (500, {"detail": "unsupported file format"})
 
 
 class Qwen:
