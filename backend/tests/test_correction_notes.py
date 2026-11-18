@@ -168,10 +168,8 @@ def test_rules_that_restate_an_example_are_dropped():
     assert correction_notes.parse(reply, examples) == ["Turn items said in a row into a list, one item per line."]
 
 
-def test_notes_go_in_the_prompt_and_can_be_removed(storage):
+def test_notes_go_in_the_prompt(storage):
+    # Removing one is the Rust server's (tests/learned.rs).
     correction_notes._save({**correction_notes._empty(), "notes": [RULE, "Drop 'basically'."]})
     prompt = build_refinement_prompt(RefinementFlags(), personal=True, notes=correction_notes.prompt_section())
     assert f"- {RULE}" in prompt
-    assert correction_notes.remove(correction_notes.note_id(RULE))
-    assert correction_notes.notes() == ["Drop 'basically'."]
-    assert not correction_notes.remove("missing")

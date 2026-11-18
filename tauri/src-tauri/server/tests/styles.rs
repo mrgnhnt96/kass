@@ -40,6 +40,11 @@ async fn start_worker(worker: Worker) -> SocketAddr {
         .route("/worker/styles/changed", post(styles_changed))
         .route("/worker/styles/state", post(styles_state))
         .route("/worker/dictionary/changed", post(dictionary_changed))
+        // What each style learned is regrouped in kass (tests/learned.rs).
+        .route(
+            "/worker/learned/changed",
+            post(|| async { Json(json!({"ok": true})) }),
+        )
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -49,7 +54,10 @@ async fn start_worker(worker: Worker) -> SocketAddr {
 
 /// A kass.db with the default style and one WhatsApp capture, corrected.
 fn database() -> PathBuf {
-    let path = std::env::temp_dir().join(format!("kass-styles-{}.db", uuid::Uuid::new_v4()));
+    // Its own folder: the learned files are written next to it.
+    let dir = std::env::temp_dir().join(format!("kass-styles-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("kass.db");
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute_batch(include_str!("kass_schema.sql")).unwrap();
     conn.execute_batch(
@@ -143,12 +151,14 @@ impl Kass {
 
 impl Drop for Kass {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.database);
+        if let Some(dir) = self.database.parent() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
-fn changed(examples: bool, deleted: Option<&str>, regroup: bool) -> Value {
-    json!({"examples": examples, "deleted": deleted, "regroup": regroup})
+fn changed(examples: bool, deleted: Option<&str>) -> Value {
+    json!({"examples": examples, "deleted": deleted})
 }
 
 #[tokio::test]
@@ -181,7 +191,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(confirmed["apps"][0]["confirmed"], true);
     assert_eq!(confirmed["apps"][0]["style_id"], "personal");
     assert_eq!(confirmed["apps"][0]["suggested_style_id"], Value::Null);
-    assert_eq!(kass.told(), vec![changed(false, None, false)]);
+    assert_eq!(kass.told(), vec![changed(false, None)]);
     // Already confirmed: nothing new to tell.
     kass.call("POST", "/writing-styles/apps/confirm", Some(apps))
         .await;
@@ -193,7 +203,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(status, 200);
     assert_eq!(chat["position"], 1);
     let chat = chat["id"].as_str().unwrap().to_string();
-    assert_eq!(kass.told(), vec![changed(false, None, false)]);
+    assert_eq!(kass.told(), vec![changed(false, None)]);
 
     let path = format!("/writing-styles/apps/{WHATSAPP}");
     let (status, listing) = kass
@@ -207,7 +217,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(listing["apps"][0]["style_id"], json!(chat));
     assert_eq!(listing["apps"][0]["confirmed"], true);
     assert_eq!(listing["apps"][0]["corrections"], 0);
-    assert_eq!(kass.told(), vec![changed(true, None, true)]);
+    assert_eq!(kass.told(), vec![changed(true, None)]);
     assert_eq!(
         kass.query("SELECT teaches_style_id FROM captures"),
         vec![vec![json!("personal")]]
@@ -251,7 +261,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(status, 200);
     assert_eq!(described["description"], "Informal.\nNo greetings.");
     assert_eq!(described["name"], "Chat");
-    assert_eq!(kass.told(), vec![changed(false, None, false)]);
+    assert_eq!(kass.told(), vec![changed(false, None)]);
     let (status, long) = kass
         .call(
             "PATCH",
@@ -290,7 +300,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(status, 204);
     assert_eq!(
         kass.told(),
-        vec![json!("dictionary"), changed(true, Some(&chat), true)]
+        vec![json!("dictionary"), changed(true, Some(&chat))]
     );
     let (_, listing) = kass.call("GET", "/writing-styles", None).await;
     assert_eq!(listing["styles"].as_array().unwrap().len(), 1);
@@ -320,7 +330,7 @@ async fn making_a_style_the_default_regroups_examples() {
         .await;
     assert_eq!(status, 200);
     assert_eq!(made["is_default"], true);
-    assert_eq!(kass.told(), vec![changed(true, None, false)]);
+    assert_eq!(kass.told(), vec![changed(true, None)]);
     let (_, listing) = kass.call("GET", "/writing-styles", None).await;
     let defaults: Vec<&Value> = listing["styles"]
         .as_array()

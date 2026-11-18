@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..database.models import CaptureFeedback
 from ..models import CaptureFeedbackCreate, CaptureFeedbackResponse
-from . import correction_learning, dictionary, known_names, personal_examples, writing_style
+from . import correction_learning, dictionary, known_names, personal_examples
 from .captures import get_capture
 from .spelling import join_spelling
 from .text_merge import take_back
@@ -160,11 +160,8 @@ def reports_changed(target: str, source: str, db: Session, withdrawn: bool = Fal
     known_names.invalidate()
     if target != "refined":
         return
+    # The Rust server counts the writing style's habits again (learned.rs).
     personal_examples.invalidate()
-    try:
-        writing_style.refresh_feedback(db)
-    except Exception:
-        logger.warning("Could not update the writing style from a correction", exc_info=True)
 
 
 def list_feedback(db: Session, capture_id: str | None = None):

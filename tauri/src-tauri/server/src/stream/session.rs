@@ -36,7 +36,7 @@ use crate::cleanup_inputs::{self, CleanupInputs};
 use crate::events::{ascii_json, Kind};
 use crate::settings::{self, Settings, Transform};
 use crate::styles::{self, Snapshot, Style};
-use crate::{worker, AppState};
+use crate::{learned, worker, AppState};
 
 /// Words provisional text holds back while learned corrections may still
 /// change them.
@@ -2081,6 +2081,7 @@ impl Session {
             None,
         )
         .await;
+        learned::reports_changed(&self.app, &changed).await;
         Ok(())
     }
 }

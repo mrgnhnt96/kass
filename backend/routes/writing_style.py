@@ -7,6 +7,7 @@ default style when left out (docs/plans/PER_APP_STYLE.md).
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,9 @@ from ..services.refinement import refine_transcript, style_first_word
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/writing-style", tags=["writing-style"])
+# The Rust server answers what each style learned and writes the files it is
+# kept in (tauri/src-tauri/server/src/learned.rs); it tells the worker here.
+worker_router = APIRouter(prefix="/worker/learned", tags=["worker"])
 # A preview needs something to restructure; shorter dictations rarely have it.
 PREVIEW_MIN_WORDS = 12
 PREVIEW_CANDIDATES = 50
@@ -57,42 +61,21 @@ async def _clean(db: Session, said: str, style: str, extra=None, use_examples=Tr
     return style_first_word(refined, flags)
 
 
-@router.get("", response_model=models.WritingStyleStatus)
-async def get_writing_style(style: str | None = None):
-    return writing_style.status(_style(style))
+class LearnedChanged(BaseModel):
+    # A style whose learning was reset: end its teach sessions too.
+    forget_teaching: str | None = None
 
 
-@router.delete("", response_model=models.WritingStyleStatus)
-async def reset_writing_style(style: str | None = None):
-    """Forget the style's taught replies, habits and rules; other styles keep theirs."""
-    style = _style(style)
-    writing_style.reset(style)
-    teach.forget_style(style)
-    correction_notes.forget_style(style)
-    return writing_style.status(style)
-
-
-@router.get("/examples", response_model=list[models.PersonalExample])
-async def list_examples(style: str | None = None):
-    return personal_examples.all_examples(_style(style))
-
-
-@router.delete("/examples/{example_id}", status_code=204)
-async def remove_example(example_id: str):
-    """Stop using an example; corrections stay recorded for the personal model."""
-    if not personal_examples.hide(example_id):
-        raise HTTPException(status_code=404, detail="Example not found")
-
-
-@router.get("/notes", response_model=models.CorrectionNotesStatus)
-async def get_correction_notes(style: str | None = None):
-    return correction_notes.status(_style(style))
-
-
-@router.delete("/notes/{note_id}", status_code=204)
-async def remove_correction_note(note_id: str, style: str | None = None):
-    if not correction_notes.remove(note_id, _style(style)):
-        raise HTTPException(status_code=404, detail="Rule not found")
+@worker_router.post("/changed")
+def learned_changed(request: LearnedChanged):
+    """The Rust server changed writing-style.json or correction-notes.json:
+    read them afresh, with the examples grouped from them."""
+    writing_style.reload()
+    correction_notes.reload()
+    personal_examples.invalidate()
+    if request.forget_teaching:
+        teach.forget_style(request.forget_teaching)
+    return {"ok": True}
 
 
 # --- Teaching (docs/plans/TEACH_BY_REPLYING.md) ----------------------------------

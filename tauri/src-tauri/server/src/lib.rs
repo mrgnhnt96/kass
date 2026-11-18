@@ -13,6 +13,7 @@ pub mod db;
 pub mod dictionary;
 mod events;
 pub mod known_names;
+pub mod learned;
 pub mod learning;
 pub mod models;
 pub mod proxy;
@@ -147,6 +148,8 @@ pub async fn start(config: Config) -> Result<Running, String> {
         state.events.clone(),
         state.proxy.clone(),
     )));
+    // Habits an older version counted are counted again, once.
+    tokio::spawn(learned::recount_if_stale(state.clone()));
     let learning = Relay(tokio::spawn(learning::watch(state.clone())));
     let warmth = Relay(tokio::spawn(warmth::watch(state.clone())));
     let sync = state

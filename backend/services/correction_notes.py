@@ -107,6 +107,13 @@ def _read() -> dict:
         return _state
 
 
+def reload() -> None:
+    """Read the file afresh: the Rust server changed it (``/worker/learned/changed``)."""
+    global _state
+    with _lock:
+        _state = None
+
+
 def _style_id(style: str | None) -> str:
     if style is not None:
         return style
@@ -135,14 +142,6 @@ def _save(notes_state: dict, style: str | None = None) -> None:
     with _lock:
         state = _read()
         _write({**state, "styles": {**state["styles"], _style_id(style): notes_state}})
-
-
-def forget_style(style: str) -> None:
-    """Drop a deleted style's notes."""
-    with _lock:
-        state = _read()
-        if style in state["styles"]:
-            _write({**state, "styles": {k: v for k, v in state["styles"].items() if k != style}})
 
 
 def notes(style: str | None = None) -> list[str]:
@@ -183,18 +182,6 @@ def status(style: str | None = None) -> dict:
         "last_run": state["last_run"],
         "outcome": state["outcome"],
     }
-
-
-def remove(identifier: str, style: str | None = None) -> bool:
-    with _lock:
-        state = json.loads(json.dumps(_load(style)))
-        kept = [note for note in state["notes"] if note_id(note) != identifier]
-        if len(kept) == len(state["notes"]):
-            return False
-        state["history"] = (state["history"] + [{"notes": state["notes"]}])[-MAX_HISTORY:]
-        state["notes"] = kept
-        _save(state, style)
-    return True
 
 
 def _runs(text: str) -> set[tuple[str, ...]]:

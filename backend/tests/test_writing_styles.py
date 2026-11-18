@@ -169,12 +169,6 @@ def test_version_1_profiles_move_into_personal(storage, tmp_path):
     assert writing_style.hidden_examples() == ["correction:gone"]
     assert correction_notes.notes("personal") == ["Write Voicebox as one word."]
     assert correction_notes.notes(other) == []
-    # Nothing is lost when the file is written back in version 2.
-    writing_style.hide_example("correction:also-gone")
-    saved = json.loads((tmp_path / "writing-style.json").read_text())
-    assert saved["version"] == 2
-    assert saved["styles"]["personal"]["runs"] == 2
-    assert saved["styles"]["personal"]["examples"][0]["written"] == "hi, there"
 
 
 def test_corrections_teach_only_their_apps_style(storage):
@@ -230,31 +224,6 @@ def test_left_corrections_come_back_to_the_app_when_their_style_is_deleted(stora
 def feedback(storage, capture_id, app):
     """A correction that turns sentence breaks into commas: a learned habit."""
     correct(storage, capture_id, app, "x", "it works, ship it", refined="It works. Ship it.")
-
-
-def test_habits_follow_the_choice_too(storage):
-    seed(storage)
-    chat = create(storage, "Chat")
-    for index in range(3):
-        feedback(storage, f"s{index}", SLACK)
-    with storage() as db:
-        writing_style.refresh_feedback(db)
-    assert "boundary_comma" in writing_style.status("personal")["habits"]
-
-    assign(storage, SLACK, chat, "leave")
-    assert "boundary_comma" in writing_style.status("personal")["habits"]
-    assert writing_style.status(chat)["habits"] == []
-
-    other = create(storage, "Other")
-    assign(storage, SLACK, chat)
-    for index in range(3, 6):
-        feedback(storage, f"s{index}", SLACK)
-    assign(storage, SLACK, other, "bring")
-    assert "boundary_comma" in writing_style.status(other)["habits"]
-    assert writing_style.status(chat)["habits"] == []
-    chat_flags = RefinementFlags(punctuation_style="learned", style=other)
-    assert "Join related thoughts with commas" in build_refinement_prompt(chat_flags)
-    assert writing_style.apply_learned("It works. Ship it.", other) == "it works, ship it"
 
 
 def test_moved_corrections_become_pending_rules_for_the_new_style(storage, monkeypatch):
@@ -330,6 +299,7 @@ def test_flags_keep_old_snapshots_equal():
 
 def test_worker_style_routes(storage, monkeypatch):
     from backend.routes.styles import router
+    from backend.routes.writing_style import worker_router as learned_router
     from backend.services import correction_notes, llm, personal_examples, teach, writing_style
 
     monkeypatch.setattr(llm, "get_llm_model", lambda: Backend(tokens=1000))
@@ -339,10 +309,9 @@ def test_worker_style_routes(storage, monkeypatch):
         db.commit()
     calls = []
     monkeypatch.setattr(personal_examples, "invalidate", lambda: calls.append("examples"))
-    monkeypatch.setattr(writing_style, "forget_style", lambda style: calls.append(("habits", style)))
     monkeypatch.setattr(teach, "forget_style", lambda style: calls.append(("teach", style)))
-    monkeypatch.setattr(correction_notes, "forget_style", lambda style: calls.append(("notes", style)))
-    monkeypatch.setattr(writing_style, "refresh_feedback", lambda db: calls.append("regroup"))
+    monkeypatch.setattr(writing_style, "reload", lambda: calls.append("habits"))
+    monkeypatch.setattr(correction_notes, "reload", lambda: calls.append("notes"))
 
     def override():
         with storage() as db:
@@ -350,6 +319,7 @@ def test_worker_style_routes(storage, monkeypatch):
 
     app = FastAPI()
     app.include_router(router)
+    app.include_router(learned_router)
     app.dependency_overrides[get_db] = override
     client = TestClient(app)
 
@@ -366,8 +336,16 @@ def test_worker_style_routes(storage, monkeypatch):
     assert [style.id for style in styles.snapshot().styles] == ["personal", "chat"]
     assert calls == []
 
-    client.post("/worker/styles/changed", json={"examples": True, "deleted": "chat", "regroup": True})
-    assert calls == ["examples", ("habits", "chat"), ("teach", "chat"), ("notes", "chat"), "regroup"]
+    # What a deleted style learned is forgotten by the Rust server.
+    client.post("/worker/styles/changed", json={"examples": True, "deleted": "chat"})
+    assert calls == ["examples", ("teach", "chat")]
+
+    # The Rust server changed the learned files: the worker rereads them.
+    calls.clear()
+    assert client.post("/worker/learned/changed", json={}).json() == {"ok": True}
+    assert calls == ["habits", "notes", "examples"]
+    client.post("/worker/learned/changed", json={"forget_teaching": "personal"})
+    assert calls[-1] == ("teach", "personal")
 
 
 def test_a_style_description_goes_into_only_its_own_cleanup_prompt(storage):
@@ -383,8 +361,11 @@ def test_word_fixes_do_not_outvote_the_endings_the_user_dropped(storage):
         correct(storage, f"w{index}", SLACK, "command and push", "Commit and push.", refined="Command and push.")
     for index, (shown, meant) in enumerate([("Commit.", "Commit"), ("Status.", "Status")]):
         correct(storage, f"d{index}", SLACK, meant.lower(), meant, refined=shown)
-    with storage() as db:
-        writing_style.refresh_feedback(db)
+    # The Rust server counts these (tests/learned.rs); this is what it saves.
+    shown_meant = [("Command and push.", "Commit and push.")] * 4 + [("Commit.", "Commit"), ("Status.", "Status")]
+    counts = writing_style._merge(*(writing_style.observe(s, m, deliberate=False) for s, m in shown_meant))
+    profile = {**writing_style._empty_style(), "feedback_counts": counts}
+    writing_style._save({**writing_style._load(), "styles": {"personal": profile}})
     assert writing_style.is_ready("personal")
     assert writing_style.status("personal")["habits"] == ["drop_final_period"]
     assert writing_style.apply_learned("Commit. Then push.", "personal") == "Commit. Then push"
@@ -392,13 +373,3 @@ def test_word_fixes_do_not_outvote_the_endings_the_user_dropped(storage):
     flags = RefinementFlags(punctuation_style="learned", style="personal")
     _, examples = refinement._prompt(flags, True, None, None)
     assert ("command and push", "Commit and push") in examples
-
-
-def test_counts_from_an_older_observe_are_recounted_once(storage):
-    seed(storage)
-    correct(storage, "d", SLACK, "status", "Status", refined="Status.")
-    writing_style._save({**writing_style._load(), "counting": 1})
-    with storage() as db:
-        writing_style.recount_if_stale(db)
-    assert writing_style._profile("personal")["feedback_counts"]["final_period"] == {"kept": 0, "dropped": 1}
-    assert writing_style._load()["counting"] == writing_style.COUNTING

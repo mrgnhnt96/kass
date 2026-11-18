@@ -54,12 +54,10 @@ def init_db() -> None:
     # The preset writing styles, with the global settings moved into the default.
     from ..services.dictionary import ensure_defaults
     from ..services.styles import ensure_styles
-    from ..services.writing_style import recount_if_stale
 
     with SessionLocal() as db:
         ensure_styles(db)
         ensure_defaults(db, _db_path.with_name("dictionary-defaulted"))
-        recount_if_stale(db)
 
     # From here on, a stand-in for a shared Kass records what it changes,
     # to send there (services/sync).

@@ -54,7 +54,10 @@ async fn start_worker(worker: Worker) -> SocketAddr {
 
 /// A kass.db with the default style, a "Code" style, and Zed in it.
 fn database() -> PathBuf {
-    let path = std::env::temp_dir().join(format!("kass-dictionary-{}.db", uuid::Uuid::new_v4()));
+    // Its own folder: the learned files are written next to it.
+    let dir = std::env::temp_dir().join(format!("kass-dictionary-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("kass.db");
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute_batch(include_str!("kass_schema.sql")).unwrap();
     conn.execute_batch(
@@ -156,7 +159,9 @@ impl Kass {
 
 impl Drop for Kass {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.database);
+        if let Some(dir) = self.database.parent() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
