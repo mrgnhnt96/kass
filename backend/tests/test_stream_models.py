@@ -371,3 +371,24 @@ def test_alignments_are_kept_for_a_while(monkeypatch):
     keys = [stream_models._keep_alignment(SimpleNamespace()) for _ in range(stream_models.MAX_ALIGNMENTS + 1)]
     assert keys[0] not in stream_models._alignments
     assert keys[-1] in stream_models._alignments
+
+
+def test_a_background_generation_is_not_a_dictation(monkeypatch):
+    """The Rust server's correction notes job generates through /worker/learning/generate."""
+    from backend.routes import learning
+    from backend.services.model_improvement.middleware import ForegroundPriorityMiddleware
+
+    app = FastAPI()
+    app.add_middleware(ForegroundPriorityMiddleware)
+    app.include_router(learning.router)
+    qwen = Qwen()
+    monkeypatch.setattr(llm_service, "get_llm_model", lambda: qwen)
+    began = []
+    monkeypatch.setattr(manager, "begin_foreground", lambda: began.append(True))
+
+    with TestClient(app).stream("POST", "/worker/learning/generate", json={**GENERATE, "flags": None}) as response:
+        lines = [json.loads(line) for line in response.iter_lines() if line]
+
+    assert lines[-1]["text"] == "Hello there."
+    assert "adapter_path" not in qwen.calls[0]
+    assert began == []

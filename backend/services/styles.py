@@ -374,13 +374,11 @@ def delete_style(db: Session, style_id: str) -> bool:
     db.delete(row)
     db.commit()
     _changed(examples=True)
-    from . import correction_notes, dictionary, teach, writing_style
+    from . import dictionary, teach
 
     dictionary.move_style(db, style_id, default_id())
-    writing_style.forget_style(style_id)
+    # What the style learned is forgotten by the Rust server (learned.rs).
     teach.forget_style(style_id)
-    correction_notes.forget_style(style_id)
-    _refresh_habits(db)
     return True
 
 
@@ -418,7 +416,7 @@ def assign_app(db: Session, bundle_id: str, app_name: str | None, style_id: str,
     ``corrections`` says what happens to the corrections the app's captures
     teach its current style: "bring" moves them to the new style with the
     app, "leave" keeps them teaching the current one. Examples, habits and
-    rules follow the choice; the habits are recounted.
+    rules follow the choice; the Rust server recounts the habits.
     """
     from ..database.models import Capture, CaptureFeedback
 
@@ -447,7 +445,6 @@ def assign_app(db: Session, bundle_id: str, app_name: str | None, style_id: str,
         row.app_name = app_name or row.app_name
     db.commit()
     _changed(examples=True)
-    _refresh_habits(db)
 
 
 def confirm_apps(db: Session, apps: list[tuple[str, str | None]]) -> None:
@@ -465,9 +462,3 @@ def confirm_apps(db: Session, apps: list[tuple[str, str | None]]) -> None:
     if added:
         db.commit()
         _changed()
-
-
-def _refresh_habits(db: Session) -> None:
-    from . import writing_style
-
-    writing_style.refresh_feedback(db)

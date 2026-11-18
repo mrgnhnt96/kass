@@ -36,7 +36,7 @@ use crate::cleanup_inputs::{self, CleanupInputs};
 use crate::events::{ascii_json, Kind};
 use crate::settings::{self, Settings, Transform};
 use crate::styles::{self, Snapshot, Style};
-use crate::{worker, AppState};
+use crate::{learned, worker, AppState};
 
 /// Words provisional text holds back while learned corrections may still
 /// change them.
@@ -344,7 +344,7 @@ impl Session {
     ) -> Result<(Arc<Session>, Foreground), String> {
         let settings = app
             .db
-            .call(|conn| settings::get(conn))
+            .call(settings::get)
             .await
             .map_err(|e| e.to_string())?;
         let start = Start::parse(start, Some(&settings.language), &settings.stt_model)?;
@@ -2085,6 +2085,7 @@ impl Session {
             None,
         )
         .await;
+        learned::reports_changed(&self.app, &changed).await;
         Ok(())
     }
 }

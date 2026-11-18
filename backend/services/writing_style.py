@@ -37,9 +37,6 @@ MAX_EXAMPLES = 50
 # Least evidence before a habit is applied. Calibration alone gives about ten
 # sentence breaks and a handful of each comma kind per run.
 MIN_EVIDENCE = 2
-# Bumped when ``observe`` counts corrections differently, so saved counts are
-# recounted (``recount_if_stale``). 2: corrections that only fix words count nothing.
-COUNTING = 2
 
 _CONJUNCTIONS = frozenset(("and", "but", "so", "or", "yet", "though", "because"))
 _ABBREVIATIONS = frozenset(("mr", "mrs", "ms", "dr", "st", "vs", "etc", "e.g", "i.e", "approx"))
@@ -296,6 +293,13 @@ def _load() -> dict:
         return _state
 
 
+def reload() -> None:
+    """Read the file afresh: the Rust server changed it (``/worker/learned/changed``)."""
+    global _state
+    with _lock:
+        _state = None
+
+
 def _style_id(style: str | None) -> str:
     if style is not None:
         return style
@@ -392,75 +396,6 @@ def prompt_example(style: str | None = None) -> tuple[str, str] | None:
     return None
 
 
-def refresh_feedback(db) -> None:
-    """Recount refined-output corrections for every style.
-
-    Called after a correction is saved and after an app moves to another
-    style: a correction counts for the style it teaches (``correction_style``).
-    """
-    from sqlalchemy import func
-
-    from ..database.models import Capture, CaptureFeedback
-    from .styles import correction_style, snapshot
-
-    rows = (
-        # A correction whose capture history retention deleted keeps its own copy.
-        db.query(CaptureFeedback, func.coalesce(Capture.teaches_style_id, CaptureFeedback.teaches_style_id))
-        .outerjoin(Capture, Capture.id == CaptureFeedback.capture_id)
-        .filter(CaptureFeedback.target == "refined", CaptureFeedback.teaches_style())
-        .order_by(CaptureFeedback.created_at.desc(), CaptureFeedback.id.desc())
-        .limit(200)
-        .all()
-    )
-    styles = snapshot()
-    seen = set()
-    counts: dict[str, list] = {}
-    for row, teaches in rows:
-        if row.capture_id in seen:
-            continue
-        seen.add(row.capture_id)
-        try:
-            captured = json.loads(row.snapshot)
-            original = captured.get("transcript_refined")
-        except (ValueError, TypeError, AttributeError):
-            continue
-        if original and max(len(original), len(row.expected_text)) <= 2000:
-            style = correction_style(styles, captured.get("app_bundle_id"), teaches)
-            counts.setdefault(style, []).append(observe(original, row.expected_text, deliberate=False))
-    with _lock:
-        state = _load()
-        profiles = {
-            style_id: {**_empty_style(), **profile, "feedback_counts": _merge(*counts.get(style_id, []))}
-            for style_id, profile in state["styles"].items()
-        }
-        for style_id in counts.keys() - profiles.keys():
-            profiles[style_id] = {**_empty_style(), "feedback_counts": _merge(*counts[style_id])}
-        _save({**state, "styles": profiles, "counting": COUNTING})
-
-
-def recount_if_stale(db) -> None:
-    """Recount at startup when the counts were made by an older ``observe``."""
-    if _load().get("counting") != COUNTING:
-        refresh_feedback(db)
-
-
-def reset(style: str | None = None) -> None:
-    """Forget ``style``'s calibration and habits; other styles keep theirs."""
-    with _lock:
-        state = _load()
-        _save(_with_profile(state, style, _empty_style()))
-    _examples_changed()
-
-
-def forget_style(style: str) -> None:
-    """Drop a deleted style's learned state."""
-    with _lock:
-        state = _load()
-        if style in state["styles"]:
-            _save({**state, "styles": {k: v for k, v in state["styles"].items() if k != style}})
-    _examples_changed()
-
-
 def _examples_changed() -> None:
     from . import personal_examples
 
@@ -493,13 +428,6 @@ def calibration_examples(style: str | None = None) -> list[dict]:
 
 def hidden_examples() -> list[str]:
     return list(_load()["hidden_examples"])
-
-
-def hide_example(example_id: str) -> None:
-    with _lock:
-        state = dict(_load())
-        state["hidden_examples"] = [*state["hidden_examples"], example_id][-1000:]
-        _save(state)
 
 
 # --- Teaching -------------------------------------------------------------------

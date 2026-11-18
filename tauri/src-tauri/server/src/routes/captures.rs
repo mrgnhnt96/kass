@@ -7,7 +7,8 @@
 //! models or their state, so it stays in the worker; learning is
 //! `routes::learning`, and stats are `routes::usage`. A correction is
 //! saved here and learned from there: the worker is told what changed
-//! (`worker::reports_changed`).
+//! (`worker::reports_changed`), and the writing style's habits are
+//! counted again (`learned::reports_changed`).
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -34,7 +35,7 @@ use crate::dictionary::store::delete_added_by;
 use crate::events::{mac_of, query_pairs, Kind};
 use crate::proxy::{forward, to_worker};
 use crate::worker::{self, Learn};
-use crate::AppState;
+use crate::{learned, AppState};
 
 pub fn router() -> Router<AppState> {
     let cors = || axum::middleware::from_fn(crate::cors::layer);
@@ -342,6 +343,7 @@ async fn delete_capture(State(state): State<AppState>, Path(capture_id): Path<St
         .collect();
     let changed: Vec<_> = changed.into_iter().collect();
     worker::reports_changed(&state.proxy, &[], &changed, true, Some(&capture_id)).await;
+    learned::reports_changed(&state, &changed).await;
     Json(json!({ "message": format!("Capture {capture_id} deleted") })).into_response()
 }
 
@@ -579,6 +581,7 @@ async fn report(
         None,
     )
     .await;
+    learned::reports_changed(&state, &changed).await;
     Json(ReportModel::from(saved.report)).into_response()
 }
 
@@ -664,6 +667,7 @@ async fn withdraw(
         .collect();
     let changed: Vec<_> = changed.into_iter().collect();
     worker::reports_changed(&state.proxy, &learn, &changed, true, None).await;
+    learned::reports_changed(&state, &changed).await;
     StatusCode::NO_CONTENT.into_response()
 }
 

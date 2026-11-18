@@ -230,13 +230,33 @@ pub async fn reports_changed(
 /// training running): when background learning may take the CPU. False
 /// when the worker doesn't answer.
 pub async fn models_idle(proxy: &Proxy) -> bool {
-    match post(proxy, "/worker/learning/idle", json!({})).await {
-        Ok(answer) => answer["idle"].as_bool().unwrap_or(false),
-        Err(error) => {
-            eprintln!("[server] couldn't ask the model worker whether it's idle: {error}");
-            false
-        }
+    idle_answer(proxy).await["idle"].as_bool().unwrap_or(false)
+}
+
+/// The worker's foreground generation while the models are idle, else
+/// None: it changes with every dictation, so a background job that started
+/// at it sees with [`foreground_generation`] whether one interrupted it.
+/// Python: `manager.idle_generation()`.
+pub async fn idle_generation(proxy: &Proxy) -> Option<u64> {
+    let answer = idle_answer(proxy).await;
+    match answer["idle"].as_bool() {
+        Some(true) => answer["generation"].as_u64(),
+        _ => None,
     }
+}
+
+/// The worker's foreground generation now; None when it doesn't answer.
+pub async fn foreground_generation(proxy: &Proxy) -> Option<u64> {
+    idle_answer(proxy).await["generation"].as_u64()
+}
+
+async fn idle_answer(proxy: &Proxy) -> Value {
+    post(proxy, "/worker/learning/idle", json!({}))
+        .await
+        .unwrap_or_else(|error| {
+            eprintln!("[server] couldn't ask the model worker whether it's idle: {error}");
+            Value::Null
+        })
 }
 
 /// Tell the worker the learned corrections changed, so dictations use them
@@ -285,18 +305,24 @@ pub async fn model_rollback(proxy: &Proxy) -> Result<Result<Value, String>, Stri
     })
 }
 
-/// Regrouping what each style learned after an app moves rereads its
-/// corrections, which takes longer than a lookup.
-const STYLES_TIMEOUT: Duration = Duration::from_secs(30);
-
 /// Writing styles or app assignments changed: the worker rereads them before
 /// the next dictation. `examples` drops the examples it grouped by style,
-/// `deleted` forgets what that style learned, and `regroup` sorts learned
-/// habits by style again. Awaited, so the page reloads the new state.
-pub async fn styles_changed(proxy: &Proxy, examples: bool, deleted: Option<&str>, regroup: bool) {
-    let body = json!({ "examples": examples, "deleted": deleted, "regroup": regroup });
-    if let Err(error) = post_within(proxy, "/worker/styles/changed", body, STYLES_TIMEOUT).await {
+/// and `deleted` ends teach sessions in that style. Awaited, so the page
+/// reloads the new state.
+pub async fn styles_changed(proxy: &Proxy, examples: bool, deleted: Option<&str>) {
+    let body = json!({ "examples": examples, "deleted": deleted });
+    if let Err(error) = post(proxy, "/worker/styles/changed", body).await {
         eprintln!("[server] couldn't tell the model worker the styles changed: {error}");
+    }
+}
+
+/// The learned files changed (`learned`): the worker rereads them and the
+/// examples grouped from them; `forget_teaching` also ends teach sessions in
+/// that style. Awaited, so the next cleanup uses what changed.
+pub async fn learned_changed(proxy: &Proxy, forget_teaching: Option<&str>) {
+    let body = json!({ "forget_teaching": forget_teaching });
+    if let Err(error) = post(proxy, "/worker/learned/changed", body).await {
+        eprintln!("[server] couldn't tell the model worker what was learned changed: {error}");
     }
 }
 

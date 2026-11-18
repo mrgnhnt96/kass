@@ -119,9 +119,10 @@ def test_unsaved_calibration_examples_come_last(storage):
 def test_hidden_examples_are_left_out(storage):
     _correct(storage, "so we should we should ship it", "We should ship it.")
     example_id = personal_examples.all_examples()[0]["id"]
-    assert personal_examples.hide(example_id)
+    # The Rust server hides it (tests/learned.rs) and tells the worker to reread.
+    writing_style._save({**writing_style._load(), "hidden_examples": [example_id]})
+    personal_examples.invalidate()
     assert personal_examples.all_examples() == []
-    assert not personal_examples.hide("correction:missing")
 
 
 def test_taught_replies_that_differ_from_the_cleanup_are_examples():
@@ -186,20 +187,3 @@ async def test_refining_a_capture_keeps_and_flags_possible_content_changes(stora
         "missing": ["domain"],
         "reasons": [],
     }
-
-
-def test_examples_api_lists_and_removes(storage):
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    from backend.routes.writing_style import router
-
-    _correct(storage, "so we should we should ship it", "We should ship it.")
-    app = FastAPI()
-    app.include_router(router)
-    client = TestClient(app)
-    examples = client.get("/writing-style/examples").json()
-    assert [e["meant"] for e in examples] == ["We should ship it."]
-    assert client.delete(f"/writing-style/examples/{examples[0]['id']}").status_code == 204
-    assert client.get("/writing-style/examples").json() == []
-    assert client.delete("/writing-style/examples/missing").status_code == 404

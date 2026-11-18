@@ -131,18 +131,10 @@ def test_typed_replies_are_kept_but_teach_nothing():
     assert writing_style.prompt_example() is None
 
 
-def test_an_empty_run_is_refused_and_reset_forgets_everything():
+def test_an_empty_run_is_refused():
+    # Resetting a style is the Rust server's (tests/learned.rs).
     with pytest.raises(ValueError, match="Reply at least once"):
         writing_style.save_run(None, [])
-    _run()
-    writing_style.reset()
-    assert writing_style.status() == {
-        "ready": False,
-        "runs": 0,
-        "last_run_at": None,
-        "example_count": 0,
-        "habits": [],
-    }
 
 
 def _learn_casual():

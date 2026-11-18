@@ -406,7 +406,11 @@ impl StandIn {
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
-        mirror::write_learned(&data_dir, &files).map_err(|error| error.to_string())?;
+        {
+            // Not while a change of what each style learned is under way.
+            let _held = crate::learned::FILES.lock().await;
+            mirror::write_learned(&data_dir, &files).map_err(|error| error.to_string())?;
+        }
         let adapters = data
             .get("adapters")
             .and_then(Value::as_object)

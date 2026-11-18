@@ -19,7 +19,7 @@ use tower_http::services::ServeFile;
 
 use crate::events::Kind;
 use crate::sync::{import, mirror};
-use crate::{worker, AppState};
+use crate::{learned, worker, AppState};
 
 /// A batch's changes, as JSON: its rows' text, never its recordings.
 const MAX_CHANGES_BYTES: usize = 32 * 1024 * 1024;
@@ -179,18 +179,21 @@ async fn import_changes(State(state): State<AppState>, request: Request) -> Resp
     state.dictionaries.invalidate();
     worker::dictionary_changed(&state.proxy).await;
     for style in &applied.styles_deleted {
-        worker::styles_changed(&state.proxy, true, Some(style), true).await;
+        worker::styles_changed(&state.proxy, true, Some(style)).await;
+        learned::forget_style(&state, style).await;
     }
     if applied.styles {
-        worker::styles_changed(&state.proxy, false, None, false).await;
+        worker::styles_changed(&state.proxy, false, None).await;
     }
     let mut reports: BTreeMap<bool, Vec<(String, String)>> = BTreeMap::new();
     for (pair, withdrawn) in applied.reports {
         reports.entry(withdrawn).or_default().push(pair);
     }
-    for (withdrawn, changed) in reports {
-        worker::reports_changed(&state.proxy, &[], &changed, withdrawn, None).await;
+    for (withdrawn, changed) in &reports {
+        worker::reports_changed(&state.proxy, &[], changed, *withdrawn, None).await;
     }
+    let changed: Vec<_> = reports.into_values().flatten().collect();
+    learned::reports_changed(&state, &changed).await;
     for capture in &applied.forgotten {
         worker::reports_changed(&state.proxy, &[], &[], true, Some(capture)).await;
     }

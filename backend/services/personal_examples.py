@@ -148,16 +148,3 @@ def for_prompt(style: str | None = None, extra: list[tuple[str, str]] | None = N
     """
     chosen = [(example["said"], example["meant"]) for example in in_prompt(style)]
     return [*reversed(chosen), *(extra or [])]
-
-
-def hide(example_id: str) -> bool:
-    global _cache
-    with _lock:
-        if _cache is None:
-            _cache = _by_style()
-        known = any(e["id"] == example_id for examples in _cache.values() for e in examples)
-    if not known:
-        return False
-    writing_style.hide_example(example_id)
-    invalidate()
-    return True

@@ -1,8 +1,8 @@
 """What the Rust server needs from the worker for writing styles (docs/plans/PER_APP_STYLE.md).
 
 The ``/writing-styles`` routes and the style and app rows in kass.db live in
-the Rust server. The worker keeps reading those rows for dictation, keeps what
-each style learned, and hears from the server what to reload or regroup.
+the Rust server. The worker keeps reading those rows for dictation and hears
+from the server what to reload.
 """
 
 import logging
@@ -21,29 +21,22 @@ logger = logging.getLogger(__name__)
 class StylesChanged(BaseModel):
     # Apps moved or the default changed: regroup the examples by style.
     examples: bool = False
-    # A style that was deleted: forget what it learned.
+    # A style that was deleted: end its teach sessions. What it learned is
+    # forgotten by the Rust server, which owns the learned files.
     deleted: str | None = None
-    # Recount each style's corrections into its learned habits.
-    regroup: bool = False
 
 
 @router.post("/changed")
-def changed(request: StylesChanged, db: Session = Depends(get_db)):
+def changed(request: StylesChanged):
     styles_service.invalidate()
     if request.examples:
         from ..services import personal_examples
 
         personal_examples.invalidate()
     if request.deleted:
-        from ..services import correction_notes, teach, writing_style
+        from ..services import teach
 
-        writing_style.forget_style(request.deleted)
         teach.forget_style(request.deleted)
-        correction_notes.forget_style(request.deleted)
-    if request.regroup:
-        from ..services import writing_style
-
-        writing_style.refresh_feedback(db)
     return {"ok": True}
 
 

@@ -1,7 +1,8 @@
 //! Writing styles and the style each app uses (docs/plans/PER_APP_STYLE.md),
 //! answered from `kass.db` as `backend/routes/styles.py` answered them.
-//! After each change the worker is told what to reread or regroup
-//! (`worker::styles_changed`).
+//! After each change the worker is told what to reread
+//! (`worker::styles_changed`), and what each style learned is regrouped
+//! (`learned`).
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -16,7 +17,7 @@ use serde_json::{json, Map, Value};
 use super::request::{body, detail, flag, required, text, Problems};
 use crate::dictionary::store as dictionary;
 use crate::styles::{self, Corrections, Refused, Style, StylePatch, StyledApp, MAX_STYLES};
-use crate::{worker, AppState};
+use crate::{learned, worker, AppState};
 
 /// Longest app bundle id or name stored with a capture.
 const MAX_APP_FIELD_CHARS: usize = 255;
@@ -250,7 +251,7 @@ async fn create_style(State(state): State<AppState>, bytes: Bytes) -> Response {
         .await
     {
         Ok(Ok(style)) => {
-            worker::styles_changed(&state.proxy, false, None, false).await;
+            worker::styles_changed(&state.proxy, false, None).await;
             Json(style).into_response()
         }
         Ok(Err(refusal)) => refused(refusal),
@@ -276,7 +277,7 @@ async fn update_style(
         .await
     {
         Ok(Ok(style)) => {
-            worker::styles_changed(&state.proxy, new_default, None, false).await;
+            worker::styles_changed(&state.proxy, new_default, None).await;
             Json(style).into_response()
         }
         Ok(Err(refusal)) => refused(refusal),
@@ -302,7 +303,8 @@ async fn delete_style(State(state): State<AppState>, Path(style_id): Path<String
     match deleted {
         Ok(Ok(())) => {
             worker::dictionary_changed(&state.proxy).await;
-            worker::styles_changed(&state.proxy, true, Some(&style_id), true).await;
+            worker::styles_changed(&state.proxy, true, Some(&style_id)).await;
+            learned::forget_style(&state, &style_id).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(Err(refusal)) => refused(refusal),
@@ -328,7 +330,7 @@ async fn confirm_apps(State(state): State<AppState>, bytes: Bytes) -> Response {
     {
         Ok(added) => {
             if added {
-                worker::styles_changed(&state.proxy, false, None, false).await;
+                worker::styles_changed(&state.proxy, false, None).await;
             }
             listing(&state).await
         }
@@ -367,7 +369,8 @@ async fn assign_app(
         .await;
     match assigned {
         Ok(Ok(())) => {
-            worker::styles_changed(&state.proxy, true, None, true).await;
+            worker::styles_changed(&state.proxy, true, None).await;
+            learned::recount_habits(&state).await;
             listing(&state).await
         }
         Ok(Err(refusal)) => refused(refusal),

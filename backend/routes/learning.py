@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from ..services import correction_learning
 from ..services.model_improvement import manager
+from .stream_models import Generate, cleanup_generate
 
 router = APIRouter(prefix="/worker/learning", tags=["worker"])
 
@@ -21,8 +22,20 @@ def reload():
 
 @router.post("/idle")
 def idle():
-    """Whether nothing uses the models, so background learning may take the CPU."""
-    return {"idle": manager.idle_generation() is not None}
+    """Whether nothing uses the models, so background learning may take the CPU.
+
+    ``generation`` changes with every dictation: a background job that saw
+    it change since it started was interrupted.
+    """
+    return {"idle": manager.idle_generation() is not None, "generation": manager.foreground_generation()}
+
+
+@router.post("/generate")
+async def generate(request: Generate):
+    """A background generation, such as the correction notes job's
+    (server/src/correction_notes.rs): as /worker/cleanup/generate, but not
+    counted as a dictation."""
+    return await cleanup_generate(request)
 
 
 @router.post("/model")
