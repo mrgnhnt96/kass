@@ -190,12 +190,12 @@ async fn import_changes(State(state): State<AppState>, request: Request) -> Resp
         reports.entry(withdrawn).or_default().push(pair);
     }
     for (withdrawn, changed) in &reports {
-        worker::reports_changed(&state.proxy, &[], changed, *withdrawn, None).await;
+        worker::reports_changed(&state.proxy, changed, *withdrawn, None).await;
     }
     let changed: Vec<_> = reports.into_values().flatten().collect();
     learned::reports_changed(&state, &changed).await;
     for capture in &applied.forgotten {
-        worker::reports_changed(&state.proxy, &[], &[], true, Some(capture)).await;
+        worker::reports_changed(&state.proxy, &[], true, Some(capture)).await;
     }
     state.events.publish(Kind::Changed);
     state.events.publish(Kind::Learned);
