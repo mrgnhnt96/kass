@@ -253,28 +253,21 @@ def worker(monkeypatch):
 
 
 def test_the_worker_learns_from_reports_the_server_saved(worker, monkeypatch):
-    from backend.database.models import DictionaryEntry
+    from backend.services import dictionary
     from backend.services.voice_training import bank
 
     client, session, changed = worker
-    forgotten = []
+    forgotten, reread = [], []
     monkeypatch.setattr(bank, "forget", forgotten.append)
-    learn = {
-        "report_id": "r1",
-        "source": "manual",
-        "original": "Test that Pikto works.",
-        "expected": "Test that Picto works.",
-    }
-    spoken = {**learn, "report_id": "r2", "source": "redictation"}
+    monkeypatch.setattr(dictionary, "invalidate", lambda: reread.append(True))
     body = {
-        "learn": [learn, spoken],
         "changed": [{"target": "refined", "source": "manual", "withdrawn": True}],
         "forgotten": "gone",
     }
     assert client.post("/worker/captures/reports-changed", json=body).json() == {"ok": True}
-    # Only explicit fixes teach words.
-    assert _words(session) == [("Picto", "correction")]
-    assert {row.added_by for row in session.query(DictionaryEntry)} == {"r1"}
+    # The server wrote the words the reports fixed; the worker rereads them.
+    assert reread == [True]
+    assert _words(session) == []
     assert changed == [("refined", "manual", True)]
     assert forgotten == ["gone"]
     assert client.post("/worker/captures/reports-changed", json={}).json() == {"ok": True}

@@ -1,6 +1,7 @@
 //! Captures, their audio, reports and events against a real kass.db, in
-//! front of a stand-in worker that hears what to learn and sends events of
-//! its own. Spelling is joined and changes taken back by kass-text, here.
+//! front of a stand-in worker that hears which reports changed and sends
+//! events of its own. Spelling is joined, changes taken back and fixed
+//! words put in the dictionary by kass-text and this server, here.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -144,6 +145,21 @@ impl Kass {
 
     fn learned(&self) -> Vec<Value> {
         std::mem::take(&mut *self.worker.learned.lock().unwrap())
+    }
+
+    /// The dictionary's words, with the report that added each.
+    fn words(&self) -> Vec<(String, String)> {
+        let conn = rusqlite::Connection::open(self.data.join("kass.db")).unwrap();
+        let mut query = conn
+            .prepare(
+                "SELECT written, coalesce(added_by, '') FROM dictionary_entries ORDER BY written",
+            )
+            .unwrap();
+        query
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
     }
 
     fn count(&self, sql: &str) -> i64 {
@@ -317,20 +333,20 @@ async fn serves_audio_as_a_download_with_ranges() {
 }
 
 #[tokio::test]
-async fn keeps_a_correction_and_tells_the_worker_to_learn_it() {
+async fn keeps_a_correction_and_the_words_it_fixed() {
     let kass = Kass::start().await;
     let seen = kass.capture("a").await;
-    let body = json!({"snapshot": seen, "target": "raw", "expected_text": "Right words", "notes": " Missed "});
+    let body = json!({"snapshot": seen, "target": "raw", "expected_text": "Rong words", "notes": " Missed "});
     let (status, report) = kass.report("a", body).await;
     assert_eq!(status, 200, "{report}");
     assert_eq!(report["notes"], "Missed");
     assert_eq!(report["source"], "manual");
     assert_eq!(report["snapshot"], seen);
     let id = report["id"].as_str().unwrap();
+    assert_eq!(kass.words(), vec![("Rong".into(), id.to_string())]);
     assert_eq!(
         kass.learned(),
         vec![json!({
-            "learn": [{"report_id": id, "source": "manual", "original": "wrong words", "expected": "Right words"}],
             "changed": [{"target": "raw", "source": "manual", "withdrawn": false}],
             "forgotten": null,
         })]
@@ -347,14 +363,20 @@ async fn keeps_a_correction_and_tells_the_worker_to_learn_it() {
     let spoken = json!({"snapshot": seen, "target": "raw", "expected_text": "Thanks, M-E-G.", "source": "voice_fix"});
     let (_, spoken) = kass.report("a", spoken).await;
     assert_eq!(spoken["expected_text"], "Thanks, MEG.");
+    // A redictation is weaker evidence: it teaches no words.
+    let again = json!({"snapshot": seen, "target": "raw", "expected_text": "wrong Wordz", "source": "redictation"});
+    assert_eq!(kass.report("a", again).await.0, 200);
+    assert!(!kass.words().iter().any(|(written, _)| written == "Wordz"));
 
+    // Amending a report takes back the words it taught.
     let amend =
         json!({"snapshot": seen, "target": "raw", "expected_text": "Right word", "replaces": id});
     let (status, amended) = kass.report("a", amend.clone()).await;
     assert_eq!(status, 200, "{amended}");
-    assert_eq!(kass.learned()[1]["changed"][0]["withdrawn"], true);
+    assert_eq!(kass.learned()[2]["changed"][0]["withdrawn"], true);
+    assert!(!kass.words().iter().any(|(_, by)| by == id));
     let (_, reports) = kass.call("GET", "/captures/a/feedback", None).await;
-    assert_eq!(reports.as_array().unwrap().len(), 2);
+    assert_eq!(reports.as_array().unwrap().len(), 3);
     let gone = json!({"detail": "The correction being amended is gone. Refresh the capture."});
     assert_eq!(kass.report("a", amend).await, (409, gone));
 }
@@ -405,11 +427,11 @@ async fn refuses_corrections_that_dont_fit_the_capture() {
 async fn withdrawing_a_report_takes_its_changes_out_of_newer_ones() {
     let kass = Kass::start().await;
     let seen = kass.capture("a").await;
-    let first = json!({"snapshot": seen, "target": "raw", "expected_text": "Right words"});
+    let first = json!({"snapshot": seen, "target": "raw", "expected_text": "Rong words"});
     let (_, first) = kass.report("a", first).await;
-    let next = json!({"snapshot": seen, "target": "raw", "expected_text": "Right words now"});
+    let next = json!({"snapshot": seen, "target": "raw", "expected_text": "Rong Wordz"});
     let (_, next) = kass.report("a", next).await;
-    let undone = json!({"snapshot": seen, "target": "raw", "expected_text": "Right words", "source": "redictation"});
+    let undone = json!({"snapshot": seen, "target": "raw", "expected_text": "Rong words", "source": "redictation"});
     let (_, undone) = kass.report("a", undone).await;
     kass.learned();
 
@@ -430,12 +452,21 @@ async fn withdrawing_a_report_takes_its_changes_out_of_newer_ones() {
         .iter()
         .map(|report| (report["id"].clone(), report["expected_text"].clone()))
         .collect();
-    assert_eq!(left, vec![(next["id"].clone(), json!("wrong words now"))]);
+    assert_eq!(left, vec![(next["id"].clone(), json!("wrong Wordz"))]);
     assert_ne!(undone["id"], next["id"]);
+    // The first one's word went; the newer one still fixes "Wordz", so it
+    // keeps that word.
+    let next_id = next["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        kass.words(),
+        vec![
+            ("Rong Wordz".into(), next_id.clone()),
+            ("Wordz".into(), next_id)
+        ]
+    );
     assert_eq!(
         kass.learned(),
         vec![json!({
-            "learn": [{"report_id": next["id"], "source": "manual", "original": "wrong words", "expected": "wrong words now"}],
             "changed": [
                 {"target": "raw", "source": "manual", "withdrawn": true},
                 {"target": "raw", "source": "redictation", "withdrawn": true},
@@ -477,7 +508,6 @@ async fn deleting_a_capture_removes_its_audio_reports_and_words() {
     assert_eq!(
         kass.learned(),
         vec![json!({
-            "learn": [],
             "changed": [{"target": "raw", "source": "manual", "withdrawn": true}],
             "forgotten": "a",
         })]

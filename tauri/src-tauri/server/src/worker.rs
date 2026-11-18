@@ -138,42 +138,23 @@ pub async fn shared_adapters_switched(proxy: &Proxy, enabled: bool) {
     }
 }
 
-/// A report whose fixed words go in the dictionary.
-pub struct Learn<'a> {
-    pub report_id: &'a str,
-    pub source: &'a str,
-    pub original: &'a str,
-    pub expected: &'a str,
-}
-
-/// Tell the worker reports changed, so it learns from them again: the
-/// dictionary words the `learn` reports fixed, then for each (target,
-/// source) changed, correction learning, known names, examples and the
-/// writing style; and that a deleted capture's audio leaves the voice
-/// training bank. Awaited, so the next dictation uses what was learned.
+/// Tell the worker reports changed, so it learns from them again: for each
+/// (target, source) changed, correction learning, known names, examples and
+/// the writing style; and that a deleted capture's audio leaves the voice
+/// training bank. The dictionary words they fixed are already in `kass.db`
+/// (`captures::store::learn_words`); the worker rereads its dictionary.
+/// Awaited, so the next dictation uses what was learned.
 pub async fn reports_changed(
     proxy: &Proxy,
-    learn: &[Learn<'_>],
     changed: &[(String, String)],
     withdrawn: bool,
     forgotten: Option<&str>,
 ) {
-    let learn: Vec<Value> = learn
-        .iter()
-        .map(|report| {
-            json!({
-                "report_id": report.report_id,
-                "source": report.source,
-                "original": report.original,
-                "expected": report.expected,
-            })
-        })
-        .collect();
     let changed: Vec<Value> = changed
         .iter()
         .map(|(target, source)| json!({ "target": target, "source": source, "withdrawn": withdrawn }))
         .collect();
-    let body = json!({ "learn": learn, "changed": changed, "forgotten": forgotten });
+    let body = json!({ "changed": changed, "forgotten": forgotten });
     if let Err(error) = post_within(
         proxy,
         "/worker/captures/reports-changed",

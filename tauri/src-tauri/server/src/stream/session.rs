@@ -2062,27 +2062,23 @@ impl Session {
                 if let Some(replaced) = &saved.replaced {
                     crate::dictionary::store::delete_added_by(conn, &replaced.id, sync)?;
                 }
+                let row = &saved.report;
+                captures::learn_words(
+                    conn,
+                    &row.id,
+                    &row.source,
+                    &original,
+                    &row.expected_text,
+                    sync,
+                );
                 Ok(Ok(saved))
             })
             .await
             .map_err(|e| e.to_string())??;
         self.app.events.publish(Kind::Learned);
         let row = &saved.report;
-        let learn = [worker::Learn {
-            report_id: &row.id,
-            source: &row.source,
-            original: &original,
-            expected: &row.expected_text,
-        }];
         let changed = [(row.target.clone(), row.source.clone())];
-        worker::reports_changed(
-            &self.app.proxy,
-            &learn,
-            &changed,
-            saved.replaced.is_some(),
-            None,
-        )
-        .await;
+        worker::reports_changed(&self.app.proxy, &changed, saved.replaced.is_some(), None).await;
         learned::reports_changed(&self.app, &changed).await;
         Ok(())
     }
