@@ -57,6 +57,9 @@ pub struct RecognizeFile {
     pub stt_model: Option<String>,
     pub previous_text: Option<String>,
     pub vocabulary: Vec<String>,
+    /// Skip Whisper when no voice is heard: for uploads, which no one
+    /// checked yet. The session checked its own take.
+    pub check_speech: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]

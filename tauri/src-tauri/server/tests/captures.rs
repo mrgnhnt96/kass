@@ -583,7 +583,7 @@ async fn streams_capture_events_with_the_macs_listening() {
 }
 
 #[tokio::test]
-async fn answers_the_app_s_cors_and_leaves_saving_to_the_worker() {
+async fn answers_the_app_s_cors_and_leaves_upload_preflights_to_the_worker() {
     let kass = Kass::start().await;
     let preflight = kass
         .raw(
@@ -609,7 +609,7 @@ async fn answers_the_app_s_cors_and_leaves_saving_to_the_worker() {
         "{listed}"
     );
 
-    // Saving a capture runs the models.
+    // Preflights for an upload are still the worker's; it answers them the same.
     let saving = kass
         .raw(
             "OPTIONS /captures HTTP/1.1\r\nHost: x\r\nOrigin: tauri://localhost\r\n\
@@ -618,13 +618,21 @@ async fn answers_the_app_s_cors_and_leaves_saving_to_the_worker() {
         )
         .await;
     assert!(saving.contains("x-worker: yes"), "{saving}");
+    // The upload itself is answered here (`tests/capture_jobs.rs`).
     let saved = kass
         .raw(
-            "POST /captures HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            "POST /captures HTTP/1.1\r\nHost: x\r\nOrigin: tauri://localhost\r\n\
+             Content-Length: 0\r\nConnection: close\r\n\r\n"
                 .into(),
         )
-        .await;
-    assert!(saved.contains("x-worker: yes"), "{saved}");
+        .await
+        .to_lowercase();
+    assert!(saved.starts_with("http/1.1 422"), "{saved}");
+    assert!(!saved.contains("x-worker"), "{saved}");
+    assert!(
+        saved.contains("access-control-allow-origin: tauri://localhost"),
+        "{saved}"
+    );
 
     let not_found = json!({"detail": "Not Found"});
     assert_eq!(

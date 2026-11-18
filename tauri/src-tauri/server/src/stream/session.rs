@@ -201,7 +201,8 @@ pub fn review_json(summary: &Summary) -> String {
     )
 }
 
-fn cleanup_prompt(inputs: &CleanupInputs, model: &str) -> CleanupPrompt {
+/// The cleanup prompt for `inputs`' style, run on `model`.
+pub(crate) fn cleanup_prompt(inputs: &CleanupInputs, model: &str) -> CleanupPrompt {
     let (system, examples) = refinement::prompt(
         &inputs.flags,
         &inputs.profile,
@@ -1636,6 +1637,7 @@ impl Session {
                     stt_model: Some(self.stt_model.clone()),
                     previous_text: st.continues.then(|| st.field_before.clone()),
                     vocabulary: self.vocabulary(&st),
+                    check_speech: false,
                 })
             } else {
                 None
@@ -1859,7 +1861,9 @@ impl Session {
                 audio_path,
                 source: self.start.source.as_str().to_string(),
                 language: self.start.language.clone(),
-                duration_ms: (st.intake.samples() as f64 / rate * 1000.0).round_ties_even() as i64,
+                duration_ms: Some(
+                    (st.intake.samples() as f64 / rate * 1000.0).round_ties_even() as i64,
+                ),
                 transcript_raw: st.raw.clone(),
                 stt_model: Some(self.stt_model.clone()),
                 app_bundle_id: st.app_bundle_id.clone(),

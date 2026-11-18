@@ -52,18 +52,29 @@ _lock = threading.Lock()
 _busy: Counter[str] = Counter()
 
 
+def hold(capture_id: str) -> None:
+    """Keep ``capture_id`` from being deleted until it's released as often as it was held."""
+    with _lock:
+        _busy[capture_id] += 1
+
+
+def release(capture_id: str) -> None:
+    """Undo one :func:`hold`; releasing one that isn't held does nothing."""
+    with _lock:
+        if _busy[capture_id] > 1:
+            _busy[capture_id] -= 1
+        else:
+            del _busy[capture_id]
+
+
 @contextmanager
 def in_use(capture_id: str):
     """Keep ``capture_id`` from being deleted while the block runs."""
-    with _lock:
-        _busy[capture_id] += 1
+    hold(capture_id)
     try:
         yield
     finally:
-        with _lock:
-            _busy[capture_id] -= 1
-            if _busy[capture_id] <= 0:
-                del _busy[capture_id]
+        release(capture_id)
 
 
 def correction_audio_dir():

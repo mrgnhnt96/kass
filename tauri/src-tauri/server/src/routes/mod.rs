@@ -2,6 +2,7 @@
 //! goes to the Python worker; anything no module lists (a trailing slash,
 //! a path the worker added since) goes there too.
 
+pub mod capture_jobs;
 pub mod capture_stream;
 pub mod captures;
 pub mod commands;

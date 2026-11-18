@@ -178,7 +178,7 @@ fn dictate_on(dir: &Path, id: &str, recording: &[u8]) {
         id: id.into(),
         audio_path: format!("captures/{id}.wav"),
         source: "dictation".into(),
-        duration_ms: 1200,
+        duration_ms: Some(1200),
         transcript_raw: "hello from the laptop".into(),
         transcript_refined: Some("Hello from the laptop.".into()),
         ..NewCapture::default()

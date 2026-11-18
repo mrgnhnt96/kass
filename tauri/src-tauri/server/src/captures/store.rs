@@ -142,7 +142,8 @@ pub struct NewCapture {
     pub audio_path: String,
     pub source: String,
     pub language: Option<String>,
-    pub duration_ms: i64,
+    /// None for an upload only Whisper could read.
+    pub duration_ms: Option<i64>,
     pub transcript_raw: String,
     pub transcript_refined: Option<String>,
     pub stt_model: Option<String>,
@@ -158,6 +159,9 @@ pub struct NewCapture {
     pub command_transform: Option<String>,
     pub style_id: Option<String>,
     pub teaches_style_id: Option<String>,
+    /// The Mac whose request made it (`backend/utils/macs.py`).
+    pub mac_id: Option<String>,
+    pub mac_name: Option<String>,
 }
 
 /// Save a new capture, and return it as stored.
@@ -172,8 +176,10 @@ pub fn insert_capture(
         "INSERT INTO captures (id, audio_path, source, language, duration_ms, transcript_raw, \
          transcript_refined, stt_model, llm_model, refinement_flags, refinement_review, \
          app_bundle_id, app_name, app_category, command_selection, command_instruction, \
-         command_transform, style_id, teaches_style_id, audio_deleted, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+         command_transform, style_id, teaches_style_id, audio_deleted, mac_id, mac_name, \
+         created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, \
+         ?21, ?22, ?23)",
         params![
             new.id,
             new.audio_path,
@@ -195,6 +201,8 @@ pub fn insert_capture(
             new.style_id,
             new.teaches_style_id,
             new.audio_path.is_empty(),
+            new.mac_id,
+            new.mac_name,
             stored(at),
         ],
     )?;
@@ -545,6 +553,108 @@ pub fn delete(
     changes.record(&tx, sync, now())?;
     tx.commit()?;
     Ok(Some(reports))
+}
+
+// -- refining and retranscribing ----------------------------------------------
+
+/// The style a capture's spoken request taught (`teaches_style_id`), which
+/// its corrections teach too.
+pub fn teaches_style_id(conn: &Connection, capture_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT teaches_style_id FROM captures WHERE id = ?1",
+        [capture_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map(Option::flatten)
+}
+
+/// A capture's transcript cleaned again.
+#[derive(Clone, Debug, Default)]
+pub struct Refined {
+    pub transcript_refined: String,
+    pub style_id: Option<String>,
+    /// JSON, as the worker saved it.
+    pub refinement_review: Option<String>,
+    pub llm_model: String,
+    pub refinement_flags: String,
+}
+
+/// Save a cleanup over the capture's last one. None if it's gone.
+pub fn save_refined(
+    conn: &mut Connection,
+    capture_id: &str,
+    refined: &Refined,
+    sync: Sync,
+) -> rusqlite::Result<Option<Capture>> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let saved = tx.execute(
+        "UPDATE captures SET transcript_refined = ?2, style_id = ?3, refinement_review = ?4, \
+         llm_model = ?5, refinement_flags = ?6 WHERE id = ?1",
+        params![
+            capture_id,
+            refined.transcript_refined,
+            refined.style_id,
+            refined.refinement_review,
+            refined.llm_model,
+            refined.refinement_flags,
+        ],
+    )?;
+    updated(tx, capture_id, saved, sync)
+}
+
+/// A capture's audio transcribed again.
+#[derive(Clone, Debug, Default)]
+pub struct Retranscribed {
+    pub transcript_raw: String,
+    /// Kept as it was when None.
+    pub teaches_style_id: Option<String>,
+    pub stt_model: String,
+    /// Kept as it was when None.
+    pub language: Option<String>,
+}
+
+/// Save a new transcript. Its cleanup is stale, so it goes, for the user
+/// to refine again. None if the capture is gone.
+pub fn save_retranscribed(
+    conn: &mut Connection,
+    capture_id: &str,
+    retranscribed: &Retranscribed,
+    sync: Sync,
+) -> rusqlite::Result<Option<Capture>> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let saved = tx.execute(
+        "UPDATE captures SET transcript_raw = ?2, \
+         teaches_style_id = coalesce(?3, teaches_style_id), stt_model = ?4, \
+         language = coalesce(?5, language), transcript_refined = NULL, llm_model = NULL, \
+         refinement_flags = NULL WHERE id = ?1",
+        params![
+            capture_id,
+            retranscribed.transcript_raw,
+            retranscribed.teaches_style_id,
+            retranscribed.stt_model,
+            retranscribed.language,
+        ],
+    )?;
+    updated(tx, capture_id, saved, sync)
+}
+
+/// The capture an update saved, its change recorded; None if none was.
+fn updated(
+    tx: Transaction,
+    capture_id: &str,
+    saved: usize,
+    sync: Sync,
+) -> rusqlite::Result<Option<Capture>> {
+    if saved == 0 {
+        return Ok(None);
+    }
+    let mut changes = Changes::default();
+    changes.changed("capture", capture_id);
+    changes.record(&tx, sync, now())?;
+    let capture = get(&tx, capture_id)?;
+    tx.commit()?;
+    Ok(capture)
 }
 
 #[cfg(test)]

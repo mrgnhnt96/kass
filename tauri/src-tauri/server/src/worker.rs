@@ -106,6 +106,29 @@ pub async fn sweep_history(proxy: &Proxy) {
     }
 }
 
+/// Keep a capture out of the worker's history sweep while it's refined or
+/// retranscribed here. Whether the worker heard it.
+pub async fn hold_capture(proxy: &Proxy, capture_id: &str) -> bool {
+    let body = json!({ "capture_id": capture_id });
+    match post(proxy, "/worker/history/hold", body).await {
+        Ok(_) => true,
+        Err(error) => {
+            eprintln!(
+                "[server] couldn't keep capture {capture_id} from the history sweep: {error}"
+            );
+            false
+        }
+    }
+}
+
+/// Let the worker's history sweep have a held capture again.
+pub async fn release_capture(proxy: &Proxy, capture_id: &str) {
+    let body = json!({ "capture_id": capture_id });
+    if let Err(error) = post(proxy, "/worker/history/release", body).await {
+        eprintln!("[server] couldn't release capture {capture_id} to the history sweep: {error}");
+    }
+}
+
 /// The shared adapters setting changed: the worker switches the speech
 /// model's adapter now and cleanup's on its next take.
 pub async fn shared_adapters_switched(proxy: &Proxy, enabled: bool) {
