@@ -12,6 +12,7 @@
 //! words, the writing style, correction learning) is still learned in the
 //! Python worker, which this server tells whenever reports change.
 
+pub mod in_use;
 pub mod store;
 
 use std::path::{Component, Path, PathBuf};
@@ -380,7 +381,11 @@ fn flags(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<Flags>
     })
 }
 
-fn optional_flags(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<Option<Flags>> {
+pub(crate) fn optional_flags(
+    value: &Value,
+    loc: &[Value],
+    problems: &mut Problems,
+) -> Option<Option<Flags>> {
     match value {
         Value::Null => Some(None),
         other => flags(other, loc, problems).map(Some),

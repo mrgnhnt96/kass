@@ -2,9 +2,9 @@
 //! Python: `backend/routes/captures.py`.
 //!
 //! Captures, their audio, the apps they came from, the corrections reported
-//! on them and the events stream are answered here from `kass.db`. Saving,
-//! refining and retranscribing a capture and readiness run models or their
-//! state, so they stay in the worker; learning is
+//! on them and the events stream are answered here from `kass.db`; uploading,
+//! refining and retranscribing one are `routes::capture_jobs`. Readiness runs
+//! models or their state, so it stays in the worker; learning is
 //! `routes::learning`, and stats are `routes::usage`. A correction is
 //! saved here and learned from there: the worker is told what changed
 //! (`worker::reports_changed`).
@@ -12,11 +12,11 @@
 use std::collections::{BTreeSet, HashMap};
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, RawQuery, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, RawQuery, Request, State};
 use axum::http::header::{self, HeaderMap, HeaderValue};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::NaiveDateTime;
 use serde::Serialize;
@@ -24,6 +24,7 @@ use serde_json::{json, Map, Value};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
+use super::capture_jobs;
 use crate::captures::store::{self, Apps, NewReport, Refused, Report};
 use crate::captures::{
     self, int_text, iso, lax_bool, literal, optional_string, resolve_storage_path, string, Capture,
@@ -57,21 +58,36 @@ pub fn router() -> Router<AppState> {
         .layer(cors());
     Router::new()
         .merge(answered_here)
-        // Saving a capture runs the models: POST stays with the worker, as do
-        // its CORS preflights.
-        .route("/captures", get(list).layer(cors()).fallback(forward))
+        // Uploads have no size limit, as in the worker. Preflights and
+        // methods not answered here still go to the worker.
+        .route(
+            "/captures",
+            get(list)
+                .post(capture_jobs::upload)
+                .layer(DefaultBodyLimit::disable())
+                .layer(cors())
+                .fallback(forward),
+        )
         .route("/capture/readiness", to_worker())
-        .route("/captures/{capture_id}/refine", to_worker())
-        .route("/captures/{capture_id}/retranscribe", to_worker())
+        .route(
+            "/captures/{capture_id}/refine",
+            post(capture_jobs::refine).layer(cors()).fallback(forward),
+        )
+        .route(
+            "/captures/{capture_id}/retranscribe",
+            post(capture_jobs::retranscribe)
+                .layer(cors())
+                .fallback(forward),
+        )
 }
 
 // -- answers ------------------------------------------------------------------
 
-fn detail(status: StatusCode, message: &str) -> Response {
+pub(super) fn detail(status: StatusCode, message: &str) -> Response {
     (status, Json(json!({ "detail": message }))).into_response()
 }
 
-fn capture_not_found() -> Response {
+pub(super) fn capture_not_found() -> Response {
     detail(StatusCode::NOT_FOUND, "Capture not found")
 }
 
@@ -88,7 +104,7 @@ fn worker_down(error: String) -> Response {
     )
 }
 
-fn invalid(problems: Problems) -> Response {
+pub(super) fn invalid(problems: Problems) -> Response {
     (
         StatusCode::UNPROCESSABLE_ENTITY,
         Json(json!({ "detail": problems.0 })),
@@ -340,7 +356,7 @@ async fn events(
 // -- reports ------------------------------------------------------------------
 
 /// A request body as FastAPI reads one: a JSON object, or a 422.
-fn body(bytes: &Bytes) -> Result<Map<String, Value>, Problems> {
+pub(super) fn body(bytes: &Bytes) -> Result<Map<String, Value>, Problems> {
     let mut problems = Problems::default();
     if bytes.is_empty() {
         problems.add("missing", &[json!("body")], "Field required", &Value::Null);

@@ -75,6 +75,9 @@ pub struct AppState {
     pub models: models::Models,
     /// Syncing with the shared Kass this server stands in for, if any.
     pub stand_in: Option<Arc<sync::StandIn>>,
+    /// Captures being refined or retranscribed, which the history sweep
+    /// leaves alone.
+    pub in_use: Arc<captures::in_use::InUse>,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -137,6 +140,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
         stand_in: shared_server
             .as_deref()
             .map(|url| Arc::new(sync::StandIn::new(url))),
+        in_use: Arc::default(),
     };
     let listener = TcpListener::bind(config.listen)
         .await
