@@ -18,8 +18,11 @@ pub struct Model {
     pub engine: Engine,
     /// The Hugging Face repository.
     pub repo: &'static str,
-    /// What `/transcribe` and `/llm/generate` call it: `turbo`, `4B`.
+    /// What `/transcribe`, `/llm/generate` and the capture settings
+    /// (`stt_model`, `llm_model`) call it: `turbo`, `4B`.
     pub size: &'static str,
+    /// About how big its download is, for the readiness checklist.
+    pub size_mb: u32,
 }
 
 pub const MODELS: [Model; 8] = [
@@ -28,44 +31,57 @@ pub const MODELS: [Model; 8] = [
         "Whisper Base",
         "openai/whisper-base",
         "base",
+        290,
     ),
     whisper(
         "whisper-small",
         "Whisper Small",
         "openai/whisper-small",
         "small",
+        970,
     ),
     whisper(
         "whisper-medium",
         "Whisper Medium",
         "openai/whisper-medium",
         "medium",
+        3060,
     ),
     whisper(
         "whisper-large",
         "Whisper Large",
         "openai/whisper-large-v3",
         "large",
+        3090,
     ),
     whisper(
         "whisper-turbo",
         "Whisper Turbo",
         "openai/whisper-large-v3-turbo",
         "turbo",
+        1620,
     ),
     qwen(
         "qwen3-0.6b",
         "Qwen3 0.6B",
         "mlx-community/Qwen3-0.6B-4bit",
         "0.6B",
+        400,
     ),
     qwen(
         "qwen3-1.7b",
         "Qwen3 1.7B",
         "mlx-community/Qwen3-1.7B-4bit",
         "1.7B",
+        1100,
     ),
-    qwen("qwen3-4b", "Qwen3 4B", "mlx-community/Qwen3-4B-4bit", "4B"),
+    qwen(
+        "qwen3-4b",
+        "Qwen3 4B",
+        "mlx-community/Qwen3-4B-4bit",
+        "4B",
+        2500,
+    ),
 ];
 
 const fn whisper(
@@ -73,6 +89,7 @@ const fn whisper(
     display_name: &'static str,
     repo: &'static str,
     size: &'static str,
+    size_mb: u32,
 ) -> Model {
     Model {
         name,
@@ -80,6 +97,7 @@ const fn whisper(
         engine: Engine::Whisper,
         repo,
         size,
+        size_mb,
     }
 }
 
@@ -88,6 +106,7 @@ const fn qwen(
     display_name: &'static str,
     repo: &'static str,
     size: &'static str,
+    size_mb: u32,
 ) -> Model {
     Model {
         name,
@@ -95,6 +114,7 @@ const fn qwen(
         engine: Engine::Qwen,
         repo,
         size,
+        size_mb,
     }
 }
 

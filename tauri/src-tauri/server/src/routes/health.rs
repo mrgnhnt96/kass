@@ -1,21 +1,26 @@
 //! The root, health, shutdown and internal-build checks. Python: `backend/routes/health.py`.
 //!
-//! `/`, `/health` and `/shutdown` describe or stop the model worker, so the
-//! worker answers them; the app checks the worker's own `/health` at startup.
+//! `/health` describes the whole of Kass: this server's version, and the
+//! model worker's process and loaded Whisper model, which the worker's own
+//! `/health` reports (the app also checks that one when it starts the
+//! worker). `/shutdown` stops this server, then the worker.
 
 use std::ffi::CString;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
-use crate::proxy::to_worker;
-use crate::AppState;
+use crate::models::cache;
+use crate::models::registry::{self, Engine};
+use crate::{settings, worker, AppState};
 
 /// Below this much free disk, Settings warns that recordings may fail.
 const LOW_DISK_MB: f64 = 500.0;
@@ -24,17 +29,111 @@ const LOW_DISK_MB: f64 = 500.0;
 /// checkout, which shows internal features (backend/internal.py).
 const INTERNAL_MARKER: &str = "internal";
 
+/// `/shutdown` answers before anything stops.
+const ANSWER_FIRST: Duration = Duration::from_millis(100);
+
+/// How long requests running when `/shutdown` came (a dictation finishing)
+/// get before the worker they need stops.
+const FINISH_RUNNING: Duration = Duration::from_secs(5);
+
+/// The backend `/health` has always reported: MLX on Metal, since Kass only
+/// runs on Apple Silicon (`backend/utils/platform_detect.py`).
+const GPU_TYPE: &str = "Metal (Apple Silicon via MLX)";
+const BACKEND_TYPE: &str = "mlx";
+
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/", to_worker())
-        .route("/shutdown", to_worker())
-        .route("/health", to_worker())
-        .merge(
-            Router::new()
-                .route("/health/filesystem", get(filesystem))
-                .route("/internal", get(internal))
-                .layer(axum::middleware::from_fn(crate::cors::layer)),
-        )
+        .route("/", get(root))
+        .route("/shutdown", post(shutdown))
+        .route("/health", get(health))
+        .route("/health/filesystem", get(filesystem))
+        .route("/internal", get(internal))
+        .layer(axum::middleware::from_fn(crate::cors::layer))
+}
+
+async fn root(State(state): State<AppState>) -> Response {
+    Json(json!({ "message": "kass API", "version": &*state.version })).into_response()
+}
+
+/// Stop taking requests, give the ones running a moment to finish, then
+/// stop the worker. In that order, a dictation that's finishing still has
+/// its models, and nothing new reaches a worker that's going. The app's API
+/// goes with its worker (`main.rs`), and sees this server stopped either way.
+async fn shutdown(State(state): State<AppState>) -> Response {
+    tokio::spawn(async move {
+        tokio::time::sleep(ANSWER_FIRST).await;
+        state.stopping.stop();
+        if !state.stopping.finished(FINISH_RUNNING).await {
+            eprintln!("[server] stopping with requests still open");
+        }
+        if let Err(error) = worker::shutdown(&state.proxy).await {
+            eprintln!("[server] couldn't stop the model worker: {error}");
+        }
+    });
+    Json(json!({ "message": "Shutting down..." })).into_response()
+}
+
+/// `backend/models.py`'s `HealthResponse`, in its order.
+#[derive(Serialize)]
+struct Health {
+    status: &'static str,
+    model_loaded: bool,
+    model_downloaded: Option<bool>,
+    model_size: Option<Value>,
+    gpu_available: bool,
+    gpu_type: &'static str,
+    backend_type: &'static str,
+    version: String,
+    started_at: Option<Value>,
+    pid: Option<Value>,
+    peak_memory_mb: Option<Value>,
+}
+
+/// Whether the Whisper model chosen in the capture settings is downloaded;
+/// None when the settings can't be read or name no Whisper model.
+async fn whisper_downloaded(state: &AppState) -> Option<bool> {
+    let saved = state.db.call(settings::get).await.ok()?;
+    let model = registry::sized(Engine::Whisper, &saved.stt_model)?;
+    let cache = state.models.cache().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        cache::is_cached(&cache, model.repo, cache::WHISPER_WEIGHTS)
+    })
+    .await
+    .ok()
+}
+
+/// Up and answering, with the worker's process and loaded Whisper model.
+/// A worker that doesn't answer gets the proxy's 502, as before.
+async fn health(State(state): State<AppState>) -> Response {
+    let (worker, model_downloaded) =
+        tokio::join!(worker::health(&state.proxy), whisper_downloaded(&state));
+    let worker = match worker {
+        Ok(worker) => worker,
+        Err(error) => {
+            eprintln!("[server] the model worker didn't answer /health: {error}");
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "detail": "The Kass model worker isn't answering" })),
+            )
+                .into_response();
+        }
+    };
+    let field = |name: &str| worker.get(name).filter(|value| !value.is_null()).cloned();
+    let model_loaded = worker.get("model_loaded").and_then(Value::as_bool) == Some(true);
+    Json(Health {
+        status: "healthy",
+        model_loaded,
+        model_downloaded,
+        model_size: field("model_size").filter(|_| model_loaded),
+        gpu_available: true,
+        gpu_type: GPU_TYPE,
+        backend_type: BACKEND_TYPE,
+        version: state.version.to_string(),
+        started_at: field("started_at"),
+        pid: field("pid"),
+        peak_memory_mb: field("peak_memory_mb"),
+    })
+    .into_response()
 }
 
 /// The folder `kass.db` is in, where everything else Kass keeps lives too.
@@ -144,11 +243,7 @@ async fn filesystem(State(state): State<AppState>) -> Response {
         Ok(answer) => Json(answer).into_response(),
         Err(error) => {
             eprintln!("[server] filesystem health: {error}");
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Server Error",
-            )
-                .into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
         }
     }
 }

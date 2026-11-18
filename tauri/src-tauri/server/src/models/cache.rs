@@ -93,6 +93,41 @@ pub fn on_disk(cache: &Path, repo: &str) -> OnDisk {
     }
 }
 
+/// Weights the readiness checklist counts (`is_model_cached`'s default).
+pub const READY_WEIGHTS: &[&str] = &[".safetensors", ".bin"];
+
+/// Weights `/health` counts for the chosen Whisper model.
+pub const WHISPER_WEIGHTS: &[&str] = &[".safetensors", ".bin", ".npz"];
+
+/// Whether `repo` is downloaded as `backend/backends/base.py`'s
+/// `is_model_cached` decides it: no blob still `.incomplete`, and some
+/// name under `snapshots` ending in one of `weights`. Only names count, so
+/// a dangling link counts as Python's `rglob` counts it.
+pub fn is_cached(cache: &Path, repo: &str, weights: &[&str]) -> bool {
+    let folder = cache.join(repo_folder(repo));
+    if has_incomplete(&folder.join("blobs")) {
+        return false;
+    }
+    let mut pending = vec![folder.join("snapshots")];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if weights.iter().any(|ext| name.ends_with(ext)) {
+                return true;
+            }
+            // `rglob` doesn't follow links to folders.
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                pending.push(entry.path());
+            }
+        }
+    }
+    false
+}
+
 fn has_incomplete(blobs: &Path) -> bool {
     std::fs::read_dir(blobs).is_ok_and(|entries| {
         entries
@@ -188,6 +223,30 @@ mod tests {
             std::fs::write(&blob, vec![0u8; *size]).unwrap();
             std::os::unix::fs::symlink(format!("../../blobs/blob{i}"), snap.join(name)).unwrap();
         }
+    }
+
+    #[test]
+    fn cached_needs_weights_of_the_kinds_asked_for() {
+        let cache = temp("is-cached");
+        assert!(!is_cached(&cache, "openai/whisper-base", READY_WEIGHTS));
+        snapshot(&cache, "openai/whisper-base", &[("weights.npz", 8)]);
+        assert!(!is_cached(&cache, "openai/whisper-base", READY_WEIGHTS));
+        assert!(is_cached(&cache, "openai/whisper-base", WHISPER_WEIGHTS));
+        let nested = cache
+            .join(repo_folder("openai/whisper-small"))
+            .join("snapshots/abc/sub");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("model.safetensors"), b"").unwrap();
+        assert!(is_cached(&cache, "openai/whisper-small", READY_WEIGHTS));
+    }
+
+    #[test]
+    fn a_download_still_running_is_not_cached() {
+        let cache = temp("incomplete");
+        snapshot(&cache, "openai/whisper-base", &[("model.safetensors", 8)]);
+        let blobs = cache.join(repo_folder("openai/whisper-base")).join("blobs");
+        std::fs::write(blobs.join("x.incomplete"), b"").unwrap();
+        assert!(!is_cached(&cache, "openai/whisper-base", READY_WEIGHTS));
     }
 
     #[test]

@@ -43,6 +43,10 @@ async fn post_within(
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_string()))
         .map_err(|e| e.to_string())?;
+    send(proxy, request, timeout).await
+}
+
+async fn send(proxy: &Proxy, request: Request<Body>, timeout: Duration) -> Result<Value, String> {
     let call = async {
         let response = proxy
             .client()
@@ -64,6 +68,24 @@ async fn post_within(
     tokio::time::timeout(timeout, call)
         .await
         .map_err(|_| format!("no answer in {timeout:?}"))?
+}
+
+/// The worker's own `/health`, which the app also checks when it starts the
+/// worker: which Whisper model is loaded (`model_loaded`, `model_size`) and
+/// the worker process's `pid`, `started_at` and `peak_memory_mb`.
+pub async fn health(proxy: &Proxy) -> Result<Value, String> {
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(format!("http://{}/health", proxy.worker()))
+        .body(Body::empty())
+        .map_err(|e| e.to_string())?;
+    send(proxy, request, TIMEOUT).await
+}
+
+/// Ask the worker to exit (its own `POST /shutdown`). It answers first,
+/// then stops a moment later.
+pub async fn shutdown(proxy: &Proxy) -> Result<(), String> {
+    post(proxy, "/shutdown", json!({})).await.map(drop)
 }
 
 /// Tell the worker the dictionary changed, so the next dictation reads it
