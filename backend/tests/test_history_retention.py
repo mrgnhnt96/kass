@@ -20,7 +20,6 @@ from backend.services import (
     known_names,
     personal_examples,
     styles,
-    usage_stats,
     writing_style,
 )
 from backend.services.settings import get_capture_settings
@@ -99,8 +98,36 @@ def ids(storage):
 
 
 def stats(storage):
+    """What usage stats count (tauri/src-tauri/server/src/usage/stats.rs), one
+    row per capture: saved ones, and those a sweep retired that aren't saved
+    too. Commands aren't counted. Unchanged rows mean unchanged stats."""
+
+    def words(text):
+        return len(text.split()) if text else 0
+
     with storage() as db:
-        return {period: usage_stats.usage_stats(db, period).model_dump() for period in usage_stats.PERIODS}
+        fixed = {capture_id for (capture_id,) in db.query(CaptureFeedback.capture_id)}
+        saved = db.query(Capture).filter(Capture.source != "command").all()
+        rows = [
+            (
+                c.created_at,
+                c.source,
+                c.app_bundle_id,
+                # SQLite's TRIM, as stats use it, strips spaces only.
+                words(c.transcript_refined if (c.transcript_refined or "").strip(" ") else c.transcript_raw),
+                words(c.transcript_raw),
+                c.duration_ms,
+                c.id in fixed,
+            )
+            for c in saved
+        ]
+        live = {c.id for c in db.query(Capture.id)}
+        rows += [
+            (r.created_at, r.source, r.app_bundle_id, r.words, r.raw_words, r.duration_ms, r.fixed)
+            for r in db.query(RetiredCapture).filter(RetiredCapture.source != "command")
+            if r.capture_id not in live
+        ]
+    return sorted(rows, key=repr)
 
 
 def test_retention_defaults_to_30_days(storage):
@@ -170,8 +197,8 @@ def test_stats_totals_stay_the_same_after_a_sweep(storage):
     assert history_retention.sweep() == 5
 
     assert stats(storage) == before
-    assert before["all"]["current"]["captures"] == 6
-    assert before["all"]["current"]["fixed_captures"] == 1
+    assert len(before) == 6
+    assert sum(row[-1] for row in before) == 1
 
 
 def test_sweeping_again_changes_nothing(storage):

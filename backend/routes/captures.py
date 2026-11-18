@@ -113,24 +113,6 @@ async def list_capture_apps_endpoint(db: Session = Depends(get_db)):
     return captures_service.list_capture_apps(db)
 
 
-@router.get("/captures/stats", response_model=models.UsageStatsResponse)
-async def capture_stats_endpoint(
-    period: str = "7d",
-    app_bundle_id: str | None = None,
-    unknown_app: bool = False,
-    db: Session = Depends(get_db),
-):
-    """Dictation stats for one period (today, 7d, 30d, all), in the Mac's
-    local days. ``app_bundle_id`` and ``unknown_app`` narrow them like the
-    capture list."""
-    from ..services import usage_stats
-
-    if period not in usage_stats.PERIODS:
-        raise HTTPException(status_code=400, detail=f"period must be one of {', '.join(usage_stats.PERIODS)}")
-    scope = usage_stats.AppScope(bundle_id=app_bundle_id or None, unknown=unknown_app)
-    return usage_stats.usage_stats(db, period, scope)
-
-
 @router.post("/captures/{capture_id}/refine", response_model=models.CaptureResponse)
 async def refine_capture_endpoint(
     capture_id: str,

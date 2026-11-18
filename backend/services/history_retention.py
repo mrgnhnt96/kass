@@ -113,12 +113,12 @@ def status(db, now: datetime | None = None) -> tuple[int, bool, int]:
 
 
 def _words(text: str | None) -> int:
-    # As usage_stats counts them: runs of non-space.
+    # As usage stats count them (server/src/usage/stats.rs): runs of non-space.
     return len(text.split()) if text else 0
 
 
 def _delivered(row: Capture) -> str:
-    # usage_stats: COALESCE(NULLIF(TRIM(refined), ''), raw). SQLite's TRIM strips spaces only.
+    # usage stats: COALESCE(NULLIF(TRIM(refined), ''), raw). SQLite's TRIM strips spaces only.
     refined = row.transcript_refined
     return refined if refined is not None and refined.strip(" ") else row.transcript_raw
 

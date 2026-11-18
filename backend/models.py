@@ -119,89 +119,6 @@ class CaptureAppsResponse(BaseModel):
     apps: list[CaptureAppCount]
 
 
-class UsageDay(BaseModel):
-    """Words dictated on one local day."""
-
-    date: str
-    words: int
-
-
-class UsageTotals(BaseModel):
-    """One period's dictation, for all apps or one.
-
-    ``pace_wpm`` is the median pace of captures of 2 s and longer (None when
-    there are none). ``time_saved_ms`` is the typing time the words would
-    have taken, less the time spent speaking them.
-    """
-
-    words: int = 0
-    captures: int = 0
-    speaking_ms: int = 0
-    pace_wpm: int | None = None
-    time_saved_ms: int = 0
-    # Captures with a saved correction: a lower bound on those that needed a fix.
-    fixed_captures: int = 0
-    weekdays_dictated: int = 0
-    weekdays_in_period: int = 0
-    weekend_days: list[UsageDay] = Field(default_factory=list)
-    hours_dictated: int = 0
-
-
-class UsagePoint(BaseModel):
-    """One point of the words chart: an hour, a day or a week (``start``, local).
-
-    ``words`` is None for an hour still to come today. The previous period's
-    matching point is None for All time, which has nothing to compare with.
-    """
-
-    start: str
-    words: int | None = None
-    previous_start: str | None = None
-    previous_words: int | None = None
-
-
-class UsageApp(BaseModel):
-    """One app's share of the period, for "Where you dictate". None is no app recorded."""
-
-    app_bundle_id: str | None = None
-    words: int
-    captures: int
-
-
-class UsageLengths(BaseModel):
-    """How long dictations run: counts per length bin, and the quartiles."""
-
-    bin_edges_s: list[int]
-    counts: list[int]
-    p25_ms: int | None = None
-    median_ms: int | None = None
-    p75_ms: int | None = None
-
-
-class UsageStatsResponse(BaseModel):
-    """``GET /captures/stats``: one period's dictation, for the Captures card and Insights.
-
-    Dates are the Mac's local days. ``current`` and everything after it follow
-    the app filter; ``all_apps`` and ``apps`` are always every app's, for
-    comparison. ``heatmap`` is words by local weekday (Monday first) and hour.
-    """
-
-    period: Literal["today", "7d", "30d", "all"]
-    bucket: Literal["hour", "day", "week"]
-    start: str
-    end: str
-    previous_start: str | None = None
-    previous_end: str | None = None
-    typing_wpm: int
-    current: UsageTotals
-    previous: UsageTotals | None = None
-    all_apps: UsageTotals
-    series: list[UsagePoint]
-    apps: list[UsageApp]
-    heatmap: list[list[int]]
-    lengths: UsageLengths
-
-
 class CaptureCreateResponse(CaptureResponse):
     """
     Response model for ``POST /captures``.
@@ -275,7 +192,7 @@ class CaptureSettingsResponse(BaseModel):
     onboarding_completed: bool = False
     # Delete each recording once its transcript is saved.
     discard_audio: bool = False
-    # Send anonymous daily usage counts (services/usage_report.py).
+    # Send anonymous daily usage counts (tauri/src-tauri/server/src/usage/report.rs).
     share_usage: bool = True
     # Start from the adapters Kass ships (services/shared_adapters.py).
     shared_adapters: bool = True
