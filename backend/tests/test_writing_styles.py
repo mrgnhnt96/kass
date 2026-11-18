@@ -306,7 +306,7 @@ def test_flags_keep_old_snapshots_equal():
 def test_worker_style_routes(storage, monkeypatch):
     from backend.routes.styles import router
     from backend.routes.writing_style import worker_router as learned_router
-    from backend.services import correction_notes, llm, personal_examples, teach, writing_style
+    from backend.services import correction_notes, llm, personal_examples, writing_style
 
     monkeypatch.setattr(llm, "get_llm_model", lambda: Backend(tokens=1000))
     seed(storage)
@@ -315,7 +315,6 @@ def test_worker_style_routes(storage, monkeypatch):
         db.commit()
     calls = []
     monkeypatch.setattr(personal_examples, "invalidate", lambda: calls.append("examples"))
-    monkeypatch.setattr(teach, "forget_style", lambda style: calls.append(("teach", style)))
     monkeypatch.setattr(writing_style, "reload", lambda: calls.append("habits"))
     monkeypatch.setattr(correction_notes, "reload", lambda: calls.append("notes"))
 
@@ -331,7 +330,13 @@ def test_worker_style_routes(storage, monkeypatch):
 
     state = client.post("/worker/styles/state").json()
     # 1000 prompt tokens and a dictation round up to 1280 cached tokens on 4B.
-    assert state == {"cache_mb_per_style": round(1280 * 147456 / 1e6), "teaching_style": None}
+    assert state == {"cache_mb_per_style": round(1280 * 147456 / 1e6)}
+
+    # A teach session is open in the Rust server: Kass's own window uses its style.
+    assert client.post("/worker/styles/teaching", json={"style": "personal", "ttl_seconds": 60}).json() == {"ok": True}
+    assert styles.teaching_style() == "personal"
+    client.post("/worker/styles/teaching", json={"style": None, "ttl_seconds": 0})
+    assert styles.teaching_style() is None
 
     # The server wrote a style: the worker sees it once told.
     styles.snapshot()
@@ -342,16 +347,14 @@ def test_worker_style_routes(storage, monkeypatch):
     assert [style.id for style in styles.snapshot().styles] == ["personal", "chat"]
     assert calls == []
 
-    # What a deleted style learned is forgotten by the Rust server.
-    client.post("/worker/styles/changed", json={"examples": True, "deleted": "chat"})
-    assert calls == ["examples", ("teach", "chat")]
+    # Examples are regrouped; what a deleted style learned is forgotten by the Rust server.
+    client.post("/worker/styles/changed", json={"examples": True})
+    assert calls == ["examples"]
 
     # The Rust server changed the learned files: the worker rereads them.
     calls.clear()
     assert client.post("/worker/learned/changed", json={}).json() == {"ok": True}
     assert calls == ["habits", "notes", "examples"]
-    client.post("/worker/learned/changed", json={"forget_teaching": "personal"})
-    assert calls[-1] == ("teach", "personal")
 
 
 def test_a_style_description_goes_into_only_its_own_cleanup_prompt(storage):

@@ -32,7 +32,7 @@ async fn dictionary_changed(State(worker): State<Worker>) -> Json<Value> {
 }
 
 async fn styles_state() -> Json<Value> {
-    Json(json!({"cache_mb_per_style": 189, "teaching_style": null}))
+    Json(json!({"cache_mb_per_style": 189}))
 }
 
 async fn start_worker(worker: Worker) -> SocketAddr {
@@ -157,8 +157,8 @@ impl Drop for Kass {
     }
 }
 
-fn changed(examples: bool, deleted: Option<&str>) -> Value {
-    json!({"examples": examples, "deleted": deleted})
+fn changed(examples: bool) -> Value {
+    json!({"examples": examples})
 }
 
 #[tokio::test]
@@ -191,7 +191,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(confirmed["apps"][0]["confirmed"], true);
     assert_eq!(confirmed["apps"][0]["style_id"], "personal");
     assert_eq!(confirmed["apps"][0]["suggested_style_id"], Value::Null);
-    assert_eq!(kass.told(), vec![changed(false, None)]);
+    assert_eq!(kass.told(), vec![changed(false)]);
     // Already confirmed: nothing new to tell.
     kass.call("POST", "/writing-styles/apps/confirm", Some(apps))
         .await;
@@ -203,7 +203,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(status, 200);
     assert_eq!(chat["position"], 1);
     let chat = chat["id"].as_str().unwrap().to_string();
-    assert_eq!(kass.told(), vec![changed(false, None)]);
+    assert_eq!(kass.told(), vec![changed(false)]);
 
     let path = format!("/writing-styles/apps/{WHATSAPP}");
     let (status, listing) = kass
@@ -217,7 +217,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(listing["apps"][0]["style_id"], json!(chat));
     assert_eq!(listing["apps"][0]["confirmed"], true);
     assert_eq!(listing["apps"][0]["corrections"], 0);
-    assert_eq!(kass.told(), vec![changed(true, None)]);
+    assert_eq!(kass.told(), vec![changed(true)]);
     assert_eq!(
         kass.query("SELECT teaches_style_id FROM captures"),
         vec![vec![json!("personal")]]
@@ -261,7 +261,7 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(status, 200);
     assert_eq!(described["description"], "Informal.\nNo greetings.");
     assert_eq!(described["name"], "Chat");
-    assert_eq!(kass.told(), vec![changed(false, None)]);
+    assert_eq!(kass.told(), vec![changed(false)]);
     let (status, long) = kass
         .call(
             "PATCH",
@@ -298,10 +298,7 @@ async fn styles_and_apps_round_trip() {
         .call("DELETE", &format!("/writing-styles/{chat}"), None)
         .await;
     assert_eq!(status, 204);
-    assert_eq!(
-        kass.told(),
-        vec![json!("dictionary"), changed(true, Some(&chat))]
-    );
+    assert_eq!(kass.told(), vec![json!("dictionary"), changed(true)]);
     let (_, listing) = kass.call("GET", "/writing-styles", None).await;
     assert_eq!(listing["styles"].as_array().unwrap().len(), 1);
     // Its app is unassigned again, so new.
@@ -330,7 +327,7 @@ async fn making_a_style_the_default_regroups_examples() {
         .await;
     assert_eq!(status, 200);
     assert_eq!(made["is_default"], true);
-    assert_eq!(kass.told(), vec![changed(true, None)]);
+    assert_eq!(kass.told(), vec![changed(true)]);
     let (_, listing) = kass.call("GET", "/writing-styles", None).await;
     let defaults: Vec<&Value> = listing["styles"]
         .as_array()

@@ -9,11 +9,8 @@
 //! cleans up. Python: `backend/services/writing_style.py`,
 //! `personal_examples.py` and `correction_notes.py`.
 //!
-//! The notes are summarized here too (`correction_notes`). One writer is
-//! still in the worker: a teach session's finish saves its replies
-//! (`writing_style.save_run`). The teach finish is forwarded while holding [`FILES`]
-//! (`routes::writing_style`), so it can't land between a read and a write
-//! here.
+//! The notes are summarized here too (`correction_notes`), and a teach
+//! session's finish saves its replies (`Files::save_run`, `routes::teach`).
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -35,6 +32,8 @@ use crate::{worker, AppState};
 
 pub const WRITING_STYLE: &str = "writing-style.json";
 pub const CORRECTION_NOTES: &str = "correction-notes.json";
+/// Taught replies a style keeps, newest last.
+const MAX_RUN_EXAMPLES: usize = 50;
 
 /// Bumped when `observe` counts corrections differently, so saved counts
 /// are recounted at start. 2: corrections that only fix words count nothing.
@@ -425,6 +424,29 @@ impl Files {
         self.forget_notes(style_id);
     }
 
+    /// Keep a teach session's replies in `style_id`'s profile. Each example
+    /// has `said` (null for a typed reply), `shown` and `written`, the way
+    /// calibration rewrites were kept, so examples and habits read them
+    /// unchanged.
+    pub fn save_run(&mut self, style_id: &str, examples: Vec<Value>) {
+        let mut profile = profile_json(&self.writing, style_id);
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.6f+00:00")
+            .to_string();
+        let mut kept = profile["examples"].as_array().cloned().unwrap_or_default();
+        kept.extend(examples.into_iter().map(|mut example| {
+            example["created_at"] = json!(now);
+            example
+        }));
+        let over = kept.len().saturating_sub(MAX_RUN_EXAMPLES);
+        kept.drain(..over);
+        profile["examples"] = Value::Array(kept);
+        profile["runs"] = json!(profile["runs"].as_i64().unwrap_or(0) + 1);
+        profile["last_run_at"] = json!(now);
+        styles_mut(&mut self.writing).insert(style_id.to_string(), profile);
+        self.writing_changed = true;
+    }
+
     pub fn hide(&mut self, example_id: &str) {
         hide(&mut self.writing, example_id);
         self.writing_changed = true;
@@ -474,8 +496,8 @@ impl Files {
 
 /// Read the learned files, change them with `edit`, and write what changed,
 /// under [`FILES`]. When anything was written the apps hear `learned` and
-/// the worker rereads the files; `forget_teaching` also ends the worker's
-/// teach sessions in that style.
+/// the worker rereads the files; `forget_teaching` also ends the teach
+/// sessions open in that style.
 pub async fn change<T, F>(
     state: &AppState,
     forget_teaching: Option<&str>,
@@ -502,8 +524,12 @@ where
     if written {
         state.events.publish(Kind::Learned);
     }
-    if written || forget_teaching.is_some() {
-        worker::learned_changed(&state.proxy, forget_teaching).await;
+    if let Some(style) = forget_teaching {
+        state.teach.forget_style(style);
+        state.teach.tell_worker(&state.proxy);
+    }
+    if written {
+        worker::learned_changed(&state.proxy).await;
     }
     Ok(answer)
 }
@@ -511,7 +537,7 @@ where
 /// Recount every style's habits from its corrections: after a correction
 /// changes or an app moves to another style.
 pub async fn recount_habits(state: &AppState) {
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     let recounted = change(state, None, move |conn, files| {
         files.recount(conn, &styles::load(conn, teaching)?)
     })
@@ -521,10 +547,12 @@ pub async fn recount_habits(state: &AppState) {
     }
 }
 
-/// A style was deleted: forget what it learned, and count its corrections
-/// for the styles they teach now.
+/// A style was deleted: end its teach sessions, forget what it learned, and
+/// count its corrections for the styles they teach now.
 pub async fn forget_style(state: &AppState, style_id: &str) {
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    state.teach.forget_style(style_id);
+    state.teach.tell_worker(&state.proxy);
+    let teaching = state.teach.teaching_style();
     let style_id = style_id.to_string();
     let forgotten = change(state, None, move |conn, files| {
         files.forget_style(&style_id);

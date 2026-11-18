@@ -32,7 +32,7 @@ use crate::settings::{self, Settings};
 use crate::stream::models::{self, Generate, RecognizeFile};
 use crate::stream::session::{cleanup_prompt, flags_json, review_json};
 use crate::styles::{self, Snapshot};
-use crate::{worker, AppState};
+use crate::AppState;
 
 /// `VALID_SOURCES`, sorted as Python lists them in its error.
 const SOURCES: [&str; 4] = ["command", "dictation", "file", "recording"];
@@ -98,7 +98,7 @@ fn data_dir(state: &AppState) -> PathBuf {
 
 /// The saved settings and the styles as they stand.
 async fn settings_and_styles(state: &AppState) -> Result<(Settings, Snapshot), Failure> {
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     Ok(state
         .db
         .call(move |conn| Ok((settings::get(conn)?, styles::load(conn, teaching)?)))

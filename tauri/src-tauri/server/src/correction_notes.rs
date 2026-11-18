@@ -368,7 +368,7 @@ pub async fn run_once(state: &AppState) -> Result<Option<Value>, String> {
     let Some(generation) = worker::idle_generation(&state.proxy).await else {
         return Ok(None);
     };
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     let dir = learned::data_dir(state);
     let work = state
         .db
@@ -706,7 +706,6 @@ mod job_tests {
             .route("/worker/learning/idle", post(idle))
             .route("/worker/learning/generate", post(generate))
             .route("/worker/learned/changed", post(changed))
-            .route("/worker/styles/state", post(|| async { Json(json!({})) }))
             .with_state(worker);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

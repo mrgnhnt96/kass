@@ -64,8 +64,8 @@ fn failed(error: crate::db::DbError) -> Response {
 
 /// Every style and every app with the style it uses, as the page shows them.
 async fn listing(state: &AppState) -> Response {
-    let worker_state = worker::styles_state(&state.proxy).await;
-    let teaching = worker_state.teaching_style;
+    let cache_mb_per_style = worker::cache_mb_per_style(&state.proxy).await;
+    let teaching = state.teach.teaching_style();
     match state
         .db
         .call(move |conn| styles::listing(conn, teaching))
@@ -75,7 +75,7 @@ async fn listing(state: &AppState) -> Response {
             styles: listed.styles,
             apps: listed.apps,
             max_styles: MAX_STYLES,
-            cache_mb_per_style: worker_state.cache_mb_per_style,
+            cache_mb_per_style,
         })
         .into_response(),
         Err(error) => failed(error),
@@ -251,7 +251,7 @@ async fn create_style(State(state): State<AppState>, bytes: Bytes) -> Response {
         .await
     {
         Ok(Ok(style)) => {
-            worker::styles_changed(&state.proxy, false, None).await;
+            worker::styles_changed(&state.proxy, false).await;
             Json(style).into_response()
         }
         Ok(Err(refusal)) => refused(refusal),
@@ -277,7 +277,7 @@ async fn update_style(
         .await
     {
         Ok(Ok(style)) => {
-            worker::styles_changed(&state.proxy, new_default, None).await;
+            worker::styles_changed(&state.proxy, new_default).await;
             Json(style).into_response()
         }
         Ok(Err(refusal)) => refused(refusal),
@@ -303,7 +303,7 @@ async fn delete_style(State(state): State<AppState>, Path(style_id): Path<String
     match deleted {
         Ok(Ok(())) => {
             worker::dictionary_changed(&state.proxy).await;
-            worker::styles_changed(&state.proxy, true, Some(&style_id)).await;
+            worker::styles_changed(&state.proxy, true).await;
             learned::forget_style(&state, &style_id).await;
             StatusCode::NO_CONTENT.into_response()
         }
@@ -321,7 +321,7 @@ async fn confirm_apps(State(state): State<AppState>, bytes: Bytes) -> Response {
         .into_iter()
         .filter_map(|(bundle, name)| Some((app_field(Some(&bundle))?, app_field(name.as_deref()))))
         .collect();
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     let sync = state.sync;
     match state
         .db
@@ -330,7 +330,7 @@ async fn confirm_apps(State(state): State<AppState>, bytes: Bytes) -> Response {
     {
         Ok(added) => {
             if added {
-                worker::styles_changed(&state.proxy, false, None).await;
+                worker::styles_changed(&state.proxy, false).await;
             }
             listing(&state).await
         }
@@ -351,7 +351,7 @@ async fn assign_app(
         return detail(StatusCode::BAD_REQUEST, "Name an app");
     };
     let name = app_field(assignment.app_name.as_deref());
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     let sync = state.sync;
     let assigned = state
         .db
@@ -369,7 +369,7 @@ async fn assign_app(
         .await;
     match assigned {
         Ok(Ok(())) => {
-            worker::styles_changed(&state.proxy, true, None).await;
+            worker::styles_changed(&state.proxy, true).await;
             learned::recount_habits(&state).await;
             listing(&state).await
         }

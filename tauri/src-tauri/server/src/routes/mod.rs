@@ -17,6 +17,7 @@ pub mod settings;
 pub mod styles;
 pub mod sync;
 pub mod tasks;
+pub mod teach;
 pub mod transcription;
 pub mod usage;
 pub mod writing_style;
@@ -52,6 +53,7 @@ pub fn router(state: AppState) -> Router {
         .merge(styles::router())
         .merge(tasks::router())
         .merge(writing_style::router())
+        .merge(teach::router())
         .merge(dictionary::router())
         .merge(links::router())
         .merge(usage::router())

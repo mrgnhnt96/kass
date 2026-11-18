@@ -21,9 +21,13 @@ logger = logging.getLogger(__name__)
 class StylesChanged(BaseModel):
     # Apps moved or the default changed: regroup the examples by style.
     examples: bool = False
-    # A style that was deleted: end its teach sessions. What it learned is
-    # forgotten by the Rust server, which owns the learned files.
-    deleted: str | None = None
+
+
+class Teaching(BaseModel):
+    # The style a teach session is open on in the Rust server; None: none is.
+    style: str | None = None
+    # When it lapses unless the server says again.
+    ttl_seconds: float = 0
 
 
 @router.post("/changed")
@@ -33,10 +37,14 @@ def changed(request: StylesChanged):
         from ..services import personal_examples
 
         personal_examples.invalidate()
-    if request.deleted:
-        from ..services import teach
+    return {"ok": True}
 
-        teach.forget_style(request.deleted)
+
+@router.post("/teaching")
+def teaching(request: Teaching):
+    """Dictation in Kass's own window is cleaned up and filed in the style
+    being taught while a teach session is open."""
+    styles_service.teach_in_kass(request.style, request.ttl_seconds)
     return {"ok": True}
 
 
@@ -59,6 +67,5 @@ def _cache_mb(db: Session) -> int | None:
 
 @router.post("/state")
 def state(db: Session = Depends(get_db)):
-    """What only the worker knows: each style's prompt cache size, and the
-    style a teach session is open on, which Kass's own window uses meanwhile."""
-    return {"cache_mb_per_style": _cache_mb(db), "teaching_style": styles_service.teaching_style()}
+    """What only the worker knows: each style's prompt cache size."""
+    return {"cache_mb_per_style": _cache_mb(db)}

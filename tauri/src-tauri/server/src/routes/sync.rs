@@ -179,11 +179,11 @@ async fn import_changes(State(state): State<AppState>, request: Request) -> Resp
     state.dictionaries.invalidate();
     worker::dictionary_changed(&state.proxy).await;
     for style in &applied.styles_deleted {
-        worker::styles_changed(&state.proxy, true, Some(style)).await;
+        worker::styles_changed(&state.proxy, true).await;
         learned::forget_style(&state, style).await;
     }
     if applied.styles {
-        worker::styles_changed(&state.proxy, false, None).await;
+        worker::styles_changed(&state.proxy, false).await;
     }
     let mut reports: BTreeMap<bool, Vec<(String, String)>> = BTreeMap::new();
     for (pair, withdrawn) in applied.reports {

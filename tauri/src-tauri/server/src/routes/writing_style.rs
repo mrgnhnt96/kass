@@ -2,14 +2,12 @@
 //! sessions. Python: `backend/routes/writing_style.py`.
 //!
 //! What each style learned is answered and changed here (`learned`); the
-//! teach sessions still run in the worker.
+//! teach sessions are in `routes::teach`.
 
-use std::net::SocketAddr;
-
-use axum::extract::{ConnectInfo, Path, Query, Request, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -17,9 +15,8 @@ use serde_json::{json, Value};
 use super::request::detail;
 use crate::cleanup_inputs::{self, PersonalExample};
 use crate::learned::{self, Files};
-use crate::proxy::{self, to_worker};
 use crate::styles::{self, Snapshot};
-use crate::{worker, AppState};
+use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -28,42 +25,15 @@ pub fn router() -> Router<AppState> {
         .route("/writing-style/examples/{example_id}", delete(hide_example))
         .route("/writing-style/notes", get(notes))
         .route("/writing-style/notes/{note_id}", delete(remove_note))
-        .route("/writing-style/teach", to_worker())
-        .route("/writing-style/teach/{session_id}", to_worker())
-        .route("/writing-style/teach/{session_id}/finish", post(finish))
-        .route(
-            "/writing-style/teach/{session_id}/conversations",
-            to_worker(),
-        )
-        .route(
-            "/writing-style/teach/{session_id}/conversations/{conversation_id}/new-theme",
-            to_worker(),
-        )
-        .route(
-            "/writing-style/teach/{session_id}/conversations/{conversation_id}/wrap-up",
-            to_worker(),
-        )
-        .route(
-            "/writing-style/teach/{session_id}/conversations/{conversation_id}/dictated",
-            to_worker(),
-        )
-        .route(
-            "/writing-style/teach/{session_id}/conversations/{conversation_id}/restart-turn",
-            to_worker(),
-        )
-        .route(
-            "/writing-style/teach/{session_id}/conversations/{conversation_id}/replies",
-            to_worker(),
-        )
 }
 
 /// `?style=`: a style id, or the default style when left out or empty.
 #[derive(Deserialize)]
-struct StyleQuery {
-    style: Option<String>,
+pub(super) struct StyleQuery {
+    pub(super) style: Option<String>,
 }
 
-const STYLE_NOT_FOUND: &str = "Style not found";
+pub(super) const STYLE_NOT_FOUND: &str = "Style not found";
 
 /// A known style's id, as Python's `_style`.
 fn known(styles: &Snapshot, style: Option<&str>) -> Option<String> {
@@ -73,13 +43,13 @@ fn known(styles: &Snapshot, style: Option<&str>) -> Option<String> {
     }
 }
 
-fn failed(error: impl std::fmt::Display) -> Response {
+pub(super) fn failed(error: impl std::fmt::Display) -> Response {
     eprintln!("[server] learned writing style: {error}");
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
 }
 
 /// The style `query` names, read from `kass.db`; `None` when it doesn't exist.
-async fn resolve(state: &AppState, query: StyleQuery) -> Result<Option<String>, String> {
+pub(super) async fn resolve(state: &AppState, query: StyleQuery) -> Result<Option<String>, String> {
     state
         .db
         .call(move |conn| Ok(known(&styles::load(conn, None)?, query.style.as_deref())))
@@ -139,7 +109,7 @@ async fn style_examples(
     state: &AppState,
     query: StyleQuery,
 ) -> Result<Option<(String, Vec<PersonalExample>)>, String> {
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     let dir = learned::data_dir(state);
     state
         .db
@@ -168,7 +138,7 @@ async fn examples(State(state): State<AppState>, Query(query): Query<StyleQuery>
 
 /// Stop using an example; corrections stay recorded for the personal model.
 async fn hide_example(State(state): State<AppState>, Path(example_id): Path<String>) -> Response {
-    let teaching = worker::styles_state(&state.proxy).await.teaching_style;
+    let teaching = state.teach.teaching_style();
     let hidden = learned::change(&state, None, move |conn, files: &mut Files| {
         let styles = styles::load(conn, teaching)?;
         let known = learned::known_example(conn, &files.writing, &styles, &example_id)?;
@@ -215,15 +185,4 @@ async fn remove_note(
         Ok(false) => detail(StatusCode::NOT_FOUND, "Rule not found"),
         Err(error) => failed(error),
     }
-}
-
-/// A teach session's finish saves its replies to `writing-style.json` from
-/// the worker: it's forwarded while no change here is under way.
-async fn finish(
-    State(state): State<AppState>,
-    client: ConnectInfo<SocketAddr>,
-    request: Request,
-) -> Response {
-    let _held = learned::FILES.lock().await;
-    proxy::forward(State(state), client, request).await
 }
