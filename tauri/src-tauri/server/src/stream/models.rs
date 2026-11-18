@@ -130,23 +130,52 @@ fn recognize_body(request: &Recognize, pcm: &[i16]) -> Vec<u8> {
     body
 }
 
+/// Why a call has no answer: the worker's status when it gave one, and
+/// its `detail` (or what went wrong on the way).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Failure {
+    pub status: Option<StatusCode>,
+    pub detail: String,
+}
+
+impl Failure {
+    fn other(detail: impl Into<String>) -> Self {
+        Self {
+            status: None,
+            detail: detail.into(),
+        }
+    }
+
+    /// The worker turned the request down (422): a model that isn't
+    /// downloaded, a rewrite that came back empty.
+    pub fn refused(&self) -> bool {
+        self.status == Some(StatusCode::UNPROCESSABLE_ENTITY)
+    }
+}
+
+impl From<Failure> for String {
+    fn from(failure: Failure) -> Self {
+        failure.detail
+    }
+}
+
 async fn send(
     proxy: &Proxy,
     path: &str,
     content_type: &str,
     body: Vec<u8>,
-) -> Answer<hyper::Response<Incoming>> {
+) -> Result<hyper::Response<Incoming>, Failure> {
     let request = Request::builder()
         .method(Method::POST)
         .uri(format!("http://{}{path}", proxy.worker()))
         .header(header::CONTENT_TYPE, content_type)
         .body(Body::from(body))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| Failure::other(e.to_string()))?;
     let response = proxy
         .client()
         .request(request)
         .await
-        .map_err(|e| format!("the model worker didn't answer: {e}"))?;
+        .map_err(|e| Failure::other(format!("the model worker didn't answer: {e}")))?;
     if response.status().is_success() {
         return Ok(response);
     }
@@ -155,9 +184,12 @@ async fn send(
         .into_body()
         .collect()
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| Failure::other(e.to_string()))?
         .to_bytes();
-    Err(failure(status, &bytes))
+    Err(Failure {
+        status: Some(status),
+        detail: failure(status, &bytes),
+    })
 }
 
 fn failure(status: StatusCode, body: &[u8]) -> String {
@@ -167,6 +199,28 @@ fn failure(status: StatusCode, body: &[u8]) -> String {
         .unwrap_or_else(|| format!("{status}: {}", String::from_utf8_lossy(body)))
 }
 
+async fn fetch<T: for<'de> Deserialize<'de>>(
+    proxy: &Proxy,
+    path: &str,
+    content_type: &str,
+    body: Vec<u8>,
+    timeout: Duration,
+) -> Result<T, Failure> {
+    let answer = async {
+        let response = send(proxy, path, content_type, body).await?;
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| Failure::other(e.to_string()))?
+            .to_bytes();
+        serde_json::from_slice(&bytes).map_err(|e| Failure::other(e.to_string()))
+    };
+    tokio::time::timeout(timeout, answer)
+        .await
+        .map_err(|_| Failure::other(format!("the model worker didn't answer in {timeout:?}")))?
+}
+
 async fn call<T: for<'de> Deserialize<'de>>(
     proxy: &Proxy,
     path: &str,
@@ -174,19 +228,7 @@ async fn call<T: for<'de> Deserialize<'de>>(
     body: Vec<u8>,
     timeout: Duration,
 ) -> Answer<T> {
-    let answer = async {
-        let response = send(proxy, path, content_type, body).await?;
-        let bytes = response
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| e.to_string())?
-            .to_bytes();
-        serde_json::from_slice(&bytes).map_err(|e| e.to_string())
-    };
-    tokio::time::timeout(timeout, answer)
-        .await
-        .map_err(|_| format!("the model worker didn't answer in {timeout:?}"))?
+    Ok(fetch(proxy, path, content_type, body, timeout).await?)
 }
 
 async fn call_json<T: for<'de> Deserialize<'de>>(
@@ -234,6 +276,38 @@ pub async fn recognize_file(proxy: &Proxy, request: &RecognizeFile) -> Answer<Re
     })
 }
 
+/// Whisper's text for an uploaded file in any format the worker decodes
+/// (`POST /transcribe`), and the audio's length in seconds. Silence is "".
+pub async fn transcribe_upload(
+    proxy: &Proxy,
+    path: &str,
+    language: Option<&str>,
+    stt_model: &str,
+) -> Result<(String, f64), Failure> {
+    #[derive(Deserialize)]
+    struct Transcribed {
+        text: String,
+        duration: f64,
+    }
+    let body = json!({
+        "path": path,
+        "language": language,
+        "stt_model": stt_model,
+        "check_speech": true,
+        "decode": true,
+    });
+    let body = serde_json::to_vec(&body).map_err(|e| Failure::other(e.to_string()))?;
+    let answer: Transcribed = fetch(
+        proxy,
+        "/worker/recognize/file",
+        "application/json",
+        body,
+        RECOGNIZE_FILE_TIMEOUT,
+    )
+    .await?;
+    Ok((answer.text, answer.duration))
+}
+
 /// The words of a phrase recognized with `alignment`, worked out in the
 /// worker off its model thread. Each alignment answers once.
 pub async fn alignment_words(proxy: &Proxy, alignment: &str) -> Answer<Vec<Word>> {
@@ -253,9 +327,19 @@ pub async fn generate(
     request: &Generate,
     partial: impl FnMut(&str),
 ) -> Answer<Generated> {
-    tokio::time::timeout(CLEANUP_TIMEOUT, read_generation(proxy, request, partial))
+    generate_within(proxy, request, CLEANUP_TIMEOUT, partial).await
+}
+
+/// [`generate`], given `timeout` to finish.
+pub async fn generate_within(
+    proxy: &Proxy,
+    request: &Generate,
+    timeout: Duration,
+    partial: impl FnMut(&str),
+) -> Answer<Generated> {
+    tokio::time::timeout(timeout, read_generation(proxy, request, partial))
         .await
-        .map_err(|_| format!("the cleanup didn't finish in {CLEANUP_TIMEOUT:?}"))?
+        .map_err(|_| format!("the cleanup didn't finish in {timeout:?}"))?
 }
 
 async fn read_generation(
@@ -341,6 +425,17 @@ pub async fn command_rewrite(
     instruction: &str,
     model_size: &str,
 ) -> Answer<(String, String)> {
+    Ok(rewrite(proxy, selection, instruction, model_size).await?)
+}
+
+/// [`command_rewrite`], saying whether the worker refused the request or
+/// failed running it.
+pub async fn rewrite(
+    proxy: &Proxy,
+    selection: &str,
+    instruction: &str,
+    model_size: &str,
+) -> Result<(String, String), Failure> {
     #[derive(Deserialize)]
     struct Rewritten {
         text: String,
@@ -348,8 +443,15 @@ pub async fn command_rewrite(
     }
     let body =
         json!({ "selection": selection, "instruction": instruction, "model_size": model_size });
-    let answer: Rewritten =
-        call_json(proxy, "/worker/command/rewrite", &body, COMMAND_TIMEOUT).await?;
+    let body = serde_json::to_vec(&body).map_err(|e| Failure::other(e.to_string()))?;
+    let answer: Rewritten = fetch(
+        proxy,
+        "/worker/command/rewrite",
+        "application/json",
+        body,
+        COMMAND_TIMEOUT,
+    )
+    .await?;
     Ok((answer.text, answer.model))
 }
 

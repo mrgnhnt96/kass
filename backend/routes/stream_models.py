@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import struct
 import threading
 import time
@@ -61,6 +62,11 @@ class RecognizeFile(BaseModel):
     stt_model: str | None = None
     previous_text: str | None = None
     vocabulary: list[str] = []
+    # Return "" without running Whisper when no voice is heard.
+    check_speech: bool = False
+    # An upload in any format librosa reads (POST /transcribe): decoded
+    # here, and its length answered as ``duration``.
+    decode: bool = False
 
 
 class Cleanup(BaseModel):
@@ -164,17 +170,50 @@ async def recognize(request: Request):
 
 @router.post("/recognize/file")
 async def recognize_file(request: RecognizeFile):
-    """Whisper's text for a whole recording, when the phrases couldn't be joined."""
+    """Whisper's text for a whole recording, when the phrases couldn't be joined, or for an upload."""
     started = time.monotonic()
-    text = await get_whisper_model().transcribe(
-        request.path,
-        request.language,
-        request.stt_model,
-        previous_text=request.previous_text,
-        check_speech=False,
-        vocabulary=tuple(request.vocabulary),
-    )
-    return {"text": text.strip(), "seconds": time.monotonic() - started}
+    path, duration = request.path, None
+    try:
+        if request.decode:
+            path, duration = await asyncio.to_thread(_decoded, request.path)
+        text = await get_whisper_model().transcribe(
+            path,
+            request.language,
+            request.stt_model,
+            previous_text=request.previous_text,
+            check_speech=request.check_speech,
+            vocabulary=tuple(request.vocabulary),
+        )
+    except Exception as error:
+        logger.warning("Recognizing %s failed", request.path, exc_info=True)
+        return JSONResponse(status_code=500, content={"detail": str(error)})
+    finally:
+        if path != request.path:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+    answer = {"text": text.strip(), "seconds": time.monotonic() - started}
+    if duration is not None:
+        answer["duration"] = duration
+    return answer
+
+
+def _decoded(path: str) -> tuple[str, float]:
+    """A file Whisper can read for ``path``, and the audio's length in seconds.
+
+    The STT backend (mlx_audio.stt -> miniaudio) only decodes WAV/FLAC/MP3/
+    Vorbis, so a browser's WebM/Opus upload is decoded by librosa (which falls
+    back to audioread/ffmpeg) and written out as a WAV beside it; a WAV is
+    read as it is.
+    """
+    from ..utils.audio import load_audio, save_audio
+
+    audio, sr = load_audio(path)
+    duration = len(audio) / sr
+    if path.lower().endswith(".wav"):
+        return path, duration
+    wav = f"{path}.stt.wav"
+    save_audio(audio, wav, sr)
+    return wav, duration
 
 
 @router.post("/alignments/{key}/words")
