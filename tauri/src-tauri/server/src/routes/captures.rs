@@ -20,6 +20,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::NaiveDateTime;
+use kass_text::spelling::join_spelling;
+use kass_text::text_merge::take_back;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tower::ServiceExt;
@@ -95,14 +97,6 @@ pub(super) fn capture_not_found() -> Response {
 fn failed(error: crate::db::DbError) -> Response {
     eprintln!("[server] captures: {error}");
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
-}
-
-fn worker_down(error: String) -> Response {
-    eprintln!("[server] the model worker didn't answer: {error}");
-    detail(
-        StatusCode::BAD_GATEWAY,
-        "The Kass model worker isn't answering",
-    )
 }
 
 pub(super) fn invalid(problems: Problems) -> Response {
@@ -526,10 +520,7 @@ async fn report(
     let expected = if request.source == "manual" {
         request.expected_text
     } else {
-        match worker::join_spelling(&state.proxy, &request.expected_text).await {
-            Ok(joined) => joined,
-            Err(error) => return worker_down(error),
-        }
+        join_spelling(&request.expected_text)
     };
     if expected == original {
         return conflict("Expected output must differ from the model output.");
@@ -620,15 +611,12 @@ async fn withdraw(
         _ => stack[at - 1].expected_text.clone(),
     };
     let newer = &stack[at + 1..];
-    let texts: Vec<String> = newer.iter().map(|r| r.expected_text.clone()).collect();
-    let texts = match worker::take_back(&state.proxy, &before, &row.expected_text, &texts).await {
-        Ok(texts) => texts,
-        Err(error) => return worker_down(error),
-    };
     let updates: Vec<(String, Option<String>)> = newer
         .iter()
-        .zip(texts)
-        .map(|(report, text)| (report.id.clone(), (text != original).then_some(text)))
+        .map(|report| {
+            let text = take_back(&before, &row.expected_text, &report.expected_text);
+            (report.id.clone(), (text != original).then_some(text))
+        })
         .collect();
     let sync = state.sync;
     let (id, kept) = (row.id.clone(), updates.clone());

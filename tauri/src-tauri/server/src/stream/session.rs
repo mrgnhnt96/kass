@@ -20,6 +20,7 @@ use kass_text::py;
 use kass_text::re;
 use kass_text::refinement::{self, Flags, Punctuation};
 use kass_text::sentence_tail;
+use kass_text::spelling;
 use kass_text::spoken_corrections::retracted_by;
 use kass_text::spoken_punctuation::period_after_closers;
 use kass_text::voice_commands::{commands_alone, mark_commands};
@@ -2034,7 +2035,7 @@ impl Session {
                 return Ok(());
             }
         };
-        let expected = worker::join_spelling(&self.app.proxy, &expected).await?;
+        let expected = spelling::join_spelling(&expected);
         let original = capture.output(target).unwrap_or_default().to_string();
         if expected == original {
             return Ok(());

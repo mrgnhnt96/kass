@@ -1,6 +1,6 @@
 //! Captures, their audio, reports and events against a real kass.db, in
-//! front of a stand-in worker that joins spelling, takes back changes, hears
-//! what to learn and sends events of its own.
+//! front of a stand-in worker that hears what to learn and sends events of
+//! its own. Spelling is joined and changes taken back by kass-text, here.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -23,26 +23,6 @@ struct Worker {
     /// The bodies of the reports-changed calls, in order.
     learned: Arc<Mutex<Vec<Value>>>,
     events: broadcast::Sender<String>,
-}
-
-/// Spelled letters joined: "M-E-G" is "MEG".
-async fn join_spelling(Json(body): Json<Value>) -> Json<Value> {
-    Json(json!({ "text": body["text"].as_str().unwrap().replace('-', "") }))
-}
-
-/// Each newer text with `removed` put back to `before`.
-async fn take_back(Json(body): Json<Value>) -> Json<Value> {
-    let (before, removed) = (
-        body["before"].as_str().unwrap(),
-        body["removed"].as_str().unwrap(),
-    );
-    let texts: Vec<String> = body["newer"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|text| text.as_str().unwrap().replacen(removed, before, 1))
-        .collect();
-    Json(json!({ "texts": texts }))
 }
 
 async fn reports_changed(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
@@ -68,8 +48,6 @@ async fn preflight() -> Response {
 
 async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
-        .route("/worker/captures/join-spelling", post(join_spelling))
-        .route("/worker/captures/take-back", post(take_back))
         .route("/worker/captures/reports-changed", post(reports_changed))
         .route("/worker/captures/events", get(events))
         .fallback(preflight)
@@ -635,7 +613,7 @@ async fn answers_the_app_s_cors_and_leaves_upload_preflights_to_the_worker() {
 
     let not_found = json!({"detail": "Not Found"});
     assert_eq!(
-        kass.call("POST", "/worker/captures/take-back", Some(json!({})))
+        kass.call("POST", "/worker/captures/reports-changed", Some(json!({})))
             .await,
         (404, not_found)
     );

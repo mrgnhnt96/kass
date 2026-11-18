@@ -252,18 +252,6 @@ def worker(monkeypatch):
     engine.dispose()
 
 
-def test_the_worker_joins_spelling_and_takes_back_changes_for_the_server(worker):
-    from backend.services.text_merge import take_back
-
-    client, _, _ = worker
-    joined = client.post("/worker/captures/join-spelling", json={"text": "Thanks, M-E-G-H-A-N."})
-    assert joined.json() == {"text": "Thanks, MEGHAN."}
-    body = {"before": "wrong words", "removed": "Right words", "newer": ["Right words now", "wrong words here"]}
-    texts = client.post("/worker/captures/take-back", json=body).json()["texts"]
-    assert texts == [take_back("wrong words", "Right words", text) for text in body["newer"]]
-    assert client.post("/worker/captures/take-back", json={"before": "a", "removed": "b"}).status_code == 422
-
-
 def test_the_worker_learns_from_reports_the_server_saved(worker, monkeypatch):
     from backend.database.models import DictionaryEntry
     from backend.services.voice_training import bank

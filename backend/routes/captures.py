@@ -224,16 +224,6 @@ async def retranscribe_capture_endpoint(
 # -- What the Rust server asks of the worker ----------------------------------
 
 
-class TextRequest(BaseModel):
-    text: str
-
-
-class TakeBackRequest(BaseModel):
-    before: str
-    removed: str
-    newer: list[str]
-
-
 class LearnedReport(BaseModel):
     report_id: str
     source: str
@@ -251,22 +241,6 @@ class ReportsChangedRequest(BaseModel):
     learn: list[LearnedReport] = []
     changed: list[ChangedReports] = []
     forgotten: str | None = None
-
-
-@worker_router.post("/join-spelling")
-def join_spelling_endpoint(request: TextRequest):
-    """Letters a user spelled aloud, joined as one word."""
-    from ..services.spelling import join_spelling
-
-    return {"text": join_spelling(request.text)}
-
-
-@worker_router.post("/take-back")
-def take_back_endpoint(request: TakeBackRequest):
-    """Each newer report's text without the changes ``removed`` made to ``before``."""
-    from ..services.text_merge import take_back
-
-    return {"texts": [take_back(request.before, request.removed, text) for text in request.newer]}
 
 
 @worker_router.post("/reports-changed")

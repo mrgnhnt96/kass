@@ -138,46 +138,6 @@ pub async fn shared_adapters_switched(proxy: &Proxy, enabled: bool) {
     }
 }
 
-/// A spoken correction as the user would have typed it: letters they
-/// spelled ("M-E-G-H-A-N") joined into one word.
-pub async fn join_spelling(proxy: &Proxy, text: &str) -> Result<String, String> {
-    let answer = post(
-        proxy,
-        "/worker/captures/join-spelling",
-        json!({ "text": text }),
-    )
-    .await?;
-    answer
-        .get("text")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| "the answer has no text".to_string())
-}
-
-/// Each of `newer` without the changes that turned `before` into `removed`,
-/// keeping its own: the reports made after one the user withdraws.
-pub async fn take_back(
-    proxy: &Proxy,
-    before: &str,
-    removed: &str,
-    newer: &[String],
-) -> Result<Vec<String>, String> {
-    if newer.is_empty() {
-        return Ok(Vec::new());
-    }
-    let body = json!({ "before": before, "removed": removed, "newer": newer });
-    let answer = post(proxy, "/worker/captures/take-back", body).await?;
-    let texts: Vec<String> = answer
-        .get("texts")
-        .cloned()
-        .and_then(|texts| serde_json::from_value(texts).ok())
-        .ok_or_else(|| "the answer has no texts".to_string())?;
-    if texts.len() != newer.len() {
-        return Err(format!("{} texts for {} reports", texts.len(), newer.len()));
-    }
-    Ok(texts)
-}
-
 /// A report whose fixed words go in the dictionary.
 pub struct Learn<'a> {
     pub report_id: &'a str,
