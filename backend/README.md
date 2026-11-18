@@ -30,7 +30,7 @@ backend/
   routes/                 # Thin HTTP handlers — validation, delegation, response formatting
   services/               # Business logic, CRUD, orchestration
   backends/               # Whisper STT and Qwen3 LLM implementations (MLX)
-  database/               # ORM models, session management, migrations
+  database/               # ORM models, session management (the app creates kass.db)
   utils/                  # Shared utilities (audio loading, progress tracking)
 ```
 

@@ -8,13 +8,12 @@ from unittest.mock import AsyncMock
 import numpy as np
 import pytest
 import soundfile as sf
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend import config
 from backend.database import session as database_session
-from backend.database.migrations import run_migrations
 from backend.database.models import Base, Capture, CaptureFeedback
 from backend.services import captures, history_retention, known_names, personal_examples, styles
 from backend.services.settings import get_capture_settings
@@ -79,21 +78,10 @@ def correction_files():
     return sorted(path.name for path in history_retention.correction_audio_dir().iterdir())
 
 
-def test_off_by_default_and_upgrades_add_the_setting_and_the_capture_marker(storage, tmp_path):
+def test_off_by_default(storage):
+    # Upgrades get it off too (tauri/src-tauri/server/src/db.rs).
     with storage() as db:
         assert get_capture_settings(db).discard_audio is False
-
-    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE capture_settings (id INTEGER PRIMARY KEY, stt_model VARCHAR)"))
-        connection.execute(text("INSERT INTO capture_settings (id, stt_model) VALUES (1, 'turbo')"))
-        connection.execute(text("CREATE TABLE captures (id VARCHAR PRIMARY KEY, audio_path VARCHAR)"))
-        connection.execute(text("INSERT INTO captures (id, audio_path) VALUES ('a', 'captures/a.wav')"))
-    run_migrations(engine)
-    run_migrations(engine)
-    with engine.connect() as connection:
-        assert connection.execute(text("SELECT discard_audio FROM capture_settings")).scalar() == 0
-        assert connection.execute(text("SELECT audio_deleted FROM captures")).scalar() == 0
 
 
 @pytest.mark.asyncio

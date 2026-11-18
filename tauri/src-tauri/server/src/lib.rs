@@ -37,7 +37,7 @@ pub struct Config {
     pub listen: SocketAddr,
     /// The Python model worker, on a private loopback port.
     pub worker: SocketAddr,
-    /// `kass.db`, which the worker creates and migrates.
+    /// `kass.db`, created or brought up to date (`db::prepare`) on start.
     pub database: PathBuf,
     /// The shared Kass this Mac stands in for (beta network), or None when
     /// this Mac's Kass is the one in use. While standing in, every change
@@ -96,6 +96,10 @@ impl Running {
 /// Bind the port and serve in the background on the
 /// current Tokio runtime.
 pub async fn start(config: Config) -> Result<Running, String> {
+    let database = config.database.clone();
+    tokio::task::spawn_blocking(move || db::prepare(&database))
+        .await
+        .map_err(|e| e.to_string())??;
     let state = AppState {
         proxy: proxy::Proxy::new(config.worker),
         db: db::Db::new(config.database),

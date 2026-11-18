@@ -1,12 +1,16 @@
-"""Engine creation, initialization, and session management."""
+"""Engine creation, initialization, and session management.
+
+The app creates kass.db and brings an older one up to date before it starts
+this worker (tauri/src-tauri/server/src/db/schema.rs); in development,
+``cargo xtask db-init`` does. This only uses the tables it finds.
+"""
 
 import logging
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
 from .. import config
-from .migrations import run_migrations
 from .models import Base
 
 logger = logging.getLogger(__name__)
@@ -17,13 +21,15 @@ SessionLocal = None
 _db_path = None
 
 
+class MissingSchemaError(RuntimeError):
+    """kass.db lacks tables the models use: the app hasn't prepared it."""
+
+
 def init_db() -> None:
-    """Initialize the database engine, run migrations, and create tables."""
+    """Open kass.db, which the app has created and migrated."""
     global engine, SessionLocal, _db_path
 
     _db_path = config.get_db_path()
-    _db_path.parent.mkdir(parents=True, exist_ok=True)
-    _rename_old_db(_db_path)
 
     engine = create_engine(
         f"sqlite:///{_db_path}",
@@ -32,6 +38,7 @@ def init_db() -> None:
         # what the user dictated, and the logs are what users send us.
         hide_parameters=True,
     )
+    check_schema(engine, _db_path)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -43,9 +50,6 @@ def init_db() -> None:
     from ..utils import macs
 
     macs.install()
-
-    run_migrations(engine)
-    Base.metadata.create_all(bind=engine)
 
     # The preset writing styles, with the global settings moved into the default.
     from ..services.dictionary import ensure_defaults
@@ -64,20 +68,22 @@ def init_db() -> None:
     changes.install()
 
 
-def _rename_old_db(db_path) -> None:
-    """Kass was Herga (herga.db), and before that Voicebox (voicebox.db); carry it over once."""
-    if db_path.exists():
-        return
-    old = next((db_path.with_name(n) for n in ("herga.db", "voicebox.db") if db_path.with_name(n).exists()), None)
-    if old is None:
-        return
-    # SQLite's journal files travel with the database they belong to.
-    for suffix in ("-wal", "-shm"):
-        journal = old.with_name(old.name + suffix)
-        if journal.exists():
-            journal.rename(db_path.with_name(db_path.name + suffix))
-    old.rename(db_path)
-    logger.info("Renamed %s to %s", old, db_path)
+def check_schema(engine, db_path) -> None:
+    """Fail clearly when kass.db lacks tables or columns the models use."""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    missing = []
+    for table in Base.metadata.sorted_tables:
+        if table.name not in tables:
+            missing.append(table.name)
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table.name)}
+        missing += [f"{table.name}.{c.name}" for c in table.columns if c.name not in columns]
+    if missing:
+        raise MissingSchemaError(
+            f"{db_path} is missing {', '.join(missing)}. The app creates and migrates kass.db"
+            " before it starts the worker; for a worker started by hand, run cargo xtask db-init first."
+        )
 
 
 def get_db():

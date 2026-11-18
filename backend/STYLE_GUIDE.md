@@ -379,7 +379,7 @@ backend/
   routes/             # Thin HTTP handlers (validation, delegation, response formatting)
   services/           # Business logic, CRUD, orchestration
   backends/           # TTS/STT engine implementations
-  database/           # ORM models, session management, migrations, seeds
+  database/           # ORM models, session management, seeds
   utils/              # Shared utilities (audio, effects, caching, progress)
   tests/              # pytest suite
 ```

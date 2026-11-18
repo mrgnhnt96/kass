@@ -7,13 +7,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend import config
 from backend.database import session as database_session
-from backend.database.migrations import run_migrations
 from backend.database.models import Base, Capture, CaptureFeedback, KnownName, RetiredCapture
 from backend.services import (
     correction_notes,
@@ -107,23 +106,6 @@ def stats(storage):
 def test_retention_defaults_to_30_days(storage):
     with storage() as db:
         assert get_capture_settings(db).history_retention_days == 30
-
-
-def test_upgrading_keeps_30_days_unconfirmed_and_detaches_nothing(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE capture_settings (id INTEGER PRIMARY KEY, stt_model VARCHAR)"))
-        connection.execute(text("INSERT INTO capture_settings (id, stt_model) VALUES (1, 'turbo')"))
-        connection.execute(text("CREATE TABLE capture_feedback (id VARCHAR PRIMARY KEY, capture_id VARCHAR)"))
-    run_migrations(engine)
-    run_migrations(engine)
-    with engine.connect() as connection:
-        row = connection.execute(
-            text("SELECT history_retention_days, history_retention_confirmed FROM capture_settings")
-        ).one()
-        assert tuple(row) == (30, 0)
-        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(capture_feedback)"))}
-    assert {"app_bundle_id", "teaches_style_id"} <= columns
 
 
 def test_old_captures_and_their_audio_go_and_their_corrections_keep_teaching(storage):

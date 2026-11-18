@@ -135,36 +135,10 @@ def test_new_installs_get_the_default_transforms_and_command_chord():
     assert response.chord_command_keys == ["MetaRight", "ShiftRight"]
 
 
-def test_existing_installs_are_migrated_with_the_defaults(tmp_path):
-    import json
-
-    from sqlalchemy import text
-
-    from backend.database.migrations import run_migrations
-
-    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE capture_settings (id INTEGER PRIMARY KEY, stt_model VARCHAR)"))
-        connection.execute(text("INSERT INTO capture_settings (id, stt_model) VALUES (1, 'turbo')"))
-        connection.execute(text("CREATE TABLE captures (id VARCHAR PRIMARY KEY, audio_path VARCHAR)"))
-    run_migrations(engine)
-    run_migrations(engine)
-    with engine.connect() as connection:
-        transforms, chord = connection.execute(
-            text("SELECT command_transforms, chord_command_keys FROM capture_settings")
-        ).one()
-        columns = [row[1] for row in connection.execute(text("PRAGMA table_info(captures)"))]
-    # The defaults' apostrophes ("don't") survive the SQL literal.
-    assert json.loads(transforms) == commands.default_transforms()
-    assert json.loads(chord) == ["MetaRight", "ShiftRight"]
-    assert {"command_selection", "command_instruction", "command_transform"} <= set(columns)
-
-
 def test_databases_with_the_retired_command_model_column_keep_working(tmp_path):
     # Command Mode once had its own model setting; existing databases keep the column.
     from sqlalchemy import text
 
-    from backend.database.migrations import run_migrations
     from backend.services.settings import get_capture_settings
     from backend.tests.settings_rows import save_settings
 
@@ -174,7 +148,6 @@ def test_databases_with_the_retired_command_model_column_keep_working(tmp_path):
         connection.execute(
             text("ALTER TABLE capture_settings ADD COLUMN command_llm_model VARCHAR NOT NULL DEFAULT '1.7B'")
         )
-    run_migrations(engine)
     with Session(engine) as db:
         get_capture_settings(db)
         row = save_settings(db, llm_model="4B")

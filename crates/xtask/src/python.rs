@@ -189,21 +189,37 @@ pub fn test(args: Vec<String>) -> Result {
     run(cmd("cargo", ["test", "--workspace", "--quiet"]).current_dir(APP_DIR))
 }
 
-/// cargo xtask db-init: creates the SQLite database.
+/// The kass.db a worker started from the repo root uses (backend/config.py).
+pub const DEV_DATABASE: &str = "data/kass.db";
+
+/// cargo xtask db-init: creates data/kass.db, or brings it up to date, as the
+/// app does before it starts the worker (server/src/db.rs).
 pub fn db_init(args: Vec<String>) -> Result {
     no_more(&args)?;
-    ensure_venv()?;
-    run(&mut cmd(
-        venv_bin("python"),
-        ["-c", "from backend.database import init_db; init_db()"],
-    ))
+    let database = fs::canonicalize(".")
+        .map_err(|error| format!("Couldn't find the repo root: {error}"))?
+        .join(DEV_DATABASE);
+    run(cmd(
+        "cargo",
+        [
+            "run",
+            "--quiet",
+            "-p",
+            "kass-server",
+            "--example",
+            "prepare_db",
+            "--",
+        ],
+    )
+    .arg(database)
+    .current_dir(APP_DIR))
 }
 
 /// cargo xtask db-reset: deletes the database and creates it again.
 pub fn db_reset(args: Vec<String>) -> Result {
     no_more(&args)?;
-    let db = Path::new(BACKEND).join("data/kass.db");
-    match fs::remove_file(&db) {
+    let db = Path::new(DEV_DATABASE);
+    match fs::remove_file(db) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(format!("Couldn't delete {}: {error}", db.display())),

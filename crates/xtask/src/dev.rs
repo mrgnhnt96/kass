@@ -47,6 +47,7 @@ impl Drop for Worker {
 pub fn dev(args: Vec<String>) -> Result {
     no_more(&args)?;
     ensure_venv()?;
+    crate::python::db_init(vec![])?;
     let _worker = if worker_running() {
         println!("Model worker already running on http://localhost:{WORKER_PORT}");
         Worker(None)
@@ -67,6 +68,8 @@ pub fn dev(args: Vec<String>) -> Result {
 pub fn dev_backend(args: Vec<String>) -> Result {
     no_more(&args)?;
     ensure_venv()?;
+    // The worker only uses the tables kass.db already has.
+    crate::python::db_init(vec![])?;
     run(&mut worker())
 }
 

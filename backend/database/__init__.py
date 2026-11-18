@@ -1,4 +1,6 @@
-"""Database package — ORM models, session management, and migrations.
+"""Database package — ORM models and session management.
+
+The app creates and migrates kass.db (tauri/src-tauri/server/src/db/schema.rs).
 
 Re-exports all public symbols so that ``from .database import get_db``
 and ``from .database import Capture as DBCapture`` work without importers

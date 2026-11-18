@@ -50,7 +50,7 @@ Code quality
   test                      Backend pytest suite, then the app's Rust tests
 
 Database
-  db-init                   Create the SQLite database
+  db-init                   Create data/kass.db, or bring it up to date
   db-reset                  Delete the database and create it again
 
 Assets and tools
