@@ -343,7 +343,7 @@ impl Session {
     ) -> Result<(Arc<Session>, Foreground), String> {
         let settings = app
             .db
-            .call(|conn| settings::get(conn))
+            .call(settings::get)
             .await
             .map_err(|e| e.to_string())?;
         let start = Start::parse(start, Some(&settings.language), &settings.stt_model)?;
