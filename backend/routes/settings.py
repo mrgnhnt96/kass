@@ -26,6 +26,23 @@ async def sweep_history():
     return {"deleted": deleted}
 
 
+class HeldCapture(BaseModel):
+    capture_id: str
+
+
+@router.post("/history/hold")
+async def hold_capture(request: HeldCapture):
+    """Keep a capture the Rust server is refining or retranscribing out of the sweep."""
+    history_retention.hold(request.capture_id)
+    return {"ok": True}
+
+
+@router.post("/history/release")
+async def release_capture(request: HeldCapture):
+    history_retention.release(request.capture_id)
+    return {"ok": True}
+
+
 @router.post("/shared-adapters/switched")
 async def shared_adapters_switched(request: SharedAdaptersSwitched):
     shared_adapters.switched(request.enabled)

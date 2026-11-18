@@ -291,6 +291,27 @@ def test_the_current_take_and_captures_in_use_stay(storage):
     assert ids(storage) == {"current"}
 
 
+def test_a_capture_the_server_holds_stays_until_each_hold_is_released(storage):
+    from backend.routes import settings as settings_routes
+
+    app = FastAPI()
+    app.include_router(settings_routes.router)
+    worker = TestClient(app)
+    keep(storage, 7)
+    add(storage, "busy", 50)
+    add(storage, "current", 30)
+    for _ in range(2):
+        assert worker.post("/worker/history/hold", json={"capture_id": "busy"}).json() == {"ok": True}
+    assert history_retention.sweep() == 0
+    worker.post("/worker/history/release", json={"capture_id": "busy"})
+    assert history_retention.sweep() == 0
+    worker.post("/worker/history/release", json={"capture_id": "busy"})
+    # Releasing one that isn't held does nothing.
+    worker.post("/worker/history/release", json={"capture_id": "busy"})
+    assert history_retention.sweep() == 1
+    assert ids(storage) == {"current"}
+
+
 def test_the_worker_sweeps_when_the_server_saves_a_shorter_window(storage):
     for days_ago in (100, 60, 20, 5, 0):
         add(storage, f"c{days_ago}", days_ago)
