@@ -6,7 +6,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json", "ws"] }
+# multipart: what a stand-in sends back (`routes::sync`).
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json", "ws", "multipart"] }
 caseless = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

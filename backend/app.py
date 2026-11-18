@@ -100,11 +100,10 @@ def _jobs():
 
 
 def _stand_in_jobs():
-    """A stand-in for a shared Kass only syncs with it: the shared Kass learns,
-    keeps history and reports usage, and models stay unloaded until needed."""
-    from .services.sync.job import periodic_job as sync_job
-
-    return (sync_job,)
+    """A stand-in for a shared Kass runs none: the shared Kass learns, keeps
+    history and reports usage, and the Rust server syncs with it
+    (kass-server's sync::job)."""
+    return ()
 
 
 def _configure_cors(application: FastAPI) -> None:

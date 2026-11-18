@@ -83,6 +83,14 @@ impl Models {
         self.progress.attach(name, id, running.abort_handle());
     }
 
+    /// Download `model` without loading it or showing it in `/tasks`: a
+    /// stand-in readying the models a shared Kass dictates with
+    /// (`sync::job`).
+    pub async fn fetch(&self, model: &'static Model) -> Result<(), String> {
+        let quiet = |_: u64, _: u64, _: &str| {};
+        download::fetch(&self.hub, &self.cache, model, &quiet).await
+    }
+
     /// Stop a model's download and forget its progress; true when there
     /// was either. What it fetched stays, to resume from.
     pub fn cancel(&self, name: &str) -> bool {

@@ -5,15 +5,11 @@ A Mac set to use another Mac's Kass still runs its own server, started with
 ``KASS_SHARED_SERVER`` naming the shared one. That server stands in: the
 app dictates on it whenever the shared Kass can't be reached.
 
-While the shared Kass is up, the stand-in copies what dictation reads from
-it (``mirror``): settings, styles, the dictionary, what was learned and the
-models in use. What the user does on the stand-in is recorded (``changes``)
-and sent to the shared Kass once it's back (``push``), where it's applied
-as if it had been done there (``importer``), the later edit winning.
-
-The stand-in loads no models until the app falls back to it (``wake``),
-frees them once the shared Kass has been back a while (``sleep``), and
-never trains or relearns: the shared Kass learns from what it's sent.
+What the user does on the stand-in is recorded here (``changes``) while
+Python still writes rows. The Rust server does the rest (kass-server's
+``sync`` module): it copies what dictation reads from the shared Kass, sends
+it what was recorded once it's back, wakes the stand-in's models when the
+app falls back to it, and frees them again.
 """
 
 import os

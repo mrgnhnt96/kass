@@ -20,6 +20,7 @@ pub mod routes;
 pub mod settings;
 pub mod stream;
 pub mod styles;
+pub mod sync;
 mod warmth;
 mod worker;
 
@@ -69,6 +70,8 @@ pub struct AppState {
     pub streams: Arc<stream::Streams>,
     /// The model files, and downloads in flight.
     pub models: models::Models,
+    /// Syncing with the shared Kass this server stands in for, if any.
+    pub stand_in: Option<Arc<sync::StandIn>>,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -78,10 +81,12 @@ pub struct Running {
     _relay: Relay,
     _learning: Relay,
     _warmth: Relay,
+    _sync: Option<Relay>,
 }
 
 /// A background task that stops when the server stops: passing on the
-/// worker's capture events, learning from reports, keeping models warm.
+/// worker's capture events, learning from reports, keeping models warm,
+/// syncing with the shared Kass.
 struct Relay(tokio::task::JoinHandle<()>);
 
 impl Drop for Relay {
@@ -108,13 +113,12 @@ pub async fn start(config: Config) -> Result<Running, String> {
     tokio::task::spawn_blocking(move || db::prepare(&database))
         .await
         .map_err(|e| e.to_string())??;
+    let shared_server = sync::shared_server(config.shared_server.as_deref());
     let state = AppState {
         proxy: proxy::Proxy::new(config.worker),
         db: db::Db::new(config.database),
         sync: dictionary::store::Sync {
-            standing_in: config
-                .shared_server
-                .is_some_and(|url| !url.trim().trim_end_matches('/').is_empty()),
+            standing_in: shared_server.is_some(),
         },
         events: events::Events::default(),
         dictionaries: Arc::default(),
@@ -126,6 +130,9 @@ pub async fn start(config: Config) -> Result<Running, String> {
         }),
         streams: Arc::default(),
         models: models::Models::new(config.models_dir.as_deref()),
+        stand_in: shared_server
+            .as_deref()
+            .map(|url| Arc::new(sync::StandIn::new(url))),
     };
     let listener = TcpListener::bind(config.listen)
         .await
@@ -138,6 +145,10 @@ pub async fn start(config: Config) -> Result<Running, String> {
     )));
     let learning = Relay(tokio::spawn(learning::watch(state.clone())));
     let warmth = Relay(tokio::spawn(warmth::watch(state.clone())));
+    let sync = state
+        .stand_in
+        .clone()
+        .map(|stand_in| Relay(tokio::spawn(sync::job::run(stand_in, state.clone()))));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
@@ -160,5 +171,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         _relay: relay,
         _learning: learning,
         _warmth: warmth,
+        _sync: sync,
     })
 }
