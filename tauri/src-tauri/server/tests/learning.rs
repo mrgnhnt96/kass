@@ -27,6 +27,8 @@ struct Worker {
     /// The trained models the worker was told to use, in order.
     used: Arc<Mutex<Vec<Value>>>,
     stops: Arc<AtomicUsize>,
+    /// Stops asked for because the user started recording.
+    recordings: Arc<AtomicUsize>,
 }
 
 async fn idle(State(worker): State<Worker>) -> Json<Value> {
@@ -70,8 +72,11 @@ async fn use_models(State(worker): State<Worker>, Json(body): Json<Value>) -> Js
     Json(json!({ "active": body["active"] }))
 }
 
-async fn stop(State(worker): State<Worker>) -> Json<Value> {
+async fn stop(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
     worker.stops.fetch_add(1, Ordering::SeqCst);
+    if body["recording"] == true {
+        worker.recordings.fetch_add(1, Ordering::SeqCst);
+    }
     Json(json!({}))
 }
 
@@ -90,7 +95,7 @@ async fn start_worker(worker: Worker) -> SocketAddr {
         )
         .route(
             "/worker/learning/model/voice",
-            post(|| async { Json(json!({ "bank": { "train": 0 }, "sounds": null })) }),
+            post(|| async { Json(json!({ "bank": { "train": 0 } })) }),
         )
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(worker);
@@ -416,6 +421,22 @@ async fn a_trained_model_that_does_better_is_used_and_kept() {
     // Cancelling answers the status.
     let (status, body) = kass.call("POST", "/capture/learning/cancel").await;
     assert_eq!((status, body["phase"].clone()), (200, json!("no_new_data")));
+}
+
+#[tokio::test]
+async fn recording_tells_the_worker_and_the_server_reports_the_sounds() {
+    let kass = Kass::start(false).await;
+    let (status, body) = kass.call("POST", "/capture/learning/activity").await;
+    assert_eq!((status, body), (200, json!({ "paused": true })));
+    assert_eq!(kass.worker.recordings.load(Ordering::SeqCst), 1);
+
+    // No sounds downloaded in this data folder.
+    let (_, body) = kass.call("GET", "/capture/learning").await;
+    assert_eq!(
+        body["model"]["voice"]["sounds"],
+        json!({ "state": "missing", "fraction": 0.0, "error": null })
+    );
+    assert_eq!(body["model"]["voice"]["bank"], json!({ "train": 0 }));
 }
 
 #[tokio::test]

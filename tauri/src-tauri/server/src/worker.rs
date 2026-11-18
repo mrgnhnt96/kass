@@ -242,13 +242,22 @@ pub async fn model_stop(proxy: &Proxy) -> Result<(), String> {
         .map(|_| ())
 }
 
+/// The user started recording: stop a run, and leave the models to the
+/// dictation for a while (the worker's recording window).
+pub async fn recording_started(proxy: &Proxy) -> Result<(), String> {
+    let body = json!({ "recording": true });
+    post(proxy, "/worker/learning/model/stop", body)
+        .await
+        .map(|_| ())
+}
+
 /// The trained models the worker stopped using since the last call.
 pub async fn model_reports(proxy: &Proxy) -> Result<Vec<Value>, String> {
     let answer = post(proxy, "/worker/learning/model/reports", json!({})).await?;
     Ok(answer["reports"].as_array().cloned().unwrap_or_default())
 }
 
-/// The voice bank's recordings and the background sounds' download.
+/// The voice bank's recordings.
 pub async fn model_voice(proxy: &Proxy) -> Result<Value, String> {
     post(proxy, "/worker/learning/model/voice", json!({})).await
 }

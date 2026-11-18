@@ -294,10 +294,12 @@ async fn take_reports(state: &AppState) -> Result<(), String> {
 }
 
 /// The status the app shows: the saved state, what the worker knows about
-/// the voice bank, and whether a run is going.
+/// the voice bank, the background sounds' download, and whether a run is
+/// going.
 pub async fn status(state: &AppState) -> Result<Value, String> {
     take_reports(state).await?;
-    let voice = worker::model_voice(&state.proxy).await?;
+    let mut voice = worker::model_voice(&state.proxy).await?;
+    voice["sounds"] = crate::voice_sounds::status(state).await;
     let saved = read(state).await;
     let (running, folder) = {
         let runs = state.model_improvement.runs();

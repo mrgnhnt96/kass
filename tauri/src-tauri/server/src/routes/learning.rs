@@ -1,26 +1,26 @@
 //! Learning from the user's reports: the learned corrections
 //! (`crate::learning`) and model improvement (`crate::model_improvement`),
-//! both kept by this server. Python: `backend/routes/captures.py`.
+//! both kept by this server, and the voice-training sounds' download
+//! (`crate::voice_sounds`).
 
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::request::detail;
-use crate::proxy::to_worker;
-use crate::{learning, model_improvement, worker, AppState};
+use crate::{learning, model_improvement, voice_sounds, worker, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/capture/learning", get(status))
         .route("/capture/learning/run", post(run))
         .route("/capture/learning/rollback", post(rollback))
-        .route("/capture/learning/activity", to_worker())
+        .route("/capture/learning/activity", post(activity))
         .route("/capture/learning/cancel", post(cancel))
-        .route("/capture/learning/voice/sounds", to_worker())
+        .route("/capture/learning/voice/sounds", post(sounds))
 }
 
 fn failed(error: learning::Failed) -> Response {
@@ -99,4 +99,18 @@ async fn cancel(State(state): State<AppState>) -> Response {
         Ok(model) => Json(model).into_response(),
         Err(error) => no_worker(error),
     }
+}
+
+/// The user started recording: the worker stops a run and keeps the models
+/// for the dictation for a while, its own background work included.
+async fn activity(State(state): State<AppState>) -> Response {
+    match worker::recording_started(&state.proxy).await {
+        Ok(()) => Json(json!({ "paused": true })).into_response(),
+        Err(error) => no_worker(error),
+    }
+}
+
+/// Start the one-time download of background sounds for voice training.
+async fn sounds(State(state): State<AppState>) -> Response {
+    Json(voice_sounds::start(&state).await).into_response()
 }

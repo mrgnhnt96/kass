@@ -46,9 +46,10 @@ While idle, the manager scans dictations it hasn't seen, 400 per pass.
 - **Split:** each take is assigned once, by id, to training (85%) or test
   (15%) takes.
 
-### Background sounds (`sounds.py`)
+### Background sounds (`server/src/voice_sounds.rs`)
 
-A one-time download started from Settings › Transcription.
+A one-time download started from Settings › Transcription. The Rust server
+downloads and decodes it; training reads it with `sounds.py`.
 
 | Source | License | Download | Use |
 |---|---|---|---|
