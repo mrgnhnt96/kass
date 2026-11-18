@@ -48,9 +48,8 @@ fn refused(refusal: Refused) -> Response {
     }
 }
 
-/// The session as the app shows it; the worker hears the style being taught.
-fn session(state: &AppState, answer: Result<Value, Refused>) -> Response {
-    state.teach.tell_worker(&state.proxy);
+/// The session as the app shows it.
+fn session(answer: Result<Value, Refused>) -> Response {
     match answer {
         Ok(answer) => Json(answer).into_response(),
         Err(refusal) => refused(refusal),
@@ -81,7 +80,7 @@ async fn start(State(state): State<AppState>, Query(query): Query<StyleQuery>) -
     match looked_up {
         Ok((own, terms)) => {
             let started = state.teach.start(&style, own, terms);
-            session(&state, Ok(started))
+            session(Ok(started))
         }
         Err(error) => failed(error),
     }
@@ -89,7 +88,6 @@ async fn start(State(state): State<AppState>, Query(query): Query<StyleQuery>) -
 
 async fn discard(State(state): State<AppState>, Path(session_id): Path<String>) -> Response {
     state.teach.discard(&session_id);
-    state.teach.tell_worker(&state.proxy);
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -136,7 +134,7 @@ async fn add_conversation(
         Err(problems) => return problems.response(),
     };
     let added = state.teach.add_conversation(&session_id, &kind);
-    session(&state, added)
+    session(added)
 }
 
 async fn new_theme(
@@ -144,7 +142,7 @@ async fn new_theme(
     Path((session_id, conversation_id)): Path<(String, String)>,
 ) -> Response {
     let replaced = state.teach.new_theme(&session_id, &conversation_id);
-    session(&state, replaced)
+    session(replaced)
 }
 
 async fn wrap_up(
@@ -152,7 +150,7 @@ async fn wrap_up(
     Path((session_id, conversation_id)): Path<(String, String)>,
 ) -> Response {
     let wrapped = state.teach.wrap_up(&session_id, &conversation_id);
-    session(&state, wrapped)
+    session(wrapped)
 }
 
 /// What was dictated in Kass's window for the conversation's current turn.
@@ -165,7 +163,6 @@ async fn dictated_now(
         .teach
         .turn_window(session_id, conversation_id)
         .map_err(|refusal| Box::new(refused(refusal)))?;
-    state.teach.tell_worker(&state.proxy);
     state
         .db
         .call(move |conn| teach::dictated(conn, since, &used))
@@ -192,7 +189,6 @@ async fn restart_turn(
     Path((session_id, conversation_id)): Path<(String, String)>,
 ) -> Response {
     let restarted = state.teach.start_turn_now(&session_id, &conversation_id);
-    state.teach.tell_worker(&state.proxy);
     match restarted {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(refusal) => refused(refusal),
@@ -238,7 +234,7 @@ async fn send_reply(
     let answer = state
         .teach
         .take_turn(&session_id, &conversation_id, turn.trick, parsed);
-    session(&state, answer)
+    session(answer)
 }
 
 /// The other side's next message from the base model; a repeat of an
@@ -283,7 +279,6 @@ async fn other_side(
 /// of the user's dictations cleaned up before and after.
 async fn finish(State(state): State<AppState>, Path(session_id): Path<String>) -> Response {
     let finished = state.teach.finish(&session_id);
-    state.teach.tell_worker(&state.proxy);
     let finished = match finished {
         Ok(finished) => finished,
         Err(refusal) => return refused(refusal),

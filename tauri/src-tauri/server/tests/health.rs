@@ -64,18 +64,18 @@ async fn shutdown(State(worker): State<Worker>) -> Json<Value> {
     Json(json!({ "message": "Shutting down..." }))
 }
 
-/// A slow model call, proxied as every path no module answers is.
+/// A slow model call: unloading a model.
 async fn slow(State(worker): State<Worker>) -> Json<Value> {
     tokio::time::sleep(Duration::from_millis(600)).await;
     worker.calls.lock().unwrap().push("slow done".into());
-    Json(json!({ "done": true }))
+    Json(json!({ "was_loaded": true }))
 }
 
 async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
         .route("/health", get(health))
         .route("/shutdown", post(shutdown))
-        .route("/slow", post(slow))
+        .route("/worker/models/unload", post(slow))
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -347,7 +347,10 @@ async fn shutdown_stops_listening_then_stops_the_worker() {
 async fn shutdown_lets_a_running_request_finish_before_the_worker_stops() {
     let kass = Kass::start(Worker::default()).await;
     let slow = {
-        let request = kass.client.post(kass.url("/slow")).send();
+        let request = kass
+            .client
+            .post(kass.url("/models/whisper-base/unload"))
+            .send();
         tokio::spawn(request)
     };
     // The slow request is with the worker before shutdown comes.
@@ -359,7 +362,7 @@ async fn shutdown_lets_a_running_request_finish_before_the_worker_stops() {
     assert_eq!(answer.status(), 200);
     assert_eq!(
         answer.json::<Value>().await.unwrap(),
-        json!({ "done": true })
+        json!({ "message": "Model whisper-base unloaded successfully" })
     );
     wait_until("the worker asked to stop", || kass.calls().len() == 2).await;
     assert_eq!(

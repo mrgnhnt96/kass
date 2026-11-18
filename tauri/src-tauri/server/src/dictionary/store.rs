@@ -569,6 +569,32 @@ pub fn add_group(
     write(conn, |tx| add_in(tx, new, sync))
 }
 
+/// The words a new install starts with, as global entries the user can edit
+/// or delete.
+pub const DEFAULTS: [&str; 1] = ["Kass"];
+
+/// Add [`DEFAULTS`] once; `marker` is the file recording that they were
+/// added, so a deleted one stays deleted. Idempotent.
+pub fn ensure_defaults(conn: &mut Connection, marker: &std::path::Path) -> Result<(), String> {
+    if marker.exists() {
+        return Ok(());
+    }
+    let written: HashSet<String> = list_entries(conn)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|entry| entry.written.to_lowercase())
+        .collect();
+    for word in DEFAULTS {
+        if written.contains(&word.to_lowercase()) {
+            continue;
+        }
+        let new = NewGroup::new(word, None, vec![Place::global().into()]);
+        // A full dictionary, or an entry already said that way, stays as it is.
+        let _ = add_group(conn, new, Sync { standing_in: false }).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(marker, b"").map_err(|e| e.to_string())
+}
+
 /// What an edit changes; `None` keeps it as it is.
 #[derive(Clone, Debug, Default)]
 pub struct GroupPatch {

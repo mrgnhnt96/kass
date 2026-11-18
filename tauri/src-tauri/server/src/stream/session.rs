@@ -1982,11 +1982,8 @@ impl Session {
                     )
                 })
                 .await;
-            match added {
-                Ok(_) => worker::dictionary_changed(&self.app.proxy).await,
-                Err(error) => {
-                    eprintln!("[server] Couldn't add the spelled word to the Dictionary: {error}")
-                }
+            if let Err(error) = added {
+                eprintln!("[server] Couldn't add the spelled word to the Dictionary: {error}")
             }
         }
         if let Some(capture_id) = capture_id {

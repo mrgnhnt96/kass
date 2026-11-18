@@ -83,6 +83,16 @@ class CleanupPrompt(Cleanup):
     cache_key: str | None = None
 
 
+class CachePrompt(BaseModel):
+    system: str
+    examples: list[tuple[str, str]] = []
+
+
+class CacheBytes(BaseModel):
+    model_size: str
+    prompts: list[CachePrompt] = []
+
+
 class Generate(CleanupPrompt):
     # Named by the caller, for /worker/cleanup/{id}/stop.
     id: str
@@ -379,6 +389,39 @@ async def cleanup_load(request: Cleanup):
         with speculative_mlx_work():
             await prepare(request.model_size, adapter_path)
     return {"ok": True}
+
+
+# Characters per token in the cleanup prompt, measured on Qwen3's tokenizer:
+# 3.8 to 3.9 for prompts of 1k to 2k tokens, chat template included.
+PROMPT_CHARS_PER_TOKEN = 3.8
+# A dictation's transcript and cleanup, cached after the prompt.
+DICTATION_TOKENS = 100
+
+
+@router.post("/cleanup/cache-bytes")
+def cleanup_cache_bytes(request: CacheBytes):
+    """About how much memory each prompt takes cached in the cleanup model.
+
+    Counted with the model's tokenizer when ``model_size`` is loaded,
+    estimated from the prompt's length otherwise, then rounded up the way the
+    cache grows. None for each while the model isn't downloaded.
+    """
+    from ..backends.qwen_llm_backend import KV_CACHE_STEP
+
+    backend = llm_service.get_llm_model()
+    per_token = getattr(backend, "kv_bytes_per_token", lambda _size: None)(request.model_size)
+    if not per_token:
+        return {"bytes": [None] * len(request.prompts)}
+    sizes = []
+    for prompt in request.prompts:
+        examples = [tuple(example) for example in prompt.examples]
+        tokens = backend.prompt_tokens(prompt.system, examples, request.model_size)
+        if tokens is None:
+            chars = len(prompt.system) + sum(len(said) + len(meant) for said, meant in examples)
+            tokens = round(chars / PROMPT_CHARS_PER_TOKEN)
+        steps = -(-(tokens + DICTATION_TOKENS) // KV_CACHE_STEP)
+        sizes.append(steps * KV_CACHE_STEP * per_token)
+    return {"bytes": sizes}
 
 
 def _failed(error: Exception) -> JSONResponse:

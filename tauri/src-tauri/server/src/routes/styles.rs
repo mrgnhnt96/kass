@@ -1,8 +1,6 @@
 //! Writing styles and the style each app uses (docs/plans/PER_APP_STYLE.md),
 //! answered from `kass.db` as `backend/routes/styles.py` answered them.
-//! After each change the worker is told what to reread
-//! (`worker::styles_changed`), and what each style learned is regrouped
-//! (`learned`).
+//! After each change what each style learned is regrouped (`learned`).
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -16,8 +14,9 @@ use serde_json::{json, Map, Value};
 
 use super::request::{body, detail, flag, required, text, Problems};
 use crate::dictionary::store as dictionary;
+use crate::stream::session::cleanup_prompt;
 use crate::styles::{self, Corrections, Refused, Style, StylePatch, StyledApp, MAX_STYLES};
-use crate::{learned, worker, AppState};
+use crate::{cleanup_inputs, learned, settings, worker, AppState};
 
 /// Longest app bundle id or name stored with a capture.
 const MAX_APP_FIELD_CHARS: usize = 255;
@@ -62,9 +61,60 @@ fn failed(error: crate::db::DbError) -> Response {
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
 }
 
+/// What one style's cached prompt takes in the cleanup model, in MB: the
+/// largest current style's, since a style's prompt grows as it learns. None
+/// until the worker can count it.
+async fn cache_mb_per_style(state: &AppState) -> Option<i64> {
+    let saved = match state.db.call(settings::get).await {
+        Ok(saved) => saved,
+        Err(error) => {
+            eprintln!("[server] writing styles: {error}");
+            return None;
+        }
+    };
+    let teaching = state.teach.teaching_style();
+    let dir = learned::data_dir(state);
+    let model = saved.llm_model.clone();
+    let prompts = state
+        .db
+        .call(move |conn| {
+            let snapshot = styles::load(conn, teaching)?;
+            snapshot
+                .styles
+                .iter()
+                .map(|style| {
+                    let inputs = cleanup_inputs::load(
+                        conn,
+                        &dir,
+                        &snapshot,
+                        Some(&style.id),
+                        saved.self_correction,
+                    )?;
+                    let prompt = cleanup_prompt(&inputs, &model);
+                    Ok((prompt.system, prompt.examples))
+                })
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .await;
+    let prompts = match prompts {
+        Ok(prompts) => prompts,
+        Err(error) => {
+            eprintln!("[server] couldn't build the styles' cleanup prompts: {error}");
+            return None;
+        }
+    };
+    let largest = worker::cache_bytes(&state.proxy, &saved.llm_model, &prompts)
+        .await?
+        .into_iter()
+        .flatten()
+        .filter(|bytes| *bytes > 0)
+        .max()?;
+    Some((largest as f64 / 1e6).round_ties_even() as i64)
+}
+
 /// Every style and every app with the style it uses, as the page shows them.
 async fn listing(state: &AppState) -> Response {
-    let cache_mb_per_style = worker::cache_mb_per_style(&state.proxy).await;
+    let cache_mb_per_style = cache_mb_per_style(state).await;
     let teaching = state.teach.teaching_style();
     match state
         .db
@@ -250,10 +300,7 @@ async fn create_style(State(state): State<AppState>, bytes: Bytes) -> Response {
         .call(move |conn| styles::create_style(conn, &name, sync))
         .await
     {
-        Ok(Ok(style)) => {
-            worker::styles_changed(&state.proxy, false).await;
-            Json(style).into_response()
-        }
+        Ok(Ok(style)) => Json(style).into_response(),
         Ok(Err(refusal)) => refused(refusal),
         Err(error) => failed(error),
     }
@@ -268,18 +315,13 @@ async fn update_style(
         Ok(patch) => patch,
         Err(problems) => return problems.response(),
     };
-    // Unassigned apps follow the default, and their corrections with them.
-    let new_default = patch.is_default == Some(true);
     let sync = state.sync;
     match state
         .db
         .call(move |conn| styles::update_style(conn, &style_id, patch, sync))
         .await
     {
-        Ok(Ok(style)) => {
-            worker::styles_changed(&state.proxy, new_default).await;
-            Json(style).into_response()
-        }
+        Ok(Ok(style)) => Json(style).into_response(),
         Ok(Err(refusal)) => refused(refusal),
         Err(error) => failed(error),
     }
@@ -302,8 +344,6 @@ async fn delete_style(State(state): State<AppState>, Path(style_id): Path<String
         .await;
     match deleted {
         Ok(Ok(())) => {
-            worker::dictionary_changed(&state.proxy).await;
-            worker::styles_changed(&state.proxy, true).await;
             learned::forget_style(&state, &style_id).await;
             StatusCode::NO_CONTENT.into_response()
         }
@@ -328,12 +368,7 @@ async fn confirm_apps(State(state): State<AppState>, bytes: Bytes) -> Response {
         .call(move |conn| styles::confirm_apps(conn, &apps, teaching, sync))
         .await
     {
-        Ok(added) => {
-            if added {
-                worker::styles_changed(&state.proxy, false).await;
-            }
-            listing(&state).await
-        }
+        Ok(_) => listing(&state).await,
         Err(error) => failed(error),
     }
 }
@@ -369,7 +404,6 @@ async fn assign_app(
         .await;
     match assigned {
         Ok(Ok(())) => {
-            worker::styles_changed(&state.proxy, true).await;
             learned::recount_habits(&state).await;
             listing(&state).await
         }

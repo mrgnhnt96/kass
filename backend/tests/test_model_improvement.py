@@ -14,11 +14,9 @@ from sqlalchemy.orm import sessionmaker
 
 from backend import config
 from backend.database.models import Base, Capture
-from backend.models import CaptureFeedbackCreate
-from backend.services.capture_feedback import save_feedback
-from backend.services.captures import get_capture
 from backend.services.model_improvement import data, evaluation, manager
 from backend.services.refinement import RefinementFlags, refine_transcript
+from backend.tests.feedback_rows import file_report
 
 
 def successful_rows():
@@ -146,11 +144,7 @@ def add_report(db, capture_id, raw, expected, target="refined", audio=None):
         )
     )
     db.commit()
-    return save_feedback(
-        capture_id,
-        CaptureFeedbackCreate(target=target, expected_text=expected, snapshot=get_capture(capture_id, db)),
-        db,
-    )
+    return file_report(db, capture_id, expected, target)
 
 
 def test_duplicate_recordings_and_near_duplicates_never_cross_splits(storage, tmp_path):

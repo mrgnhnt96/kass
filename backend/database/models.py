@@ -6,7 +6,6 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 
-from ..services.commands import default_transforms
 from ..utils.capture_chords import (
     default_command_chord,
     default_push_to_talk_chord,
@@ -62,9 +61,9 @@ class CaptureSettings(Base):
     chord_toggle_to_talk_keys = Column(JSON, nullable=False, default=default_toggle_to_talk_chord)
     # Command Mode (docs/plans/COMMAND_MODE.md): its chord (empty = off) and
     # the saved transforms ({id, name, instruction}). It rewrites on the
-    # cleanup model, llm_model.
+    # cleanup model, llm_model. The Rust server makes this row with its defaults.
     chord_command_keys = Column(JSON, nullable=False, default=default_command_chord)
-    command_transforms = Column(JSON, nullable=False, default=default_transforms)
+    command_transforms = Column(JSON, nullable=False, default=list)
     # Days of capture history to keep (docs/plans/HISTORY_RETENTION.md); 0 keeps it forever.
     history_retention_days = Column(Integer, nullable=False, default=30)
     # Nothing is deleted until the user has chosen a window, or there was
@@ -72,7 +71,7 @@ class CaptureSettings(Base):
     history_retention_confirmed = Column(Boolean, nullable=False, default=False)
     # First-run onboarding (docs/plans/ONBOARDING.md) was finished or closed.
     onboarding_completed = Column(Boolean, nullable=False, default=False)
-    # Delete each recording once its transcript is saved (services/audio_retention.py).
+    # Delete each recording once its transcript is saved (the Rust server's history sweep).
     discard_audio = Column(Boolean, nullable=False, default=False)
     # Usage reports (tauri/src-tauri/server/src/usage/report.rs): whether to send them, the
     # random id they're sent under, and the last local day sent (ISO date).
@@ -124,10 +123,10 @@ class Capture(Base):
     # The style this capture's corrections teach, when the user left them
     # behind as its app moved to another style. None follows the app.
     teaches_style_id = Column(String, nullable=True)
-    # The Mac that dictated it, when Kass is shared over the network (utils/macs.py).
+    # The Mac that dictated it, when Kass is shared over the network (the Rust server stamps it).
     mac_id = Column(String, nullable=True)
     mac_name = Column(String, nullable=True)
-    # The recording was deleted once its transcript was saved (services/audio_retention.py).
+    # The recording was deleted once its transcript was saved (the Rust server's history sweep).
     # A command run from ⌘K has no recording and is not marked.
     audio_deleted = Column(Boolean, nullable=False, default=False)
     # JSON: how it was said, per sentence (services/prosody.py), saved after
@@ -176,7 +175,7 @@ class AppStyle(Base):
 class CaptureFeedback(Base):
     """Correction paired with the model output observed by the user.
 
-    Never edited; the user can withdraw it (capture_feedback.withdraw_feedback).
+    Never edited; the user can withdraw it through the Rust server.
     """
 
     __tablename__ = "capture_feedback"
@@ -246,7 +245,7 @@ class TakeReport(Base):
 
 
 class KnownName(Base):
-    """A name from a capture history retention deleted, for known_names.py."""
+    """A name from a capture history retention deleted, which the Rust server keeps knowing."""
 
     __tablename__ = "known_names"
 

@@ -1,6 +1,6 @@
 //! Captures, their audio, reports and events against a real kass.db, in
-//! front of a stand-in worker that hears which reports changed and sends
-//! events of its own. Spelling is joined, changes taken back and fixed
+//! front of a stand-in worker that hears which deleted captures leave its
+//! voice bank and sends events of its own. Spelling is joined, changes taken back and fixed
 //! words put in the dictionary by kass-text and this server, here.
 
 use std::net::SocketAddr;
@@ -21,13 +21,13 @@ use tokio::sync::broadcast;
 
 #[derive(Clone)]
 struct Worker {
-    /// The bodies of the reports-changed calls, in order.
-    learned: Arc<Mutex<Vec<Value>>>,
+    /// The bodies of the voice-bank forget calls, in order.
+    forgot: Arc<Mutex<Vec<Value>>>,
     events: broadcast::Sender<String>,
 }
 
-async fn reports_changed(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
-    worker.learned.lock().unwrap().push(body);
+async fn forget(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
+    worker.forgot.lock().unwrap().push(body);
     Json(json!({ "ok": true }))
 }
 
@@ -49,7 +49,7 @@ async fn preflight() -> Response {
 
 async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
-        .route("/worker/captures/reports-changed", post(reports_changed))
+        .route("/worker/learning/model/forget", post(forget))
         .route("/worker/captures/events", get(events))
         .fallback(preflight)
         .with_state(worker);
@@ -89,7 +89,7 @@ impl Kass {
         .unwrap();
         let (events, _) = broadcast::channel(16);
         let worker = Worker {
-            learned: Arc::default(),
+            forgot: Arc::default(),
             events,
         };
         let server = kass_server::start(kass_server::Config {
@@ -143,8 +143,8 @@ impl Kass {
             .await
     }
 
-    fn learned(&self) -> Vec<Value> {
-        std::mem::take(&mut *self.worker.learned.lock().unwrap())
+    fn forgot(&self) -> Vec<Value> {
+        std::mem::take(&mut *self.worker.forgot.lock().unwrap())
     }
 
     /// The dictionary's words, with the report that added each.
@@ -344,13 +344,7 @@ async fn keeps_a_correction_and_the_words_it_fixed() {
     assert_eq!(report["snapshot"], seen);
     let id = report["id"].as_str().unwrap();
     assert_eq!(kass.words(), vec![("Rong".into(), id.to_string())]);
-    assert_eq!(
-        kass.learned(),
-        vec![json!({
-            "changed": [{"target": "raw", "source": "manual"}],
-            "forgotten": null,
-        })]
-    );
+    assert!(kass.forgot().is_empty());
     assert_eq!(
         kass.call("GET", "/captures/a/feedback", None).await,
         (200, json!([report]))
@@ -373,8 +367,6 @@ async fn keeps_a_correction_and_the_words_it_fixed() {
         json!({"snapshot": seen, "target": "raw", "expected_text": "Right word", "replaces": id});
     let (status, amended) = kass.report("a", amend.clone()).await;
     assert_eq!(status, 200, "{amended}");
-    // The amended report is relearned; whether to retrain is the server's.
-    assert_eq!(kass.learned()[2]["changed"], json!([{"target": "raw", "source": "manual"}]));
     assert!(!kass.words().iter().any(|(_, by)| by == id));
     let (_, reports) = kass.call("GET", "/captures/a/feedback", None).await;
     assert_eq!(reports.as_array().unwrap().len(), 3);
@@ -421,7 +413,7 @@ async fn refuses_corrections_that_dont_fit_the_capture() {
         (status, problems["detail"][0]["type"].clone()),
         (422, json!("missing"))
     );
-    assert!(kass.learned().is_empty());
+    assert!(kass.forgot().is_empty());
 }
 
 #[tokio::test]
@@ -434,7 +426,6 @@ async fn withdrawing_a_report_takes_its_changes_out_of_newer_ones() {
     let (_, next) = kass.report("a", next).await;
     let undone = json!({"snapshot": seen, "target": "raw", "expected_text": "Rong words", "source": "redictation"});
     let (_, undone) = kass.report("a", undone).await;
-    kass.learned();
 
     let first_id = first["id"].as_str().unwrap();
     let path = format!("/captures/a/feedback/{first_id}");
@@ -465,16 +456,7 @@ async fn withdrawing_a_report_takes_its_changes_out_of_newer_ones() {
             ("Wordz".into(), next_id)
         ]
     );
-    assert_eq!(
-        kass.learned(),
-        vec![json!({
-            "changed": [
-                {"target": "raw", "source": "manual"},
-                {"target": "raw", "source": "redictation"},
-            ],
-            "forgotten": null,
-        })]
-    );
+    assert!(kass.forgot().is_empty());
     assert_eq!(kass.call("DELETE", &path, None).await, (404, missing));
 }
 
@@ -488,7 +470,6 @@ async fn deleting_a_capture_removes_its_audio_reports_and_words() {
             json!({"snapshot": seen, "target": "raw", "expected_text": "Right words"}),
         )
         .await;
-    kass.learned();
     let conn = rusqlite::Connection::open(kass.data.join("kass.db")).unwrap();
     conn.execute(
         "INSERT INTO dictionary_entries (id, scope, scope_id, written, \"key\", source, added_by)
@@ -506,13 +487,8 @@ async fn deleting_a_capture_removes_its_audio_reports_and_words() {
     assert!(!kass.data.join("captures/a.wav").exists());
     assert_eq!(kass.count("SELECT count(*) FROM capture_feedback"), 0);
     assert_eq!(kass.count("SELECT count(*) FROM dictionary_entries"), 1);
-    assert_eq!(
-        kass.learned(),
-        vec![json!({
-            "changed": [{"target": "raw", "source": "manual"}],
-            "forgotten": "a",
-        })]
-    );
+    // Its audio leaves the voice training bank.
+    assert_eq!(kass.forgot(), vec![json!({"capture_id": "a"})]);
     let missing = json!({"detail": "Capture not found"});
     assert_eq!(
         kass.call("GET", "/captures/a", None).await,
@@ -591,7 +567,7 @@ async fn streams_capture_events_with_the_macs_listening() {
 }
 
 #[tokio::test]
-async fn answers_the_app_s_cors_and_leaves_upload_preflights_to_the_worker() {
+async fn answers_the_app_s_cors_here() {
     let kass = Kass::start().await;
     let preflight = kass
         .raw(
@@ -617,15 +593,21 @@ async fn answers_the_app_s_cors_and_leaves_upload_preflights_to_the_worker() {
         "{listed}"
     );
 
-    // Preflights for an upload are still the worker's; it answers them the same.
+    // Preflights for an upload too: nothing reaches the worker.
     let saving = kass
         .raw(
             "OPTIONS /captures HTTP/1.1\r\nHost: x\r\nOrigin: tauri://localhost\r\n\
              Access-Control-Request-Method: POST\r\nConnection: close\r\n\r\n"
                 .into(),
         )
-        .await;
-    assert!(saving.contains("x-worker: yes"), "{saving}");
+        .await
+        .to_lowercase();
+    assert!(saving.starts_with("http/1.1 200"), "{saving}");
+    assert!(
+        saving.contains("access-control-allow-origin: tauri://localhost"),
+        "{saving}"
+    );
+    assert!(!saving.contains("x-worker"), "{saving}");
     // The upload itself is answered here (`tests/capture_jobs.rs`).
     let saved = kass
         .raw(
@@ -644,7 +626,7 @@ async fn answers_the_app_s_cors_and_leaves_upload_preflights_to_the_worker() {
 
     let not_found = json!({"detail": "Not Found"});
     assert_eq!(
-        kass.call("POST", "/worker/captures/reports-changed", Some(json!({})))
+        kass.call("POST", "/worker/learning/model/forget", Some(json!({})))
             .await,
         (404, not_found)
     );

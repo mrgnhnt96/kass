@@ -1,9 +1,8 @@
 //! Named writing styles and the apps assigned to them in `kass.db`
 //! (docs/plans/PER_APP_STYLE.md). Python: `backend/services/styles.py`.
 //!
-//! The worker reads the same rows for dictation, and keeps what each style
-//! learned (examples, habits, rules, teaching sessions) itself: whoever calls
-//! a write here tells it what changed (`crate::worker::styles_changed`).
+//! Dictation reads the same rows to pick a style's cleanup prompt
+//! (`cleanup_inputs`); what each style learned is kept in `learned`.
 //! Every write runs in one transaction and, while this Mac stands in for a
 //! shared Kass, records each row it changed in `sync_changes`.
 
@@ -30,7 +29,7 @@ pub const PUNCTUATION_STYLES: [&str; 3] = ["standard", "casual", "learned"];
 /// a teach session is open, which only the worker knows.
 pub const KASS_BUNDLE: &str = "com.mrgnhnt.kass";
 
-/// The one style a new install starts with, used before the worker made it.
+/// The one style a new install starts with, used until `ensure` makes it.
 pub(crate) const MIGRATED_STYLE: &str = "personal";
 const MIGRATED_NAME: &str = "Personal";
 
@@ -591,6 +590,52 @@ fn clean_description(text: &str) -> Result<String, Refused> {
         )));
     }
     Ok(cleaned)
+}
+
+/// Create the Personal style on first run, with the global settings in it,
+/// and repair a database left without exactly one default. Idempotent.
+pub fn ensure(conn: &mut Connection) -> rusqlite::Result<()> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let defaults: Vec<(String, bool)> = {
+        let mut statement =
+            tx.prepare("SELECT id, is_default FROM writing_styles ORDER BY position")?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get(0)?, row.get::<_, Option<bool>>(1)? == Some(true)))
+        })?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    if defaults.is_empty() {
+        let saved: Option<(Option<String>, Option<bool>)> = tx
+            .query_row(
+                "SELECT punctuation_style, preserve_technical FROM capture_settings LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let (punctuation, preserve) = saved.unwrap_or_default();
+        // Dictation keeps working exactly as it did before styles.
+        tx.execute(
+            "INSERT INTO writing_styles (id, name, position, is_default, punctuation_style, \
+             capitalize_first, smart_cleanup, preserve_technical, description, created_at, updated_at) \
+             VALUES (?1, ?2, 0, 1, ?3, 1, 1, ?4, NULL, ?5, ?5)",
+            params![
+                MIGRATED_STYLE,
+                MIGRATED_NAME,
+                punctuation.filter(|style| !style.is_empty()).unwrap_or_else(|| "standard".into()),
+                preserve.unwrap_or(true),
+                now().format(STORED).to_string()
+            ],
+        )?;
+    } else if defaults.iter().filter(|(_, default)| *default).count() != 1 {
+        let keep = defaults
+            .iter()
+            .find(|(_, default)| *default)
+            .unwrap_or(&defaults[0])
+            .0
+            .clone();
+        tx.execute("UPDATE writing_styles SET is_default = (id = ?1)", [keep])?;
+    }
+    tx.commit()
 }
 
 /// A new style, starting from the default's settings with nothing learned.

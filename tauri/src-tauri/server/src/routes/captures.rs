@@ -38,7 +38,6 @@ use crate::dictionary::store::delete_added_by;
 use crate::events::{mac_of, query_pairs, Kind};
 use crate::models::cache;
 use crate::models::registry::{self, Engine, Model};
-use crate::proxy::forward;
 use crate::worker;
 use crate::{learned, AppState};
 
@@ -65,25 +64,21 @@ pub fn router() -> Router<AppState> {
         .layer(cors());
     Router::new()
         .merge(answered_here)
-        // Uploads have no size limit, as in the worker. Preflights and
-        // methods not answered here still go to the worker.
+        // Uploads have no size limit, as in the worker.
         .route(
             "/captures",
             get(list)
                 .post(capture_jobs::upload)
                 .layer(DefaultBodyLimit::disable())
-                .layer(cors())
-                .fallback(forward),
+                .layer(cors()),
         )
         .route(
             "/captures/{capture_id}/refine",
-            post(capture_jobs::refine).layer(cors()).fallback(forward),
+            post(capture_jobs::refine).layer(cors()),
         )
         .route(
             "/captures/{capture_id}/retranscribe",
-            post(capture_jobs::retranscribe)
-                .layer(cors())
-                .fallback(forward),
+            post(capture_jobs::retranscribe).layer(cors()),
         )
 }
 

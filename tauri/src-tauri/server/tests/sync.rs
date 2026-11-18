@@ -48,7 +48,11 @@ async fn answer(
 ) -> Json<Value> {
     let path = uri.path().to_string();
     let body = serde_json::from_slice(&body).unwrap_or(Value::Null);
-    worker.calls.lock().unwrap().push((path.clone(), body.clone()));
+    worker
+        .calls
+        .lock()
+        .unwrap()
+        .push((path.clone(), body.clone()));
     Json(match path.as_str() {
         // It uses the copied models: they pass their checks.
         "/worker/sync/mirrored" => json!({"active": body["active"]}),

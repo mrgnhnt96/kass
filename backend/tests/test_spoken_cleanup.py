@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.services.content_check import check_refinement
 from backend.services.refinement import RefinementFlags, prepare_refinement, refine_transcript
 from backend.services.spoken_cleanup import apply_spoken_cleanup
 
@@ -170,10 +169,3 @@ async def test_cleaned_transcript_still_goes_to_the_model(monkeypatch):
     assert text == "I can probably get there."
     backend.generate.assert_awaited_once()
     assert backend.generate.call_args.kwargs["prompt"] == "I can probably get there"
-
-
-def test_content_check_does_not_count_a_replaced_number_as_changed():
-    said = "set the timeout to 3.5, no 4.5 seconds"
-    kept, verdict = check_refinement(said, "Set the timeout to 4.5 seconds.", RefinementFlags())
-    assert verdict.outcome == "ok"
-    assert kept == "Set the timeout to 4.5 seconds."

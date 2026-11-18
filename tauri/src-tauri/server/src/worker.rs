@@ -23,8 +23,7 @@ const LOAD_TIMEOUT: Duration = Duration::from_secs(600);
 /// Unloading waits for a dictation using the model to finish.
 const UNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Learning from a correction recounts the writing style's corrections and
-/// adds the words it fixed to the dictionary: database work, but more of it.
+/// Checking trained models reads and hashes their files.
 const LEARNING_TIMEOUT: Duration = Duration::from_secs(30);
 
 async fn post(proxy: &Proxy, path: &str, body: Value) -> Result<Value, String> {
@@ -88,14 +87,6 @@ pub async fn shutdown(proxy: &Proxy) -> Result<(), String> {
     post(proxy, "/shutdown", json!({})).await.map(drop)
 }
 
-/// Tell the worker the dictionary changed, so the next dictation reads it
-/// again. Awaited, so a dictation started after an edit uses it.
-pub async fn dictionary_changed(proxy: &Proxy) {
-    if let Err(error) = post(proxy, "/worker/dictionary/changed", json!({})).await {
-        eprintln!("[server] couldn't tell the model worker the dictionary changed: {error}");
-    }
-}
-
 /// Whisper's token count for " <term>", each of `terms`; None while Whisper
 /// isn't loaded or the worker doesn't answer.
 pub async fn token_counts(proxy: &Proxy, terms: &[String]) -> Option<Vec<usize>> {
@@ -125,37 +116,24 @@ pub async fn shared_adapters_switched(proxy: &Proxy, enabled: bool) {
     }
 }
 
-/// Tell the worker reports changed, so it learns from them again: for each
-/// (target, source) changed, correction learning, known names, examples and
-/// the writing style; and that a deleted capture's audio leaves the voice
-/// training bank. The dictionary words they fixed are already in `kass.db`
-/// (`captures::store::learn_words`); the worker rereads its dictionary.
-/// Withdrawn reports may be in the cleanup adapter's training data: it
-/// retrains at the next idle moment. Awaited, so the next dictation uses
-/// what was learned.
+/// Reports changed: withdrawn ones may be in the cleanup adapter's training
+/// data, so it retrains at the next idle moment; a deleted capture's audio
+/// (`forgotten`) leaves the voice training bank.
 pub async fn reports_changed(
     state: &AppState,
     changed: &[(String, String)],
     withdrawn: bool,
     forgotten: Option<&str>,
 ) {
-    let changed: Vec<Value> = changed
-        .iter()
-        .map(|(target, source)| json!({ "target": target, "source": source }))
-        .collect();
     if withdrawn && !changed.is_empty() {
         state.model_improvement.retrain();
     }
-    let body = json!({ "changed": changed, "forgotten": forgotten });
-    if let Err(error) = post_within(
-        &state.proxy,
-        "/worker/captures/reports-changed",
-        body,
-        LEARNING_TIMEOUT,
-    )
-    .await
-    {
-        eprintln!("[server] couldn't tell the model worker the corrections changed: {error}");
+    let Some(capture_id) = forgotten else {
+        return;
+    };
+    let body = json!({ "capture_id": capture_id });
+    if let Err(error) = post(&state.proxy, "/worker/learning/model/forget", body).await {
+        eprintln!("[server] couldn't drop a deleted capture from the voice bank: {error}");
     }
 }
 
@@ -222,7 +200,13 @@ const TRAIN_TIMEOUT: Duration = Duration::from_secs(35 * 60);
 /// Plan a model-improvement run (`manager.prepare`): whether it's ready,
 /// its fingerprint and run id, and the counts the state keeps.
 pub async fn model_prepare(proxy: &Proxy, body: Value) -> Result<Value, String> {
-    post_within(proxy, "/worker/learning/model/prepare", body, PREPARE_TIMEOUT).await
+    post_within(
+        proxy,
+        "/worker/learning/model/prepare",
+        body,
+        PREPARE_TIMEOUT,
+    )
+    .await
 }
 
 /// Train, evaluate and judge the run the worker prepared (`manager.train`).
@@ -244,7 +228,15 @@ pub async fn model_check(
     active: &serde_json::Map<String, Value>,
 ) -> Result<serde_json::Map<String, Value>, String> {
     let body = json!({ "active": active });
-    active_of(post_within(proxy, "/worker/learning/model/check", body, LEARNING_TIMEOUT).await?)
+    active_of(
+        post_within(
+            proxy,
+            "/worker/learning/model/check",
+            body,
+            LEARNING_TIMEOUT,
+        )
+        .await?,
+    )
 }
 
 /// Dictation uses the trained models in `active` from now on; the ones it
@@ -284,43 +276,27 @@ pub async fn model_voice(proxy: &Proxy) -> Result<Value, String> {
     post(proxy, "/worker/learning/model/voice", json!({})).await
 }
 
-/// Writing styles or app assignments changed: the worker rereads them before
-/// the next dictation. `examples` drops the examples it grouped by style.
-/// Awaited, so the page reloads the new state.
-pub async fn styles_changed(proxy: &Proxy, examples: bool) {
-    let body = json!({ "examples": examples });
-    if let Err(error) = post(proxy, "/worker/styles/changed", body).await {
-        eprintln!("[server] couldn't tell the model worker the styles changed: {error}");
-    }
-}
-
-/// The learned files changed (`learned`): the worker rereads them and the
-/// examples grouped from them. Awaited, so the next cleanup uses what
-/// changed.
-pub async fn learned_changed(proxy: &Proxy) {
-    if let Err(error) = post(proxy, "/worker/learned/changed", json!({})).await {
-        eprintln!("[server] couldn't tell the model worker what was learned changed: {error}");
-    }
-}
-
-/// The largest prompt cache one style takes, in MB, once the worker knows
-/// it; None while it doesn't answer, and the page shows no cache size.
-pub async fn cache_mb_per_style(proxy: &Proxy) -> Option<i64> {
-    match post(proxy, "/worker/styles/state", json!({})).await {
-        Ok(answer) => answer.get("cache_mb_per_style").and_then(Value::as_i64),
+/// What each of `prompts` takes in the cleanup model's prompt cache, in
+/// bytes, once `model_size` is loaded to count it; None while the worker
+/// doesn't answer or can't tell.
+pub async fn cache_bytes(
+    proxy: &Proxy,
+    model_size: &str,
+    prompts: &[(String, Vec<(String, String)>)],
+) -> Option<Vec<Option<u64>>> {
+    let prompts: Vec<Value> = prompts
+        .iter()
+        .map(|(system, examples)| json!({ "system": system, "examples": examples }))
+        .collect();
+    let body = json!({ "model_size": model_size, "prompts": prompts });
+    match post(proxy, "/worker/cleanup/cache-bytes", body).await {
+        Ok(answer) => serde_json::from_value(answer.get("bytes")?.clone()).ok(),
         Err(error) => {
-            eprintln!("[server] couldn't read the styles state from the model worker: {error}");
+            eprintln!(
+                "[server] couldn't measure the styles' prompt caches in the model worker: {error}"
+            );
             None
         }
-    }
-}
-
-/// The style a teach session is open on (None: none is), for the dictations
-/// the worker still files itself; it lapses after `ttl_seconds` untold.
-pub async fn teaching(proxy: &Proxy, style: Option<&str>, ttl_seconds: f64) {
-    let body = json!({ "style": style, "ttl_seconds": ttl_seconds });
-    if let Err(error) = post(proxy, "/worker/styles/teaching", body).await {
-        eprintln!("[server] couldn't tell the model worker the style being taught: {error}");
     }
 }
 

@@ -1,5 +1,5 @@
 //! The writing styles API against a real kass.db, in front of a stand-in
-//! worker that records what it is told changed and answers the styles state.
+//! worker that measures the styles' cleanup prompts.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -14,37 +14,37 @@ use tokio::net::{TcpListener, TcpStream};
 
 const WHATSAPP: &str = "net.whatsapp.WhatsApp";
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct Worker {
-    /// Each `/worker/styles/changed` body, then a "dictionary" for each
-    /// dictionary reload, in order.
-    told: Arc<Mutex<Vec<Value>>>,
+    /// Each `/worker/cleanup/cache-bytes` body, in order.
+    asked: Arc<Mutex<Vec<Value>>>,
+    /// What it answers for each prompt.
+    bytes: Arc<Mutex<Value>>,
 }
 
-async fn styles_changed(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
-    worker.told.lock().unwrap().push(body);
-    Json(json!({"ok": true}))
+impl Default for Worker {
+    fn default() -> Self {
+        Worker {
+            asked: Arc::default(),
+            bytes: Arc::new(Mutex::new(json!(189_000_000))),
+        }
+    }
 }
 
-async fn dictionary_changed(State(worker): State<Worker>) -> Json<Value> {
-    worker.told.lock().unwrap().push(json!("dictionary"));
-    Json(json!({"ok": true}))
-}
-
-async fn styles_state() -> Json<Value> {
-    Json(json!({"cache_mb_per_style": 189}))
+async fn cache_bytes(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
+    let prompts = body["prompts"].as_array().map_or(0, Vec::len);
+    worker.asked.lock().unwrap().push(body);
+    let bytes = worker.bytes.lock().unwrap().clone();
+    let answer: Vec<Value> = match bytes {
+        Value::Array(each) => each,
+        one => vec![one; prompts],
+    };
+    Json(json!({ "bytes": answer }))
 }
 
 async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
-        .route("/worker/styles/changed", post(styles_changed))
-        .route("/worker/styles/state", post(styles_state))
-        .route("/worker/dictionary/changed", post(dictionary_changed))
-        // What each style learned is regrouped in kass (tests/learned.rs).
-        .route(
-            "/worker/learned/changed",
-            post(|| async { Json(json!({"ok": true})) }),
-        )
+        .route("/worker/cleanup/cache-bytes", post(cache_bytes))
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -77,18 +77,17 @@ fn database() -> PathBuf {
 
 struct Kass {
     server: kass_server::Running,
-    told: Arc<Mutex<Vec<Value>>>,
+    worker: Worker,
     database: PathBuf,
 }
 
 impl Kass {
     async fn start(shared_server: Option<&str>) -> Self {
         let worker = Worker::default();
-        let told = worker.told.clone();
         let database = database();
         let server = kass_server::start(kass_server::Config {
             listen: "127.0.0.1:0".parse().unwrap(),
-            worker: start_worker(worker).await,
+            worker: start_worker(worker.clone()).await,
             database: database.clone(),
             shared_server: shared_server.map(str::to_string),
             voice_model: None,
@@ -99,14 +98,19 @@ impl Kass {
         .unwrap();
         Kass {
             server,
-            told,
+            worker,
             database,
         }
     }
 
-    /// What the worker was told since the last call.
-    fn told(&self) -> Vec<Value> {
-        std::mem::take(&mut *self.told.lock().unwrap())
+    /// What the worker was asked to measure since the last call.
+    fn asked(&self) -> Vec<Value> {
+        std::mem::take(&mut *self.worker.asked.lock().unwrap())
+    }
+
+    /// Have the worker answer `bytes` for each prompt, or each of `bytes`.
+    fn answer(&self, bytes: Value) {
+        *self.worker.bytes.lock().unwrap() = bytes;
     }
 
     async fn call(&self, method: &str, path: &str, body: Option<Value>) -> (u16, Value) {
@@ -157,10 +161,6 @@ impl Drop for Kass {
     }
 }
 
-fn changed(examples: bool) -> Value {
-    json!({"examples": examples})
-}
-
 #[tokio::test]
 async fn styles_and_apps_round_trip() {
     let kass = Kass::start(None).await;
@@ -191,11 +191,6 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(confirmed["apps"][0]["confirmed"], true);
     assert_eq!(confirmed["apps"][0]["style_id"], "personal");
     assert_eq!(confirmed["apps"][0]["suggested_style_id"], Value::Null);
-    assert_eq!(kass.told(), vec![changed(false)]);
-    // Already confirmed: nothing new to tell.
-    kass.call("POST", "/writing-styles/apps/confirm", Some(apps))
-        .await;
-    assert!(kass.told().is_empty());
 
     let (status, chat) = kass
         .call("POST", "/writing-styles", Some(json!({"name": "Chat"})))
@@ -203,7 +198,6 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(status, 200);
     assert_eq!(chat["position"], 1);
     let chat = chat["id"].as_str().unwrap().to_string();
-    assert_eq!(kass.told(), vec![changed(false)]);
 
     let path = format!("/writing-styles/apps/{WHATSAPP}");
     let (status, listing) = kass
@@ -217,7 +211,6 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(listing["apps"][0]["style_id"], json!(chat));
     assert_eq!(listing["apps"][0]["confirmed"], true);
     assert_eq!(listing["apps"][0]["corrections"], 0);
-    assert_eq!(kass.told(), vec![changed(true)]);
     assert_eq!(
         kass.query("SELECT teaches_style_id FROM captures"),
         vec![vec![json!("personal")]]
@@ -261,7 +254,6 @@ async fn styles_and_apps_round_trip() {
     assert_eq!(status, 200);
     assert_eq!(described["description"], "Informal.\nNo greetings.");
     assert_eq!(described["name"], "Chat");
-    assert_eq!(kass.told(), vec![changed(false)]);
     let (status, long) = kass
         .call(
             "PATCH",
@@ -293,12 +285,10 @@ async fn styles_and_apps_round_trip() {
             json!({"detail": "Make another style the default before deleting this one"})
         )
     );
-    kass.told();
     let (status, _) = kass
         .call("DELETE", &format!("/writing-styles/{chat}"), None)
         .await;
     assert_eq!(status, 204);
-    assert_eq!(kass.told(), vec![json!("dictionary"), changed(true)]);
     let (_, listing) = kass.call("GET", "/writing-styles", None).await;
     assert_eq!(listing["styles"].as_array().unwrap().len(), 1);
     // Its app is unassigned again, so new.
@@ -317,7 +307,6 @@ async fn making_a_style_the_default_regroups_examples() {
         .call("POST", "/writing-styles", Some(json!({"name": "Chat"})))
         .await;
     let chat = chat["id"].as_str().unwrap().to_string();
-    kass.told();
     let (status, made) = kass
         .call(
             "PATCH",
@@ -327,7 +316,6 @@ async fn making_a_style_the_default_regroups_examples() {
         .await;
     assert_eq!(status, 200);
     assert_eq!(made["is_default"], true);
-    assert_eq!(kass.told(), vec![changed(true)]);
     let (_, listing) = kass.call("GET", "/writing-styles", None).await;
     let defaults: Vec<&Value> = listing["styles"]
         .as_array()
@@ -469,4 +457,32 @@ async fn a_stand_in_records_every_row_it_changes() {
             vec![json!("style"), json!(chat), json!(0)],
         ]
     );
+}
+
+#[tokio::test]
+async fn the_cache_size_is_the_largest_styles_prompt() {
+    let kass = Kass::start(None).await;
+    kass.call("POST", "/writing-styles", Some(json!({"name": "Chat"})))
+        .await;
+    kass.asked();
+
+    kass.answer(json!([120_000_000, 188_500_000]));
+    let (_, listing) = kass.call("GET", "/writing-styles", None).await;
+    // Rounded as Python rounds: half to even.
+    assert_eq!(listing["cache_mb_per_style"], 188);
+    let asked = kass.asked();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0]["model_size"], "0.6B");
+    let prompts = asked[0]["prompts"].as_array().unwrap();
+    assert_eq!(prompts.len(), 2);
+    for prompt in prompts {
+        assert!(!prompt["system"].as_str().unwrap().is_empty());
+        assert!(prompt["examples"].is_array());
+    }
+
+    // The cleanup model isn't downloaded, so nothing to count.
+    kass.answer(json!(null));
+    let (status, listing) = kass.call("GET", "/writing-styles", None).await;
+    assert_eq!(status, 200);
+    assert_eq!(listing["cache_mb_per_style"], Value::Null);
 }

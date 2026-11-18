@@ -1,11 +1,10 @@
 //! Teach sessions against a real kass.db, in front of a stand-in worker that
-//! writes the other side's turns and hears which style is being taught.
+//! writes the other side's turns.
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use axum::extract::State;
 use axum::routing::post;
@@ -23,8 +22,6 @@ struct Worker {
     turns: Arc<Mutex<VecDeque<String>>>,
     /// Each `/worker/cleanup/generate` body.
     generated: Arc<Mutex<Vec<Value>>>,
-    /// Each `/worker/styles/teaching` body.
-    teaching: Arc<Mutex<Vec<Value>>>,
 }
 
 async fn generate(State(worker): State<Worker>, Json(body): Json<Value>) -> String {
@@ -40,15 +37,9 @@ async fn generate(State(worker): State<Worker>, Json(body): Json<Value>) -> Stri
     format!("{done}\n")
 }
 
-async fn teaching(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
-    worker.teaching.lock().unwrap().push(body);
-    Json(json!({"ok": true}))
-}
-
 async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
         .route("/worker/cleanup/generate", post(generate))
-        .route("/worker/styles/teaching", post(teaching))
         .fallback(|| async { Json(json!({"ok": true})) })
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -121,21 +112,6 @@ impl Kass {
         (status, serde_json::from_str(body).unwrap_or(Value::Null))
     }
 
-    /// The style the worker was last told is being taught, once it's `style`.
-    async fn taught(&self, style: Option<&str>) -> Value {
-        for _ in 0..100 {
-            let last = self.worker.teaching.lock().unwrap().last().cloned();
-            if let Some(last) = last.filter(|last| last["style"] == json!(style)) {
-                return last;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!(
-            "the worker wasn't told {style:?}: {:?}",
-            self.worker.teaching.lock().unwrap()
-        );
-    }
-
     /// A dictation in Kass's own window, saved now.
     fn dictate(&self, id: &str, raw: &str, refined: &str) {
         let now = chrono::Utc::now().naive_utc();
@@ -197,13 +173,10 @@ async fn a_session_opens_on_its_styles_apps_and_the_worker_hears_it() {
     assert_eq!(conversations[0]["kind"], "text_message");
     assert_eq!(conversations[0]["messages"].as_array().unwrap().len(), 1);
     assert_eq!(conversations[0]["messages"][0]["from_you"], false);
-    let told = kass.taught(Some("chat")).await;
-    assert!(told["ttl_seconds"].as_f64().unwrap() > 7000.0);
 
     // A style no app uses: the usual three kinds.
     let (_, other) = kass.call("POST", "/writing-style/teach", None).await;
     assert_eq!(other["conversations"].as_array().unwrap().len(), 3);
-    kass.taught(Some("personal")).await;
     let (status, _) = kass.call("DELETE", &path(&other, ""), None).await;
     assert_eq!(status, 204);
 
@@ -217,7 +190,6 @@ async fn a_session_opens_on_its_styles_apps_and_the_worker_hears_it() {
 
     let (status, _) = kass.call("DELETE", &path(&session, ""), None).await;
     assert_eq!(status, 204);
-    kass.taught(None).await;
     let (status, gone) = kass
         .call(
             "POST",
@@ -439,7 +411,6 @@ async fn dictation_in_kass_becomes_the_reply_and_finishing_saves_it() {
         .as_str()
         .unwrap()
         .ends_with("+00:00"));
-    kass.taught(None).await;
 
     let (status, _) = kass.call("POST", &path(&session, "/finish"), None).await;
     assert_eq!(status, 404);

@@ -1,7 +1,7 @@
 [package]
 name = "kass-server"
 version = "0.1.0"
-description = "Kass's HTTP and WebSocket API. Routes not yet ported run in the Python model worker, which this proxies to."
+description = "Kass's HTTP and WebSocket API. The Python model worker only runs the models, called from here."
 edition = "2021"
 publish = false
 

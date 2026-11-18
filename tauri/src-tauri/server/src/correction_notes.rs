@@ -636,13 +636,13 @@ mod tests {
     }
 }
 
-/// The job over a real kass.db, in front of a stand-in worker that is idle,
-/// generates and counts reloads.
+/// The job over a real kass.db, in front of a stand-in worker that is idle
+/// and generates.
 #[cfg(test)]
 mod job_tests {
     use std::net::SocketAddr;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
 
     use axum::extract::State;
@@ -662,7 +662,6 @@ mod job_tests {
         dictate_after_summary: Arc<AtomicBool>,
         reply: Arc<Mutex<String>>,
         requests: Arc<Mutex<Vec<Value>>>,
-        reloads: Arc<AtomicUsize>,
     }
 
     async fn idle(State(worker): State<Worker>) -> Json<Value> {
@@ -696,16 +695,10 @@ mod job_tests {
         )
     }
 
-    async fn changed(State(worker): State<Worker>) -> Json<Value> {
-        worker.reloads.fetch_add(1, Ordering::SeqCst);
-        Json(json!({}))
-    }
-
     async fn start_worker(worker: Worker) -> SocketAddr {
         let app = Router::new()
             .route("/worker/learning/idle", post(idle))
             .route("/worker/learning/generate", post(generate))
-            .route("/worker/learned/changed", post(changed))
             .with_state(worker);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -784,7 +777,6 @@ mod job_tests {
         assert_eq!(notes["considered_ids"], json!(sorted));
         assert_eq!(notes["history"], json!([{ "notes": [] }]));
         assert!(notes["last_run"].as_str().unwrap().ends_with("+00:00"));
-        assert_eq!(worker.reloads.load(Ordering::SeqCst), 1);
 
         let requests = worker.requests.lock().unwrap().clone();
         // The summary runs on the base model, with no prompt cache.
@@ -830,7 +822,6 @@ mod job_tests {
         assert_eq!(run_once(&state).await.unwrap(), None);
         assert_eq!(worker.requests.lock().unwrap().len(), 1);
         assert_eq!(notes_file(&state)["styles"]["personal"], Value::Null);
-        assert_eq!(worker.reloads.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

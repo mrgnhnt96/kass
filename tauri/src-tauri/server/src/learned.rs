@@ -4,9 +4,8 @@
 //! from older examples).
 //!
 //! This server owns both files. Every change here is made under [`FILES`],
-//! written whole, announced as `learned`, and followed by
-//! `worker::learned_changed` so the worker rereads them before it next
-//! cleans up. Python: `backend/services/writing_style.py`,
+//! written whole and announced as `learned`; dictation reads them afresh
+//! (`cleanup_inputs`). Python: `backend/services/writing_style.py`,
 //! `personal_examples.py` and `correction_notes.py`.
 //!
 //! The notes are summarized here too (`correction_notes`), and a teach
@@ -28,7 +27,7 @@ use crate::captures::EXPLICIT_SOURCES;
 use crate::cleanup_inputs::{self, PersonalExample};
 use crate::events::Kind;
 use crate::styles::{self, Snapshot, MIGRATED_STYLE};
-use crate::{worker, AppState};
+use crate::AppState;
 
 pub const WRITING_STYLE: &str = "writing-style.json";
 pub const CORRECTION_NOTES: &str = "correction-notes.json";
@@ -526,10 +525,6 @@ where
     }
     if let Some(style) = forget_teaching {
         state.teach.forget_style(style);
-        state.teach.tell_worker(&state.proxy);
-    }
-    if written {
-        worker::learned_changed(&state.proxy).await;
     }
     Ok(answer)
 }
@@ -551,7 +546,6 @@ pub async fn recount_habits(state: &AppState) {
 /// count its corrections for the styles they teach now.
 pub async fn forget_style(state: &AppState, style_id: &str) {
     state.teach.forget_style(style_id);
-    state.teach.tell_worker(&state.proxy);
     let teaching = state.teach.teaching_style();
     let style_id = style_id.to_string();
     let forgotten = change(state, None, move |conn, files| {

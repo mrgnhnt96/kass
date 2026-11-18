@@ -1,10 +1,8 @@
 //! Kass's HTTP and WebSocket API, served by the app on port 17493.
 //!
-//! Routes move here from the Python model worker one group at a time
-//! (`routes/`); any path not served here is proxied to the worker
-//! unchanged. Each group's module lists its paths; a ported route swaps
-//! `proxy::to_worker()` for a handler of its own. Streamed dictation
-//! (`/captures/stream`) runs here and calls the worker only for its models.
+//! Every route is answered here, from `kass.db` (`routes/`). The Python
+//! model worker only loads and runs the models, called from this server
+//! (`worker`, `stream::models`); nothing from outside reaches it.
 
 pub mod captures;
 pub mod cleanup_inputs;
@@ -39,7 +37,7 @@ use axum::serve::ListenerExt;
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, watch};
 
-/// Where the server listens, the worker it proxies to, and the database.
+/// Where the server listens, the model worker it calls, and the database.
 #[derive(Clone, Debug)]
 pub struct Config {
     /// `127.0.0.1:17493`, or `0.0.0.0:17493` while Kass is shared with other
