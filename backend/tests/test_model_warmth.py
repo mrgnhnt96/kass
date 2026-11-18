@@ -1,12 +1,11 @@
-"""Measuring which model pages are in RAM, reading the rest back, and when to."""
+"""Measuring which model pages are in RAM, and reading the rest back."""
 
 import mmap
-import platform
 
 import pytest
 
 from backend.services import model_warmth
-from backend.services.model_warmth import PAGE_SIZE, Keeper, Warmth, buffer_of, page_in, residency
+from backend.services.model_warmth import PAGE_SIZE, Warmth, buffer_of, page_in, residency
 
 
 def _half_touched(pages=64):
@@ -60,27 +59,6 @@ def test_mlx_weights_are_measured_where_they_live():
 def test_something_without_a_buffer_is_skipped():
     assert buffer_of(object()) is None
     assert buffer_of(bytearray()) is None
-
-
-@pytest.mark.skipif(platform.system() != "Darwin", reason="CoreGraphics input times are macOS only")
-def test_input_idle_time_reads_without_permission():
-    idle = model_warmth.seconds_since_input()
-    assert isinstance(idle, float)
-    assert idle >= 0
-
-
-def test_the_keeper_checks_while_the_user_is_here_and_not_while_away():
-    keeper = Keeper()
-    assert keeper.check(idle=1, now=0) == "while you're here"
-    assert keeper.check(idle=1, now=30) is None, "checked a minute apart"
-    assert keeper.check(idle=1, now=61) == "while you're here"
-    # Input stops: idle but not yet away, then away. Nothing is checked.
-    assert keeper.check(idle=300, now=400) is None
-    assert keeper.check(idle=900, now=1000) is None
-    assert keeper.check(idle=3600, now=3700) is None
-    # The first input after being away brings the models back at once.
-    assert keeper.check(idle=2, now=3705) == "you're back"
-    assert keeper.check(idle=2, now=3710) is None
 
 
 @pytest.mark.asyncio

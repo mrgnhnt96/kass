@@ -14,11 +14,13 @@ pub mod dictionary;
 mod events;
 pub mod known_names;
 pub mod learning;
+pub mod models;
 pub mod proxy;
 pub mod routes;
 pub mod settings;
 pub mod stream;
 pub mod styles;
+mod warmth;
 mod worker;
 
 use std::net::SocketAddr;
@@ -46,6 +48,9 @@ pub struct Config {
     /// Silero's voice detector (`silero_vad.onnx`), for streamed dictation.
     /// Without it every take counts as speech and no pause ends a phrase.
     pub voice_model: Option<PathBuf>,
+    /// The folder models download to, as the worker was given it
+    /// (`KASS_MODELS_DIR`); None for Hugging Face's own cache.
+    pub models_dir: Option<PathBuf>,
 }
 
 /// What every route handler can reach.
@@ -62,6 +67,8 @@ pub struct AppState {
     pub voice: Option<Arc<stream::speech::VoiceModel>>,
     /// Streamed dictations running, and the results of finished ones.
     pub streams: Arc<stream::Streams>,
+    /// The model files, and downloads in flight.
+    pub models: models::Models,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -70,10 +77,11 @@ pub struct Running {
     _shutdown: oneshot::Sender<()>,
     _relay: Relay,
     _learning: Relay,
+    _warmth: Relay,
 }
 
 /// A background task that stops when the server stops: passing on the
-/// worker's capture events, learning from reports.
+/// worker's capture events, learning from reports, keeping models warm.
 struct Relay(tokio::task::JoinHandle<()>);
 
 impl Drop for Relay {
@@ -117,6 +125,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
                 .ok()
         }),
         streams: Arc::default(),
+        models: models::Models::new(config.models_dir.as_deref()),
     };
     let listener = TcpListener::bind(config.listen)
         .await
@@ -128,6 +137,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
         state.proxy.clone(),
     )));
     let learning = Relay(tokio::spawn(learning::watch(state.clone())));
+    let warmth = Relay(tokio::spawn(warmth::watch(state.clone())));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
@@ -149,5 +159,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         _shutdown: shutdown,
         _relay: relay,
         _learning: learning,
+        _warmth: warmth,
     })
 }

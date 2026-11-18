@@ -145,3 +145,32 @@ pub(crate) fn flag(
         }
     }
 }
+
+/// A required string field: missing and null are both problems.
+pub(crate) fn required(
+    fields: &Map<String, Value>,
+    name: &str,
+    max: usize,
+    problems: &mut Problems,
+) -> Option<String> {
+    match text(fields, name, max, problems) {
+        Some(Some(text)) => Some(text),
+        Some(None) => {
+            let loc = [json!(name)];
+            problems.add(
+                "string_type",
+                &loc,
+                "Input should be a valid string",
+                &Value::Null,
+            );
+            None
+        }
+        None => {
+            if !fields.contains_key(name) {
+                let whole = Value::Object(fields.clone());
+                problems.add("missing", &[json!(name)], "Field required", &whole);
+            }
+            None
+        }
+    }
+}

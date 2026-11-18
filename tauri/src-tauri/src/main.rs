@@ -479,11 +479,20 @@ struct Api {
     shared: bool,
     /// The other Mac's server it stood in for when it started.
     shared_server: Option<String>,
+    /// The models folder it downloads to, as the worker was given it.
+    models_dir: Option<String>,
 }
 
 impl Api {
-    fn serves(&self, share: bool, shared_server: &Option<String>) -> bool {
-        self.shared == share && self.shared_server == *shared_server
+    fn serves(
+        &self,
+        share: bool,
+        shared_server: &Option<String>,
+        models_dir: &Option<String>,
+    ) -> bool {
+        self.shared == share
+            && self.shared_server == *shared_server
+            && self.models_dir == *models_dir
     }
 }
 
@@ -1042,11 +1051,17 @@ fn voice_model(app: &AppHandle) -> Option<std::path::PathBuf> {
 /// keeps running.
 async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<(), String> {
     let shared_server = state.shared_server.lock().unwrap().clone();
+    let models_dir = state
+        .models_dir
+        .lock()
+        .unwrap()
+        .clone()
+        .filter(|dir| !dir.is_empty());
     let previous = {
         let mut api = state.api.lock().unwrap();
         if api
             .as_ref()
-            .is_some_and(|api| api.serves(share, &shared_server))
+            .is_some_and(|api| api.serves(share, &shared_server, &models_dir))
         {
             return Ok(());
         }
@@ -1071,6 +1086,7 @@ async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<
         database: data_dir.join("kass.db"),
         shared_server: shared_server.clone(),
         voice_model: voice_model(app),
+        models_dir: models_dir.as_deref().map(std::path::PathBuf::from),
     })
     .await;
     let mut api = state.api.lock().unwrap();
@@ -1081,6 +1097,7 @@ async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<
                 running,
                 shared: share,
                 shared_server,
+                models_dir: models_dir.clone(),
             });
             Ok(())
         }
@@ -1088,7 +1105,7 @@ async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<
         Err(_)
             if api
                 .as_ref()
-                .is_some_and(|api| api.serves(share, &shared_server)) =>
+                .is_some_and(|api| api.serves(share, &shared_server, &models_dir)) =>
         {
             Ok(())
         }

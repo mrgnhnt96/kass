@@ -48,7 +48,6 @@ _awake = False
 _back_since: float | None = None
 _wake_lock = asyncio.Lock()
 _downloading: set[str] = set()
-_warmth: asyncio.Task | None = None
 
 
 def status() -> dict:
@@ -68,30 +67,25 @@ def status() -> dict:
 
 async def wake() -> None:
     """Load the models the stand-in left unloaded, once: the app is dictating here."""
-    global _awake, _warmth, _back_since
+    global _awake, _back_since
     async with _wake_lock:
         if _awake:
             return
         _awake = True
         _back_since = None
         from ..model_startup import load_startup_models
-        from ..model_warmth import periodic_job as warmth_job
 
         logger.info("The shared Kass is away; loading models to dictate on this Mac")
         await load_startup_models()
-        _warmth = asyncio.create_task(warmth_job())
 
 
 async def sleep() -> None:
     """Free the models :func:`wake` loaded: the app dictates on the shared Kass again."""
-    global _awake, _warmth
+    global _awake
     async with _wake_lock:
         if not _awake:
             return
         _awake = False
-        if _warmth is not None:
-            _warmth.cancel()
-            _warmth = None
         from .. import llm, transcribe
 
         await transcribe.unload_whisper_model()

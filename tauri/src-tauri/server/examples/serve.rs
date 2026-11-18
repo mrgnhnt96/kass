@@ -30,6 +30,7 @@ async fn main() -> Result<(), String> {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../../backend/assets/silero_vad.onnx"),
         ),
+        models_dir: std::env::var_os("KASS_MODELS_DIR").map(Into::into),
     })
     .await?;
     println!("Kass API on {}, worker on {worker}", running.address());

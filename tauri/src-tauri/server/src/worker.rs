@@ -15,6 +15,13 @@ use crate::proxy::Proxy;
 /// model shouldn't hold up the request that called it for long.
 const TIMEOUT: Duration = Duration::from_secs(3);
 
+/// Loading a model the first time compiles it for the GPU; a big one on a
+/// busy Mac takes a while.
+const LOAD_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Unloading waits for a dictation using the model to finish.
+const UNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Sweeping history folds and deletes old captures in batches; a first
 /// sweep after choosing a shorter window can take a while.
 const SWEEP_TIMEOUT: Duration = Duration::from_secs(30);
@@ -295,4 +302,31 @@ pub async fn styles_state(proxy: &Proxy) -> StylesState {
             StylesState::default()
         }
     }
+}
+
+/// The models loaded now, by name (`whisper-turbo`, `qwen3-4b`).
+pub async fn loaded_models(proxy: &Proxy) -> Result<Vec<String>, String> {
+    let answer = post(proxy, "/worker/models/loaded", json!({})).await?;
+    serde_json::from_value(answer["loaded"].clone()).map_err(|e| e.to_string())
+}
+
+/// Load a model whose files are downloaded; the worker's error when it
+/// can't.
+pub async fn load_model(proxy: &Proxy, name: &str) -> Result<(), String> {
+    let body = json!({ "model_name": name });
+    let answer = post_within(proxy, "/worker/models/load", body, LOAD_TIMEOUT).await?;
+    match answer["error"].as_str() {
+        Some(error) => Err(error.to_string()),
+        None => Ok(()),
+    }
+}
+
+/// Unload a model; whether it was loaded, or the worker's error.
+pub async fn unload_model(proxy: &Proxy, name: &str) -> Result<bool, String> {
+    let body = json!({ "model_name": name });
+    let answer = post_within(proxy, "/worker/models/unload", body, UNLOAD_TIMEOUT).await?;
+    if let Some(error) = answer["error"].as_str() {
+        return Err(error.to_string());
+    }
+    Ok(answer["was_loaded"].as_bool().unwrap_or(false))
 }

@@ -364,55 +364,6 @@ class HealthResponse(BaseModel):
     peak_memory_mb: int | None = None  # Peak resident memory of the server process
 
 
-class ModelStatus(BaseModel):
-    """Response model for model status."""
-
-    model_name: str
-    display_name: str
-    hf_repo_id: str | None = None  # HuggingFace repository ID
-    downloaded: bool
-    downloading: bool = False  # True if download is in progress
-    size_mb: float | None = None
-    loaded: bool = False
-
-
-class ModelStatusListResponse(BaseModel):
-    """Response model for model status list."""
-
-    models: list[ModelStatus]
-
-
-class ModelDownloadRequest(BaseModel):
-    """Request model for triggering model download."""
-
-    model_name: str
-
-
-class ModelMigrateRequest(BaseModel):
-    """Request model for migrating models to a new directory."""
-
-    destination: str
-
-
-class ActiveDownloadTask(BaseModel):
-    """Response model for active download task."""
-
-    model_name: str
-    status: str
-    started_at: datetime
-    error: str | None = None
-    progress: float | None = None  # 0-100 percentage
-    current: int | None = None  # bytes downloaded
-    total: int | None = None  # total bytes
-    filename: str | None = None  # current file being downloaded
-
-
-class ActiveTasksResponse(BaseModel):
-    """Response model for active tasks."""
-
-    downloads: list[ActiveDownloadTask]
-
-
 CaptureFeedbackSource = Literal["manual", "voice_fix", "redictation"]
 
 
