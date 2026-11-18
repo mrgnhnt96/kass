@@ -3859,6 +3859,7 @@ dependencies = [
  "kass-text",
  "libc",
  "ort",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",

@@ -105,7 +105,7 @@ async fn stream_socket(headers: HeaderMap, upgrade: WebSocketUpgrade) -> Respons
 async fn start_worker() -> SocketAddr {
     let app = Router::new()
         .route("/stand-in/socket", get(stream_socket))
-        .route("/models/progress/{model_name}", get(events))
+        .route("/proxied/events/{name}", get(events))
         .route("/upload", post(echo_request))
         .fallback(any(echo_request));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -128,6 +128,7 @@ async fn start_server(worker: SocketAddr) -> kass_server::Running {
         database: std::env::temp_dir().join("kass-proxy-test-unused.db"),
         shared_server: None,
         voice_model: None,
+        models_dir: None,
     })
     .await
     .unwrap()
@@ -151,7 +152,7 @@ async fn passes_a_request_through_unchanged() {
     let server = start_server(start_worker().await).await;
     let response = raw_request(
         server.address(),
-        "PATCH /models/7?mac=abc&x=%20y HTTP/1.1\r\nHost: studio.local:17493\r\n\
+        "PATCH /proxied/7?mac=abc&x=%20y HTTP/1.1\r\nHost: studio.local:17493\r\n\
          X-Kass-Mac: mac-1\r\nX-Forwarded-For: 10.0.0.9\r\nContent-Length: 5\r\n\
          Connection: close\r\n\r\nhello",
     )
@@ -160,7 +161,7 @@ async fn passes_a_request_through_unchanged() {
     assert!(response.to_lowercase().contains("x-worker: yes"));
     let body = json_body(&response);
     assert_eq!(body["method"], "PATCH");
-    assert_eq!(body["uri"], "/models/7?mac=abc&x=%20y");
+    assert_eq!(body["uri"], "/proxied/7?mac=abc&x=%20y");
     assert_eq!(body["body"], "hello");
     assert_eq!(body["host"], "studio.local:17493");
     assert_eq!(body["mac"], "mac-1");
@@ -187,7 +188,7 @@ async fn streams_events_as_they_come() {
     let server = start_server(start_worker().await).await;
     let mut stream = TcpStream::connect(server.address()).await.unwrap();
     stream
-        .write_all(b"GET /models/progress/turbo HTTP/1.1\r\nHost: x\r\n\r\n")
+        .write_all(b"GET /proxied/events/turbo HTTP/1.1\r\nHost: x\r\n\r\n")
         .await
         .unwrap();
     let mut seen = Vec::new();

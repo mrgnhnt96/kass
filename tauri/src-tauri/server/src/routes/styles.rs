@@ -13,7 +13,7 @@ use kass_text::py;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use super::request::{body, detail, flag, text, Problems};
+use super::request::{body, detail, flag, required, text, Problems};
 use crate::dictionary::store as dictionary;
 use crate::styles::{self, Corrections, Refused, Style, StylePatch, StyledApp, MAX_STYLES};
 use crate::{worker, AppState};
@@ -89,35 +89,6 @@ fn app_field(value: Option<&str>) -> Option<String> {
 }
 
 // -- requests, checked the way pydantic checks them ---------------------------
-
-/// A required string field: missing and null are both problems.
-fn required(
-    fields: &Map<String, Value>,
-    name: &str,
-    max: usize,
-    problems: &mut Problems,
-) -> Option<String> {
-    match text(fields, name, max, problems) {
-        Some(Some(text)) => Some(text),
-        Some(None) => {
-            let loc = [json!(name)];
-            problems.add(
-                "string_type",
-                &loc,
-                "Input should be a valid string",
-                &Value::Null,
-            );
-            None
-        }
-        None => {
-            if !fields.contains_key(name) {
-                let whole = Value::Object(fields.clone());
-                problems.add("missing", &[json!(name)], "Field required", &whole);
-            }
-            None
-        }
-    }
-}
 
 fn new_style(fields: &Map<String, Value>) -> Result<String, Problems> {
     let mut problems = Problems::default();

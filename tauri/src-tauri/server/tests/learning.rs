@@ -96,6 +96,7 @@ impl Kass {
                 database: self.data.join("kass.db"),
                 shared_server: None,
                 voice_model: None,
+                models_dir: None,
             })
             .await
             .unwrap(),

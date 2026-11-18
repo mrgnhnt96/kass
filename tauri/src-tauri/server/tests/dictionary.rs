@@ -88,6 +88,7 @@ impl Kass {
             database: database.clone(),
             shared_server: shared_server.map(str::to_string),
             voice_model: None,
+            models_dir: None,
         })
         .await
         .unwrap();

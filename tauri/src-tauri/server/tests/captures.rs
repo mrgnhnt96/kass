@@ -119,6 +119,7 @@ impl Kass {
             database,
             shared_server: None,
             voice_model: None,
+            models_dir: None,
         })
         .await
         .unwrap();

@@ -14,6 +14,7 @@ pub mod dictionary;
 mod events;
 pub mod known_names;
 pub mod learning;
+pub mod models;
 pub mod proxy;
 pub mod routes;
 pub mod settings;
@@ -46,6 +47,9 @@ pub struct Config {
     /// Silero's voice detector (`silero_vad.onnx`), for streamed dictation.
     /// Without it every take counts as speech and no pause ends a phrase.
     pub voice_model: Option<PathBuf>,
+    /// The folder models download to, as the worker was given it
+    /// (`KASS_MODELS_DIR`); None for Hugging Face's own cache.
+    pub models_dir: Option<PathBuf>,
 }
 
 /// What every route handler can reach.
@@ -62,6 +66,8 @@ pub struct AppState {
     pub voice: Option<Arc<stream::speech::VoiceModel>>,
     /// Streamed dictations running, and the results of finished ones.
     pub streams: Arc<stream::Streams>,
+    /// The model files, and downloads in flight.
+    pub models: models::Models,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -117,6 +123,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
                 .ok()
         }),
         streams: Arc::default(),
+        models: models::Models::new(config.models_dir.as_deref()),
     };
     let listener = TcpListener::bind(config.listen)
         .await
