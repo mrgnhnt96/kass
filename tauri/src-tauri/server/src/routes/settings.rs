@@ -11,6 +11,8 @@ use axum::{Json, Router};
 use serde_json::{json, Map, Value};
 
 use super::request::{body, detail, flag, text, Problems};
+use crate::captures::retention;
+use crate::dictionary::store::now;
 use crate::settings::{self, Patch, Transform, RETENTION_DAYS};
 use crate::{worker, AppState};
 
@@ -60,7 +62,9 @@ async fn update_settings(State(state): State<AppState>, bytes: Bytes) -> Respons
     if swept {
         // A shorter window applies now, not at the next hourly sweep, so
         // the captures list the app reloads after saving is already trimmed.
-        worker::sweep_history(&state.proxy).await;
+        if let Err(error) = retention::sweep(&state, now()).await {
+            eprintln!("[server] history retention sweep failed; keeping the captures: {error}");
+        }
     }
     Json(saved).into_response()
 }

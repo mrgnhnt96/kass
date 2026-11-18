@@ -20,11 +20,6 @@ struct Worker {
     calls: Arc<Mutex<Vec<String>>>,
 }
 
-async fn sweep(State(worker): State<Worker>) -> Json<Value> {
-    worker.calls.lock().unwrap().push("sweep".into());
-    Json(json!({"deleted": 0}))
-}
-
 async fn switched(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
     worker
         .calls
@@ -36,7 +31,6 @@ async fn switched(State(worker): State<Worker>, Json(body): Json<Value>) -> Json
 
 async fn start_worker(worker: Worker) -> std::net::SocketAddr {
     let app = Router::new()
-        .route("/worker/history/sweep", post(sweep))
         .route("/worker/shared-adapters/switched", post(switched))
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -135,6 +129,13 @@ impl Kass {
                 rusqlite::params![id, created.to_string()],
             )
             .unwrap();
+    }
+
+    fn ids(&self) -> Vec<String> {
+        let conn = self.db();
+        let mut statement = conn.prepare("SELECT id FROM captures ORDER BY id").unwrap();
+        let ids = statement.query_map([], |row| row.get(0)).unwrap();
+        ids.map(Result::unwrap).collect()
     }
 
     fn sync_changes(&self) -> Vec<(String, String)> {
@@ -445,13 +446,23 @@ async fn choosing_a_window_confirms_it_and_sweeps_now() {
         (200, json!({"days": 30, "confirmed": false, "expiring": 1}))
     );
     assert_eq!(kass.put(json!({"history_retention_days": 12})).await.0, 422);
-    assert!(kass.worker_calls().is_empty());
-    let (_, saved) = kass.put(json!({"history_retention_days": 90})).await;
+    assert_eq!(kass.ids(), ["new", "old"]);
+    // Keeping the default, as the launch dialog's first choice does.
+    let (_, saved) = kass.put(json!({"history_retention_days": 30})).await;
     assert_eq!(saved["history_retention_confirmed"], true);
-    assert_eq!(kass.worker_calls(), ["sweep"]);
+    // The window applies before the app reloads its captures list.
+    assert_eq!(kass.ids(), ["new"]);
+    assert_eq!(
+        kass.db()
+            .query_row("SELECT count(*) FROM retired_captures", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert!(kass.worker_calls().is_empty());
     assert_eq!(
         kass.get(status).await,
-        (200, json!({"days": 90, "confirmed": true, "expiring": 0}))
+        (200, json!({"days": 30, "confirmed": true, "expiring": 0}))
     );
 }
 

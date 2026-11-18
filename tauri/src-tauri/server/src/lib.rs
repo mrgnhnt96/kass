@@ -95,11 +95,13 @@ pub struct Running {
     _sync: Option<Relay>,
     _usage: Relay,
     _notes: Relay,
+    _retention: Option<Relay>,
 }
 
 /// A background task that stops when the server stops: passing on the
 /// worker's capture events, learning from reports, keeping models warm,
-/// syncing with the shared Kass, and the daily usage report.
+/// syncing with the shared Kass, the daily usage report, and deleting
+/// captures past the history window.
 struct Relay(tokio::task::JoinHandle<()>);
 
 impl Drop for Relay {
@@ -191,6 +193,11 @@ pub async fn start(config: Config) -> Result<Running, String> {
         state.clone(),
         config.app_version,
     )));
+    // A stand-in keeps no history of its own: the shared Kass does.
+    let retention = state
+        .stand_in
+        .is_none()
+        .then(|| Relay(tokio::spawn(captures::retention::watch(state.clone()))));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
@@ -216,5 +223,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         _sync: sync,
         _usage: usage,
         _notes: notes,
+        _retention: retention,
     })
 }

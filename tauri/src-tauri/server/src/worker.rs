@@ -22,10 +22,6 @@ const LOAD_TIMEOUT: Duration = Duration::from_secs(600);
 /// Unloading waits for a dictation using the model to finish.
 const UNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Sweeping history folds and deletes old captures in batches; a first
-/// sweep after choosing a shorter window can take a while.
-const SWEEP_TIMEOUT: Duration = Duration::from_secs(30);
-
 /// Learning from a correction recounts the writing style's corrections and
 /// adds the words it fixed to the dictionary: database work, but more of it.
 const LEARNING_TIMEOUT: Duration = Duration::from_secs(30);
@@ -95,38 +91,6 @@ pub async fn token_counts(proxy: &Proxy, terms: &[String]) -> Option<Vec<usize>>
     .ok()?;
     let counts: Vec<usize> = serde_json::from_value(answer.get("counts")?.clone()).ok()?;
     (counts.len() == terms.len()).then_some(counts)
-}
-
-/// Delete captures past the history window now, so the list the app reloads
-/// after saving a shorter window is already trimmed.
-pub async fn sweep_history(proxy: &Proxy) {
-    if let Err(error) = post_within(proxy, "/worker/history/sweep", json!({}), SWEEP_TIMEOUT).await
-    {
-        eprintln!("[server] couldn't sweep history in the model worker: {error}");
-    }
-}
-
-/// Keep a capture out of the worker's history sweep while it's refined or
-/// retranscribed here. Whether the worker heard it.
-pub async fn hold_capture(proxy: &Proxy, capture_id: &str) -> bool {
-    let body = json!({ "capture_id": capture_id });
-    match post(proxy, "/worker/history/hold", body).await {
-        Ok(_) => true,
-        Err(error) => {
-            eprintln!(
-                "[server] couldn't keep capture {capture_id} from the history sweep: {error}"
-            );
-            false
-        }
-    }
-}
-
-/// Let the worker's history sweep have a held capture again.
-pub async fn release_capture(proxy: &Proxy, capture_id: &str) {
-    let body = json!({ "capture_id": capture_id });
-    if let Err(error) = post(proxy, "/worker/history/release", body).await {
-        eprintln!("[server] couldn't release capture {capture_id} to the history sweep: {error}");
-    }
 }
 
 /// The shared adapters setting changed: the worker switches the speech
