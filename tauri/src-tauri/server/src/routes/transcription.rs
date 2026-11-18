@@ -16,6 +16,7 @@ use axum::{Json, Router};
 use serde_json::json;
 
 use super::request::{detail, Problems};
+use crate::models::registry::{self, Engine};
 use crate::settings;
 use crate::stream::models;
 use crate::AppState;
@@ -33,9 +34,6 @@ pub fn router() -> Router<AppState> {
 const AUDIO_EXTENSIONS: [&str; 8] = [
     ".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".opus",
 ];
-
-/// The Whisper sizes, in the order Python lists them.
-const WHISPER_SIZES: [&str; 5] = ["base", "small", "medium", "large", "turbo"];
 
 /// Python's `Path(name).suffix.lower()`.
 fn suffix(file_name: &str) -> String {
@@ -196,17 +194,24 @@ async fn transcribe(State(state): State<AppState>, request: Request) -> Response
     let upload = form.file.expect("read_form returns the file");
     let model_size = match form.model {
         Some(model) => model,
-        None => match state.db.call(settings::get).await {
-            Ok(saved) => saved.stt_model,
+        None => match loaded_or_chosen(&state).await {
+            Ok(size) => size,
             Err(error) => return failed(error),
         },
     };
-    if !WHISPER_SIZES.contains(&model_size.as_str()) {
+    let Some(model) = registry::sized(Engine::Whisper, &model_size) else {
         let message = format!(
-            "Invalid model size '{model_size}'. Must be one of: {}",
-            WHISPER_SIZES.join(", ")
+            "Invalid model size '{model_size}'. Must be one of: base, small, medium, large, turbo"
         );
         return detail(StatusCode::BAD_REQUEST, &message);
+    };
+    if !state.models.ready_or_fetch(&state.proxy, model).await {
+        let message =
+            format!("Whisper model {model_size} is being downloaded. Please wait and try again.");
+        let body = json!({ "detail": {
+            "message": message, "model_name": model.name, "downloading": true,
+        } });
+        return (StatusCode::ACCEPTED, Json(body)).into_response();
     }
     let path = upload.0.to_string_lossy().into_owned();
     let language = form.language.as_deref();
@@ -214,6 +219,21 @@ async fn transcribe(State(state): State<AppState>, request: Request) -> Response
         Ok((text, duration)) => Json(json!({ "text": text, "duration": duration })).into_response(),
         Err(failure) => failed(failure.detail),
     }
+}
+
+/// Without a `model`: the Whisper model loaded now, else the one the
+/// settings choose (the one loaded at start), as Python ran the size its
+/// model held.
+async fn loaded_or_chosen(state: &AppState) -> Result<String, String> {
+    if let Some(size) = crate::models::loaded_size(&state.proxy, Engine::Whisper).await {
+        return Ok(size.to_string());
+    }
+    let saved = state
+        .db
+        .call(settings::get)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(saved.stt_model)
 }
 
 #[cfg(test)]

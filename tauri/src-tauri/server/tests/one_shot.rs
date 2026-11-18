@@ -21,6 +21,12 @@ struct Worker {
     calls: Arc<Mutex<Vec<Value>>>,
     /// What each uploaded file held when the worker read it.
     uploads: Arc<Mutex<Vec<Vec<u8>>>>,
+    /// The models loaded, by name.
+    loaded: Arc<Mutex<Vec<String>>>,
+}
+
+async fn loaded(State(worker): State<Worker>) -> Json<Value> {
+    Json(json!({ "loaded": *worker.loaded.lock().unwrap() }))
 }
 
 /// Streams a partial, then the text: the prompt in capitals. "break"
@@ -67,6 +73,7 @@ async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
         .route("/worker/cleanup/generate", post(generate))
         .route("/worker/recognize/file", post(recognize_file))
+        .route("/worker/models/loaded", post(loaded))
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -96,21 +103,34 @@ impl Kass {
         let table = &settings[settings.find("CREATE TABLE capture_settings").unwrap()..];
         conn.execute_batch(&table[..=table.find(");").unwrap() + 1])
             .unwrap();
+        // Downloads find no hub: nothing reaches Hugging Face.
+        std::env::set_var("HF_ENDPOINT", "http://127.0.0.1:9");
         let worker = Worker::default();
+        *worker.loaded.lock().unwrap() = vec!["whisper-turbo".into(), "qwen3-0.6b".into()];
         let server = kass_server::start(kass_server::Config {
             listen: "127.0.0.1:0".parse().unwrap(),
             worker: start_worker(worker.clone()).await,
             database,
             shared_server: None,
             voice_model: None,
+            models_dir: Some(data.join("models")),
         })
         .await
         .unwrap();
-        Kass {
+        let kass = Kass {
             server,
             worker,
             data,
+        };
+        for repo in [
+            "openai/whisper-small",
+            "openai/whisper-large-v3-turbo",
+            "mlx-community/Qwen3-0.6B-4bit",
+            "mlx-community/Qwen3-1.7B-4bit",
+        ] {
+            kass.download(repo);
         }
+        kass
     }
 
     async fn call(
@@ -160,6 +180,19 @@ impl Kass {
         body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
         let content_type = format!("multipart/form-data; boundary={BOUNDARY}");
         self.call("POST", "/transcribe", &content_type, &body).await
+    }
+
+    fn load_only(&self, names: &[&str]) {
+        *self.worker.loaded.lock().unwrap() = names.iter().map(|name| name.to_string()).collect();
+    }
+
+    /// Put a model's weights in the cache, as a finished download leaves
+    /// them.
+    fn download(&self, repo: &str) {
+        let folder = format!("models--{}", repo.replace('/', "--"));
+        let snapshot = self.data.join("models").join(folder).join("snapshots/abc");
+        std::fs::create_dir_all(&snapshot).unwrap();
+        std::fs::write(snapshot.join("model.safetensors"), b"weights").unwrap();
     }
 
     fn calls(&self) -> Vec<Value> {
@@ -220,6 +253,44 @@ async fn generate_defaults_like_python() {
         (sent["system"].clone(), sent["examples"].clone()),
         (json!(""), json!([]))
     );
+}
+
+#[tokio::test]
+async fn a_null_size_runs_the_model_loaded_or_else_the_settings_one() {
+    let kass = Kass::start().await;
+    kass.load_only(&["whisper-turbo", "qwen3-1.7b"]);
+    let (status, body) = kass
+        .generate(json!({"prompt": "hi", "model_size": null}))
+        .await;
+    assert_eq!((status, body["model_size"].clone()), (200, json!("1.7B")));
+
+    // Nothing loaded: the settings' size.
+    kass.load_only(&[]);
+    let (status, body) = kass
+        .generate(json!({"prompt": "hi", "model_size": null}))
+        .await;
+    assert_eq!((status, body["model_size"].clone()), (200, json!("0.6B")));
+    assert_eq!(kass.calls().len(), 2);
+}
+
+#[tokio::test]
+async fn generate_starts_a_missing_model_downloading() {
+    let kass = Kass::start().await;
+    let (status, body) = kass
+        .generate(json!({"prompt": "hi", "model_size": "4B"}))
+        .await;
+    assert_eq!(
+        (status, body),
+        (
+            202,
+            json!({
+                "message": "Qwen3 4B is being downloaded. Please wait and try again.",
+                "model_name": "qwen3-4b",
+                "downloading": true,
+            })
+        )
+    );
+    assert!(kass.calls().is_empty());
 }
 
 #[tokio::test]
@@ -293,12 +364,48 @@ async fn transcribes_with_the_users_model_and_reads_unknown_formats_as_wav() {
     let (status, _) = kass.transcribe(&[("file", Some("take.mp4"), b"hi")]).await;
     assert_eq!(status, 200);
     let sent = &kass.calls()[0];
-    // Settings' Whisper size; no language means the model detects it.
+    // The loaded Whisper size; no language means the model detects it.
     assert_eq!(
         (sent["stt_model"].clone(), sent["language"].clone()),
         (json!("turbo"), Value::Null)
     );
     assert!(sent["path"].as_str().unwrap().ends_with(".wav"));
+}
+
+#[tokio::test]
+async fn transcribes_with_the_whisper_model_loaded() {
+    let kass = Kass::start().await;
+    kass.load_only(&["whisper-small", "qwen3-0.6b"]);
+    let (status, _) = kass.transcribe(&[("file", Some("a.wav"), b"hi")]).await;
+    assert_eq!(status, 200);
+    assert_eq!(kass.calls()[0]["stt_model"], "small");
+}
+
+#[tokio::test]
+async fn transcribe_starts_a_missing_model_downloading() {
+    let kass = Kass::start().await;
+    let (status, body) = kass
+        .transcribe(&[("file", Some("a.wav"), b"hi"), ("model", None, b"medium")])
+        .await;
+    let message = "Whisper model medium is being downloaded. Please wait and try again.";
+    assert_eq!(
+        (status, body),
+        (
+            202,
+            json!({ "detail": {
+                "message": message,
+                "model_name": "whisper-medium",
+                "downloading": true,
+            } })
+        )
+    );
+    assert!(kass.calls().is_empty());
+
+    // Asked again while it downloads: still downloading.
+    let (status, _) = kass
+        .transcribe(&[("file", Some("a.wav"), b"hi"), ("model", None, b"medium")])
+        .await;
+    assert_eq!(status, 202);
 }
 
 #[tokio::test]

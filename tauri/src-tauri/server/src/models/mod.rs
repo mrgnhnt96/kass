@@ -20,6 +20,24 @@ use download::Hub;
 use progress::Progress;
 use registry::Model;
 
+/// The models loaded now; none when the worker can't say.
+pub async fn loaded(proxy: &Proxy) -> Vec<String> {
+    worker::loaded_models(proxy)
+        .await
+        .map_err(|error| eprintln!("[server] couldn't ask the model worker what's loaded: {error}"))
+        .unwrap_or_default()
+}
+
+/// The size of the `engine` model loaded now (`turbo`, `4B`), as the
+/// routes take it.
+pub async fn loaded_size(proxy: &Proxy, engine: registry::Engine) -> Option<&'static str> {
+    let loaded = loaded(proxy).await;
+    registry::MODELS
+        .iter()
+        .find(|model| model.engine == engine && loaded.iter().any(|name| name == model.name))
+        .map(|model| model.size)
+}
+
 #[derive(Clone)]
 pub struct Models {
     cache: PathBuf,
@@ -89,6 +107,25 @@ impl Models {
     pub async fn fetch(&self, model: &'static Model) -> Result<(), String> {
         let quiet = |_: u64, _: u64, _: &str| {};
         download::fetch(&self.hub, &self.cache, model, &quiet).await
+    }
+
+    /// Whether `model` can run now: loaded, or its files on disk. When
+    /// neither, its download starts (the one running carries on) and it's
+    /// false, for a route to answer that it's being downloaded, as
+    /// Python's one-shot routes did.
+    pub async fn ready_or_fetch(&self, proxy: &Proxy, model: &'static Model) -> bool {
+        let cache = self.cache.clone();
+        let repo = model.repo;
+        let on_disk = tokio::task::spawn_blocking(move || cache::on_disk(&cache, repo).downloaded)
+            .await
+            .unwrap_or(false);
+        if on_disk || loaded(proxy).await.iter().any(|name| name == model.name) {
+            return true;
+        }
+        if !self.progress.is_running(model.name) {
+            self.download(proxy, model);
+        }
+        false
     }
 
     /// Stop a model's download and forget its progress; true when there

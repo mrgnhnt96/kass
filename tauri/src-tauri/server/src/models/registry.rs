@@ -18,39 +18,91 @@ pub struct Model {
     pub engine: Engine,
     /// The Hugging Face repository.
     pub repo: &'static str,
+    /// What `/transcribe` and `/llm/generate` call it: `turbo`, `4B`.
+    pub size: &'static str,
 }
 
 pub const MODELS: [Model; 8] = [
-    whisper("whisper-base", "Whisper Base", "openai/whisper-base"),
-    whisper("whisper-small", "Whisper Small", "openai/whisper-small"),
-    whisper("whisper-medium", "Whisper Medium", "openai/whisper-medium"),
-    whisper("whisper-large", "Whisper Large", "openai/whisper-large-v3"),
+    whisper(
+        "whisper-base",
+        "Whisper Base",
+        "openai/whisper-base",
+        "base",
+    ),
+    whisper(
+        "whisper-small",
+        "Whisper Small",
+        "openai/whisper-small",
+        "small",
+    ),
+    whisper(
+        "whisper-medium",
+        "Whisper Medium",
+        "openai/whisper-medium",
+        "medium",
+    ),
+    whisper(
+        "whisper-large",
+        "Whisper Large",
+        "openai/whisper-large-v3",
+        "large",
+    ),
     whisper(
         "whisper-turbo",
         "Whisper Turbo",
         "openai/whisper-large-v3-turbo",
+        "turbo",
     ),
-    qwen("qwen3-0.6b", "Qwen3 0.6B", "mlx-community/Qwen3-0.6B-4bit"),
-    qwen("qwen3-1.7b", "Qwen3 1.7B", "mlx-community/Qwen3-1.7B-4bit"),
-    qwen("qwen3-4b", "Qwen3 4B", "mlx-community/Qwen3-4B-4bit"),
+    qwen(
+        "qwen3-0.6b",
+        "Qwen3 0.6B",
+        "mlx-community/Qwen3-0.6B-4bit",
+        "0.6B",
+    ),
+    qwen(
+        "qwen3-1.7b",
+        "Qwen3 1.7B",
+        "mlx-community/Qwen3-1.7B-4bit",
+        "1.7B",
+    ),
+    qwen("qwen3-4b", "Qwen3 4B", "mlx-community/Qwen3-4B-4bit", "4B"),
 ];
 
-const fn whisper(name: &'static str, display_name: &'static str, repo: &'static str) -> Model {
+const fn whisper(
+    name: &'static str,
+    display_name: &'static str,
+    repo: &'static str,
+    size: &'static str,
+) -> Model {
     Model {
         name,
         display_name,
         engine: Engine::Whisper,
         repo,
+        size,
     }
 }
 
-const fn qwen(name: &'static str, display_name: &'static str, repo: &'static str) -> Model {
+const fn qwen(
+    name: &'static str,
+    display_name: &'static str,
+    repo: &'static str,
+    size: &'static str,
+) -> Model {
     Model {
         name,
         display_name,
         engine: Engine::Qwen,
         repo,
+        size,
     }
+}
+
+/// The `engine` model of a size, as the one-shot routes name them.
+pub fn sized(engine: Engine, size: &str) -> Option<&'static Model> {
+    MODELS
+        .iter()
+        .find(|model| model.engine == engine && model.size == size)
 }
 
 pub fn find(name: &str) -> Option<&'static Model> {

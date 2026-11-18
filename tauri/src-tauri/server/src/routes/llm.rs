@@ -16,8 +16,9 @@ use axum::{Json, Router};
 use serde_json::{json, Map, Value};
 
 use super::request::{body, detail, text, Problems};
+use crate::models::registry::{self, Engine};
 use crate::stream::models::{self, CleanupPrompt, Generate};
-use crate::AppState;
+use crate::{settings, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/llm/generate", post(generate))
@@ -292,7 +293,23 @@ async fn generate(State(state): State<AppState>, bytes: Bytes) -> Response {
         Ok(request) => request,
         Err(problems) => return problems.response(),
     };
-    let model_size = request.model_size.unwrap_or_else(|| "0.6B".into());
+    let model_size = match request.model_size {
+        Some(size) => size,
+        None => match loaded_or_chosen(&state).await {
+            Ok(size) => size,
+            Err(error) => return detail(StatusCode::INTERNAL_SERVER_ERROR, &error),
+        },
+    };
+    let Some(model) = registry::sized(Engine::Qwen, &model_size) else {
+        let message =
+            format!("Invalid LLM size '{model_size}'. Must be one of: ['0.6B', '1.7B', '4B']");
+        return detail(StatusCode::BAD_REQUEST, &message);
+    };
+    if !state.models.ready_or_fetch(&state.proxy, model).await {
+        let message = format!("Qwen3 {model_size} is being downloaded. Please wait and try again.");
+        let body = json!({ "message": message, "model_name": model.name, "downloading": true });
+        return (StatusCode::ACCEPTED, Json(body)).into_response();
+    }
     let mut examples = Vec::new();
     for pair in request.examples.unwrap_or_default() {
         let [user, assistant]: [String; 2] = match pair.try_into() {
@@ -330,6 +347,21 @@ async fn generate(State(state): State<AppState>, bytes: Bytes) -> Response {
             detail(StatusCode::INTERNAL_SERVER_ERROR, "LLM generation failed")
         }
     }
+}
+
+/// For a null `model_size`: the cleanup model loaded now, else the one the
+/// settings choose (the one loaded at start), as Python ran the size its
+/// model held.
+async fn loaded_or_chosen(state: &AppState) -> Result<String, String> {
+    if let Some(size) = crate::models::loaded_size(&state.proxy, Engine::Qwen).await {
+        return Ok(size.to_string());
+    }
+    let saved = state
+        .db
+        .call(settings::get)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(saved.llm_model)
 }
 
 #[cfg(test)]
