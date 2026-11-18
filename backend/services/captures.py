@@ -15,14 +15,11 @@ import uuid
 from pathlib import Path
 
 import soundfile as sf
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import config
 from ..database import Capture as DBCapture
 from ..models import (
-    CaptureAppCount,
-    CaptureAppsResponse,
     CaptureResponse,
     RefinementFlagsModel,
     RefinementReviewModel,
@@ -56,23 +53,6 @@ def _clean_app_field(value: object) -> str | None:
 def target_app(bundle_id: object, name: object) -> tuple[str | None, str | None]:
     """The dictation's target app as stored: blank or non-string parts become None."""
     return _clean_app_field(bundle_id), _clean_app_field(name)
-
-
-def app_categories(db: Session) -> dict[str, str | None]:
-    """Each app's App Store category, from its newest capture that has one."""
-    rows = (
-        db.query(DBCapture.app_bundle_id, DBCapture.app_category, func.max(DBCapture.created_at))
-        .filter(DBCapture.app_bundle_id.isnot(None))
-        .group_by(DBCapture.app_bundle_id, DBCapture.app_category)
-        .all()
-    )
-    categories: dict[str, str | None] = {}
-    latest: dict[str, object] = {}
-    for bundle_id, category, when in rows:
-        categories.setdefault(bundle_id, None)
-        if category and (bundle_id not in latest or (when and when > latest[bundle_id])):
-            categories[bundle_id], latest[bundle_id] = category, when
-    return categories
 
 
 def spoken_style(transcript: str, bundle_id: str | None) -> tuple[str, str | None]:
@@ -265,58 +245,6 @@ def list_captures(
     total = query.count()
     rows = query.order_by(DBCapture.created_at.desc()).limit(limit).offset(offset).all()
     return [_to_response(r) for r in rows], total
-
-
-def list_capture_apps(db: Session) -> CaptureAppsResponse:
-    """How many captures each app has, most first, counted over every row
-    rather than the page the list loads. An app is its bundle id; its name is
-    the one on its newest capture, since an app can be renamed. Each app
-    carries the style its dictation uses, whether the user chose it, and the
-    style suggested for it until they do."""
-    from .styles import snapshot, suggest_styles
-
-    styles = snapshot()
-    suggested = suggest_styles(app_categories(db), styles)
-    counts: dict[str, list] = {}
-    unknown = 0
-    rows = (
-        db.query(
-            DBCapture.app_bundle_id,
-            DBCapture.app_name,
-            func.count(DBCapture.id),
-            func.max(DBCapture.created_at),
-        )
-        .group_by(DBCapture.app_bundle_id, DBCapture.app_name)
-        .all()
-    )
-    for bundle_id, name, count, latest in rows:
-        if bundle_id is None:
-            unknown += count
-            continue
-        entry = counts.setdefault(bundle_id, [None, 0, None])
-        if name and (entry[2] is None or (latest and latest > entry[2])):
-            entry[0] = name
-        entry[1] += count
-        if latest and (entry[2] is None or latest > entry[2]):
-            entry[2] = latest
-    apps = [
-        CaptureAppCount(
-            app_bundle_id=bundle_id,
-            app_name=name,
-            count=count,
-            last_captured_at=latest,
-            style_id=styles.for_app(bundle_id).id,
-            confirmed=bundle_id in styles.apps,
-            suggested_style_id=suggested.get(bundle_id),
-        )
-        for bundle_id, (name, count, latest) in counts.items()
-    ]
-    apps.sort(key=lambda app: (-app.count, (app.app_name or app.app_bundle_id).lower()))
-    return CaptureAppsResponse(
-        total=sum(app.count for app in apps) + unknown,
-        unknown_count=unknown,
-        apps=apps,
-    )
 
 
 def get_capture(capture_id: str, db: Session) -> CaptureResponse | None:

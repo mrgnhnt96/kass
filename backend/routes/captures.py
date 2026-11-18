@@ -107,12 +107,6 @@ async def create_capture_endpoint(
     )
 
 
-@router.get("/captures/apps", response_model=models.CaptureAppsResponse)
-async def list_capture_apps_endpoint(db: Session = Depends(get_db)):
-    """Capture counts per app for the Captures app list."""
-    return captures_service.list_capture_apps(db)
-
-
 @router.post("/captures/{capture_id}/refine", response_model=models.CaptureResponse)
 async def refine_capture_endpoint(
     capture_id: str,

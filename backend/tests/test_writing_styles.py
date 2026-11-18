@@ -269,67 +269,6 @@ def test_moved_corrections_become_pending_rules_for_the_new_style(storage, monke
     assert len(correction_notes.pending(formal)) == 2
 
 
-# --- Suggestions ----------------------------------------------------------------
-
-
-def snapshot_with(apps, *names):
-    made = tuple(
-        styles.Style(name.lower(), name, index, index == 0, "standard", True) for index, name in enumerate(names)
-    )
-    return styles.Snapshot(made, apps)
-
-
-def test_a_new_app_gets_the_style_most_apps_of_its_category_use():
-    snapshot = snapshot_with(
-        {"cursor": "code", "xcode": "code", "terminal": "chat", "slack": "chat"}, "Personal", "Chat", "Code"
-    )
-    categories = {
-        "cursor": "public.app-category.developer-tools",
-        "xcode": "public.app-category.developer-tools",
-        "terminal": "public.app-category.developer-tools",
-        "slack": "public.app-category.business",
-        "zed": "public.app-category.developer-tools",
-        "teams": "public.app-category.business",
-        "game": "public.app-category.games",
-        "unknown": None,
-    }
-    assert styles.suggest_styles(categories, snapshot) == {
-        "zed": "code",
-        "teams": "chat",
-        # No assigned app in its category, or no category: the default.
-        "game": "personal",
-        "unknown": "personal",
-    }
-
-
-def test_ties_go_to_the_style_listed_first():
-    snapshot = snapshot_with({"a": "code", "b": "chat"}, "Personal", "Chat", "Code")
-    categories = {"a": "tools", "b": "tools", "c": "tools"}
-    assert styles.suggest_styles(categories, snapshot) == {"c": "chat"}
-
-
-def test_the_listing_suggests_from_captured_categories(storage):
-    seed(storage)
-    code = create(storage, "Code")
-    with storage() as db:
-        for capture_id, app, category in (
-            ("c1", "com.todesktop.cursor", "public.app-category.developer-tools"),
-            ("z1", "dev.zed.Zed", None),
-            ("z2", "dev.zed.Zed", "public.app-category.developer-tools"),
-            ("g1", "com.example.game", "public.app-category.games"),
-        ):
-            db.add(Capture(id=capture_id, audio_path="a.wav", app_bundle_id=app, app_category=category))
-        db.commit()
-    assign(storage, "com.todesktop.cursor", code)
-    from backend.services.captures import list_capture_apps
-
-    with storage() as db:
-        apps = {app.app_bundle_id: app for app in list_capture_apps(db).apps}
-    assert apps["dev.zed.Zed"].suggested_style_id == code
-    assert apps["com.example.game"].suggested_style_id == "personal"
-    assert apps["com.todesktop.cursor"].suggested_style_id is None
-
-
 # --- Cache size -----------------------------------------------------------------
 
 

@@ -90,35 +90,6 @@ class CaptureListResponse(BaseModel):
     total: int
 
 
-class CaptureAppCount(BaseModel):
-    """One app in the Captures app list: how many captures went to it.
-
-    ``style_id`` is the style its dictation uses; ``confirmed`` is False while
-    that is only the default because the user hasn't chosen one.
-    """
-
-    app_bundle_id: str
-    app_name: str | None = None
-    count: int
-    last_captured_at: datetime | None = None
-    style_id: str | None = None
-    confirmed: bool = False
-    # Until confirmed: the style most apps of its App Store category use.
-    suggested_style_id: str | None = None
-
-
-class CaptureAppsResponse(BaseModel):
-    """``GET /captures/apps``: capture counts per app, most first.
-
-    ``unknown_count`` is the captures with no app recorded: uploads, and
-    dictation from before the target app was saved.
-    """
-
-    total: int
-    unknown_count: int
-    apps: list[CaptureAppCount]
-
-
 class CaptureCreateResponse(CaptureResponse):
     """
     Response model for ``POST /captures``.
