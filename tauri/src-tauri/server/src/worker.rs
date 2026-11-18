@@ -10,6 +10,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 
 use crate::proxy::Proxy;
+use crate::AppState;
 
 /// A loaded worker answers these in milliseconds; one that's busy loading a
 /// model shouldn't hold up the request that called it for long.
@@ -107,20 +108,25 @@ pub async fn shared_adapters_switched(proxy: &Proxy, enabled: bool) {
 /// the writing style; and that a deleted capture's audio leaves the voice
 /// training bank. The dictionary words they fixed are already in `kass.db`
 /// (`captures::store::learn_words`); the worker rereads its dictionary.
-/// Awaited, so the next dictation uses what was learned.
+/// Withdrawn reports may be in the cleanup adapter's training data: it
+/// retrains at the next idle moment. Awaited, so the next dictation uses
+/// what was learned.
 pub async fn reports_changed(
-    proxy: &Proxy,
+    state: &AppState,
     changed: &[(String, String)],
     withdrawn: bool,
     forgotten: Option<&str>,
 ) {
     let changed: Vec<Value> = changed
         .iter()
-        .map(|(target, source)| json!({ "target": target, "source": source, "withdrawn": withdrawn }))
+        .map(|(target, source)| json!({ "target": target, "source": source }))
         .collect();
+    if withdrawn && !changed.is_empty() {
+        state.model_improvement.retrain();
+    }
     let body = json!({ "changed": changed, "forgotten": forgotten });
     if let Err(error) = post_within(
-        proxy,
+        &state.proxy,
         "/worker/captures/reports-changed",
         body,
         LEARNING_TIMEOUT,
@@ -179,35 +185,72 @@ pub async fn learning_changed(proxy: &Proxy) {
     }
 }
 
-/// The model-improvement job's status (`manager.status()`).
-pub async fn model_status(proxy: &Proxy) -> Result<Value, String> {
-    post(proxy, "/worker/learning/model", json!({})).await
+/// Whether a dictation is recording or finishing right now.
+pub async fn models_dictating(proxy: &Proxy) -> Result<bool, String> {
+    let answer = post(proxy, "/worker/learning/idle", json!({})).await?;
+    Ok(answer["dictating"].as_bool().unwrap_or(false))
 }
 
-/// Start a model-improvement run if one is due (`manager.start()`).
-pub async fn model_start(proxy: &Proxy) -> Result<Value, String> {
-    post_within(
-        proxy,
-        "/worker/learning/model/start",
-        json!({}),
-        LEARNING_TIMEOUT,
-    )
-    .await
+/// Planning a run reads every report's recording and the voice bank.
+const PREPARE_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// The worker gives training and evaluation 30 minutes, then judges it.
+const TRAIN_TIMEOUT: Duration = Duration::from_secs(35 * 60);
+
+/// Plan a model-improvement run (`manager.prepare`): whether it's ready,
+/// its fingerprint and run id, and the counts the state keeps.
+pub async fn model_prepare(proxy: &Proxy, body: Value) -> Result<Value, String> {
+    post_within(proxy, "/worker/learning/model/prepare", body, PREPARE_TIMEOUT).await
 }
 
-/// Go back to the previous adapters; `Ok(Err(why))` when there are none.
-pub async fn model_rollback(proxy: &Proxy) -> Result<Result<Value, String>, String> {
-    let answer = post_within(
-        proxy,
-        "/worker/learning/model/rollback",
-        json!({}),
-        LEARNING_TIMEOUT,
-    )
-    .await?;
-    Ok(match answer["refused"].as_str() {
-        Some(why) => Err(why.to_string()),
-        None => Ok(answer),
-    })
+/// Train, evaluate and judge the run the worker prepared (`manager.train`).
+/// Answers once the run ends.
+pub async fn model_train(proxy: &Proxy, body: Value) -> Result<Value, String> {
+    post_within(proxy, "/worker/learning/model/train", body, TRAIN_TIMEOUT).await
+}
+
+fn active_of(answer: Value) -> Result<serde_json::Map<String, Value>, String> {
+    match answer.get("active") {
+        Some(Value::Object(active)) => Ok(active.clone()),
+        _ => Err(format!("the worker's trained models didn't read: {answer}")),
+    }
+}
+
+/// The trained models in `active` that pass their checks.
+pub async fn model_check(
+    proxy: &Proxy,
+    active: &serde_json::Map<String, Value>,
+) -> Result<serde_json::Map<String, Value>, String> {
+    let body = json!({ "active": active });
+    active_of(post_within(proxy, "/worker/learning/model/check", body, LEARNING_TIMEOUT).await?)
+}
+
+/// Dictation uses the trained models in `active` from now on; the ones it
+/// uses (those that pass their checks).
+pub async fn model_use(
+    proxy: &Proxy,
+    active: &serde_json::Map<String, Value>,
+) -> Result<serde_json::Map<String, Value>, String> {
+    let body = json!({ "active": active });
+    active_of(post_within(proxy, "/worker/learning/model/use", body, LEARNING_TIMEOUT).await?)
+}
+
+/// Stop a model-improvement run in progress.
+pub async fn model_stop(proxy: &Proxy) -> Result<(), String> {
+    post(proxy, "/worker/learning/model/stop", json!({}))
+        .await
+        .map(|_| ())
+}
+
+/// The trained models the worker stopped using since the last call.
+pub async fn model_reports(proxy: &Proxy) -> Result<Vec<Value>, String> {
+    let answer = post(proxy, "/worker/learning/model/reports", json!({})).await?;
+    Ok(answer["reports"].as_array().cloned().unwrap_or_default())
+}
+
+/// The voice bank's recordings and the background sounds' download.
+pub async fn model_voice(proxy: &Proxy) -> Result<Value, String> {
+    post(proxy, "/worker/learning/model/voice", json!({})).await
 }
 
 /// Writing styles or app assignments changed: the worker rereads them before
@@ -285,25 +328,13 @@ pub async fn load_startup_models(proxy: &Proxy) -> Result<(), String> {
         .map(|_| ())
 }
 
-/// The trained models in use, by kind, each with the folder it's in
-/// (`manager.in_use()`), for a stand-in to copy.
-pub async fn adapters_in_use(proxy: &Proxy) -> Result<serde_json::Map<String, Value>, String> {
-    let answer = post(proxy, "/worker/sync/adapters", json!({})).await?;
-    match answer.get("in_use") {
-        Some(Value::Object(in_use)) => Ok(in_use.clone()),
-        _ => Err(format!("the worker's trained models didn't read: {answer}")),
-    }
-}
-
 /// A stand-in copied a shared Kass's settings, dictionary, learning and
 /// trained models: the worker uses `active` (already copied here) and
-/// rereads everything else.
+/// rereads everything else. The ones it uses (those that pass their checks).
 pub async fn use_mirrored(
     proxy: &Proxy,
     active: &serde_json::Map<String, Value>,
-) -> Result<(), String> {
+) -> Result<serde_json::Map<String, Value>, String> {
     let body = json!({ "active": active });
-    post_within(proxy, "/worker/sync/mirrored", body, LEARNING_TIMEOUT)
-        .await
-        .map(|_| ())
+    active_of(post_within(proxy, "/worker/sync/mirrored", body, LEARNING_TIMEOUT).await?)
 }

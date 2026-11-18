@@ -16,6 +16,7 @@ mod events;
 pub mod known_names;
 pub mod learned;
 pub mod learning;
+pub mod model_improvement;
 pub mod models;
 pub mod proxy;
 pub mod routes;
@@ -83,6 +84,8 @@ pub struct AppState {
     pub in_use: Arc<captures::in_use::InUse>,
     /// Teach sessions that are open.
     pub teach: Arc<teach::Sessions>,
+    /// Model improvement's runs and schedule.
+    pub model_improvement: Arc<model_improvement::Runtime>,
 }
 
 /// A server that's listening. It stops when this is stopped or dropped.
@@ -91,6 +94,7 @@ pub struct Running {
     _shutdown: oneshot::Sender<()>,
     _relay: Relay,
     _learning: Relay,
+    _model_improvement: Relay,
     _warmth: Relay,
     _sync: Option<Relay>,
     _usage: Relay,
@@ -99,9 +103,9 @@ pub struct Running {
 }
 
 /// A background task that stops when the server stops: passing on the
-/// worker's capture events, learning from reports, keeping models warm,
-/// syncing with the shared Kass, the daily usage report, and deleting
-/// captures past the history window.
+/// worker's capture events, learning from reports, model improvement's
+/// schedule, keeping models warm, syncing with the shared Kass, the daily
+/// usage report, and deleting captures past the history window.
 struct Relay(tokio::task::JoinHandle<()>);
 
 impl Drop for Relay {
@@ -170,6 +174,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
             .map(|url| Arc::new(sync::StandIn::new(url))),
         in_use: Arc::default(),
         teach: Arc::default(),
+        model_improvement: Arc::default(),
     };
     let listener = TcpListener::bind(config.listen)
         .await
@@ -183,6 +188,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
     // Habits an older version counted are counted again, once.
     tokio::spawn(learned::recount_if_stale(state.clone()));
     let learning = Relay(tokio::spawn(learning::watch(state.clone())));
+    let model_improvement = Relay(tokio::spawn(model_improvement::watch(state.clone())));
     let warmth = Relay(tokio::spawn(warmth::watch(state.clone())));
     let notes = Relay(tokio::spawn(correction_notes::watch(state.clone())));
     let sync = state
@@ -219,6 +225,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
         _shutdown: shutdown,
         _relay: relay,
         _learning: learning,
+        _model_improvement: model_improvement,
         _warmth: warmth,
         _sync: sync,
         _usage: usage,

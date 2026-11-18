@@ -22,7 +22,7 @@ use super::rows::{self, isoformat, parse_time};
 use crate::captures::resolve_storage_path;
 use crate::events::Kind;
 use crate::models::{cache, registry};
-use crate::{worker, AppState};
+use crate::{model_improvement, worker, AppState};
 
 const CHECK_EVERY: Duration = Duration::from_secs(5);
 /// How often to copy from the shared Kass when nothing was sent to it.
@@ -421,7 +421,10 @@ impl StandIn {
         let active = mirror::active(&adapters, &root, &copied);
         state.dictionaries.invalidate();
         state.known_names.invalidate();
-        let used = worker::use_mirrored(&state.proxy, &active).await;
+        let used = match worker::use_mirrored(&state.proxy, &active).await {
+            Ok(kept) => model_improvement::use_mirrored(state, kept).await,
+            Err(error) => Err(error),
+        };
         state.events.publish(Kind::Learned);
         used
     }

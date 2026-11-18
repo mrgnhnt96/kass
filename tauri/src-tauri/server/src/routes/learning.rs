@@ -1,6 +1,6 @@
-//! Learning from the user's reports: the learned corrections, which this
-//! server keeps (`crate::learning`), and the model improvement the worker
-//! runs. Python: `backend/routes/captures.py`.
+//! Learning from the user's reports: the learned corrections
+//! (`crate::learning`) and model improvement (`crate::model_improvement`),
+//! both kept by this server. Python: `backend/routes/captures.py`.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use super::request::detail;
 use crate::proxy::to_worker;
-use crate::{learning, worker, AppState};
+use crate::{learning, model_improvement, worker, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -19,7 +19,7 @@ pub fn router() -> Router<AppState> {
         .route("/capture/learning/run", post(run))
         .route("/capture/learning/rollback", post(rollback))
         .route("/capture/learning/activity", to_worker())
-        .route("/capture/learning/cancel", to_worker())
+        .route("/capture/learning/cancel", post(cancel))
         .route("/capture/learning/voice/sounds", to_worker())
 }
 
@@ -46,7 +46,7 @@ async fn status(State(state): State<AppState>) -> Response {
         Ok(corrections) => corrections,
         Err(error) => return failed(error),
     };
-    match worker::model_status(&state.proxy).await {
+    match model_improvement::status(&state).await {
         Ok(model) => with_model(corrections, model),
         Err(error) => no_worker(error),
     }
@@ -62,7 +62,7 @@ async fn run(State(state): State<AppState>) -> Response {
         }
         Err(error) => return failed(error),
     };
-    match worker::model_start(&state.proxy).await {
+    match model_improvement::start(&state).await {
         Ok(model) => with_model(corrections, model),
         Err(error) => no_worker(error),
     }
@@ -70,12 +70,8 @@ async fn run(State(state): State<AppState>) -> Response {
 
 /// The adapters' last change goes back first, then the corrections'.
 async fn rollback(State(state): State<AppState>) -> Response {
-    let model = match worker::model_status(&state.proxy).await {
-        Ok(model) => model,
-        Err(error) => return no_worker(error),
-    };
-    if model["can_rollback"].as_bool().unwrap_or(false) {
-        let model = match worker::model_rollback(&state.proxy).await {
+    if model_improvement::can_rollback(&state).await {
+        let model = match model_improvement::rollback(&state).await {
             Ok(Ok(model)) => model,
             Ok(Err(why)) => return detail(StatusCode::CONFLICT, &why),
             Err(error) => return no_worker(error),
@@ -95,5 +91,12 @@ async fn rollback(State(state): State<AppState>) -> Response {
             &learning::Failed::NothingToRollBack.to_string(),
         ),
         Err(error) => failed(error),
+    }
+}
+
+async fn cancel(State(state): State<AppState>) -> Response {
+    match model_improvement::cancel(&state).await {
+        Ok(model) => Json(model).into_response(),
+        Err(error) => no_worker(error),
     }
 }

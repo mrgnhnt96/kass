@@ -1,11 +1,11 @@
 //! Learning corrections from the reports in a real kass.db, in front of a
-//! stand-in worker that says whether it's idle, reloads the rules and runs
-//! model improvement.
+//! stand-in worker that says whether it's idle, reloads the rules and trains
+//! the models model improvement asks for.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::State;
@@ -20,13 +20,17 @@ use tokio::net::{TcpListener, TcpStream};
 struct Worker {
     idle: Arc<AtomicBool>,
     reloads: Arc<AtomicUsize>,
-    /// Whether model improvement has adapters to go back to.
-    adapters: Arc<AtomicBool>,
-    rolled_back: Arc<AtomicUsize>,
+    /// Model improvement has a run ready to train, which makes `trained`.
+    ready: Arc<AtomicBool>,
+    /// The trained models a run makes.
+    trained: Arc<Mutex<Value>>,
+    /// The trained models the worker was told to use, in order.
+    used: Arc<Mutex<Vec<Value>>>,
+    stops: Arc<AtomicUsize>,
 }
 
 async fn idle(State(worker): State<Worker>) -> Json<Value> {
-    Json(json!({ "idle": worker.idle.load(Ordering::SeqCst) }))
+    Json(json!({ "idle": worker.idle.load(Ordering::SeqCst), "dictating": false }))
 }
 
 async fn reload(State(worker): State<Worker>) -> Json<Value> {
@@ -34,27 +38,60 @@ async fn reload(State(worker): State<Worker>) -> Json<Value> {
     Json(json!({}))
 }
 
-async fn model(State(worker): State<Worker>) -> Json<Value> {
+async fn prepare(State(worker): State<Worker>) -> Json<Value> {
+    let ready = worker.ready.load(Ordering::SeqCst);
+    Json(json!({
+        "groups": [], "counts": { "reports": 3 }, "evaluated_report_ids": ["report-1"],
+        "ready": ready, "waiting": if ready { Value::Null } else { json!("waiting_data") },
+        "fingerprint": if ready { json!("f1") } else { Value::Null },
+        "run": if ready { json!("run-1") } else { Value::Null },
+        "trains": true, "generation": 4, "interrupted": false,
+    }))
+}
+
+async fn train(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
+    assert_eq!(
+        (body["run"].clone(), body["generation"].clone()),
+        (json!("run-1"), json!(4))
+    );
+    let active = worker.trained.lock().unwrap().clone();
     Json(
-        json!({ "phase": "idle", "can_rollback": worker.adapters.load(Ordering::SeqCst), "error": "an old run's" }),
+        json!({ "active": active, "metrics": { "adapter": { "passed": true } }, "voice_resume": null }),
     )
 }
 
-async fn model_rollback(State(worker): State<Worker>) -> Json<Value> {
-    if !worker.adapters.swap(false, Ordering::SeqCst) {
-        return Json(json!({ "refused": "No previous model version is available" }));
-    }
-    worker.rolled_back.fetch_add(1, Ordering::SeqCst);
-    Json(json!({ "phase": "rolled_back", "can_rollback": false }))
+/// The trained models all pass their checks.
+async fn check(Json(body): Json<Value>) -> Json<Value> {
+    Json(json!({ "active": body["active"] }))
+}
+
+async fn use_models(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
+    worker.used.lock().unwrap().push(body["active"].clone());
+    Json(json!({ "active": body["active"] }))
+}
+
+async fn stop(State(worker): State<Worker>) -> Json<Value> {
+    worker.stops.fetch_add(1, Ordering::SeqCst);
+    Json(json!({}))
 }
 
 async fn start_worker(worker: Worker) -> SocketAddr {
     let app = Router::new()
         .route("/worker/learning/idle", post(idle))
         .route("/worker/learning/reload", post(reload))
-        .route("/worker/learning/model", post(model))
-        .route("/worker/learning/model/start", post(model))
-        .route("/worker/learning/model/rollback", post(model_rollback))
+        .route("/worker/learning/model/prepare", post(prepare))
+        .route("/worker/learning/model/train", post(train))
+        .route("/worker/learning/model/check", post(check))
+        .route("/worker/learning/model/use", post(use_models))
+        .route("/worker/learning/model/stop", post(stop))
+        .route(
+            "/worker/learning/model/reports",
+            post(|| async { Json(json!({ "reports": [] })) }),
+        )
+        .route(
+            "/worker/learning/model/voice",
+            post(|| async { Json(json!({ "bank": { "train": 0 }, "sounds": null })) }),
+        )
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(worker);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -211,6 +248,38 @@ impl Kass {
         assert_eq!(status, 200, "{body}");
         body
     }
+
+    /// The learning status once model improvement's run has ended.
+    async fn settled(&self) -> Value {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let (status, body) = self.call("GET", "/capture/learning").await;
+            assert_eq!(status, 200, "{body}");
+            if body["model"]["running"] == false {
+                return body;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the run never ended"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    fn model_state(&self) -> Value {
+        let path = self.data.join("model-improvement/state.json");
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn write_model_state(&self, state: Value) {
+        let dir = self.data.join("model-improvement");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("state.json"), state.to_string()).unwrap();
+    }
+
+    fn used(&self) -> Vec<Value> {
+        self.worker.used.lock().unwrap().clone()
+    }
 }
 
 impl Drop for Kass {
@@ -228,7 +297,7 @@ async fn learns_saves_reloads_and_rolls_back_for_good() {
         (body["active_rules"].clone(), body["outcome"].clone()),
         (json!(0), json!("waiting"))
     );
-    assert_eq!(body["model"]["phase"], "idle");
+    assert_eq!(body["model"]["phase"], "waiting");
 
     kass.voicebox("refined");
     let body = kass.run().await;
@@ -240,7 +309,7 @@ async fn learns_saves_reloads_and_rolls_back_for_good() {
         body["evaluated_report_ids"],
         json!(["report-1", "report-2", "report-3"])
     );
-    assert_eq!(body["model"]["phase"], "idle");
+    assert_eq!(kass.settled().await["model"]["phase"], "waiting_data");
     assert_eq!(kass.reloads(), 1);
     let saved = kass.saved();
     assert_eq!(saved["rules"][0]["replacement"], json!(["Voicebox"]));
@@ -275,19 +344,78 @@ async fn learns_saves_reloads_and_rolls_back_for_good() {
 
 #[tokio::test]
 async fn the_adapters_roll_back_before_the_corrections() {
-    let mut kass = Kass::start(false).await;
+    let mut kass = Kass::new(false);
+    kass.write_model_state(json!({
+        "version": 1,
+        "revision": 3,
+        "active": { "llm": { "id": "new", "path": "/runs/new/adapter" } },
+        "history": [{ "active": { "llm": { "id": "old", "path": "/runs/old/adapter" } }, "fingerprint": "f" }],
+    }));
+    kass.serve().await;
     kass.voicebox("refined");
     kass.run().await;
-    kass.worker.adapters.store(true, Ordering::SeqCst);
+    kass.settled().await;
     let (status, body) = kass.call("POST", "/capture/learning/rollback").await;
-    assert_eq!(status, 200);
-    assert_eq!(kass.worker.rolled_back.load(Ordering::SeqCst), 1);
+    assert_eq!(status, 200, "{body}");
     assert_eq!(
         (body["active_rules"].clone(), body["model"]["phase"].clone()),
         (json!(1), json!("rolled_back"))
     );
+    assert_eq!(body["model"]["active_adapter"], "old");
+    assert_eq!(body["model"]["can_rollback"], false);
+    assert_eq!(
+        kass.used(),
+        [json!({ "llm": { "id": "old", "path": "/runs/old/adapter" } })]
+    );
+    let saved = kass.model_state();
+    assert_eq!(
+        (saved["revision"].clone(), saved["blocked"].clone()),
+        (json!(4), json!(["f"]))
+    );
+    // The run going is stopped first.
+    assert_eq!(kass.worker.stops.load(Ordering::SeqCst), 1);
+
     let (_, body) = kass.call("POST", "/capture/learning/rollback").await;
     assert_eq!(body["active_rules"], 0);
+}
+
+#[tokio::test]
+async fn a_trained_model_that_does_better_is_used_and_kept() {
+    let kass = Kass::start(false).await;
+    kass.worker.ready.store(true, Ordering::SeqCst);
+    *kass.worker.trained.lock().unwrap() =
+        json!({ "llm": { "id": "run-1", "path": "/runs/run-1/adapter" } });
+    kass.run().await;
+    let body = kass.settled().await["model"].clone();
+    assert_eq!(
+        (
+            body["phase"].clone(),
+            body["active_adapter"].clone(),
+            body["can_rollback"].clone()
+        ),
+        (json!("activated"), json!("run-1"), json!(true))
+    );
+    assert_eq!(body["counts"], json!({ "reports": 3 }));
+    assert_eq!(
+        kass.used(),
+        [json!({ "llm": { "id": "run-1", "path": "/runs/run-1/adapter" } })]
+    );
+    let saved = kass.model_state();
+    assert_eq!(saved["attempted"], json!(["f1"]));
+    assert_eq!(saved["evaluated_report_ids"], json!(["report-1"]));
+    assert_eq!(
+        saved["history"],
+        json!([{ "active": {}, "fingerprint": "f1" }])
+    );
+
+    // The same reports again: nothing new to train on.
+    kass.run().await;
+    assert_eq!(kass.settled().await["model"]["phase"], "no_new_data");
+    assert_eq!(kass.used().len(), 1);
+
+    // Cancelling answers the status.
+    let (status, body) = kass.call("POST", "/capture/learning/cancel").await;
+    assert_eq!((status, body["phase"].clone()), (200, json!("no_new_data")));
 }
 
 #[tokio::test]

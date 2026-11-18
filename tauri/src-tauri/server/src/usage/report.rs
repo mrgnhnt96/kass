@@ -437,9 +437,7 @@ async fn post(client: &reqwest::Client, events: Vec<Value>) -> bool {
 }
 
 async fn voice_training_on(state: &AppState) -> bool {
-    crate::worker::model_status(&state.proxy)
-        .await
-        .is_ok_and(|status| !status["active_adapter"].is_null())
+    crate::model_improvement::adapter_in_use(state).await
 }
 
 /// A minute after the server starts, so it never competes with loading

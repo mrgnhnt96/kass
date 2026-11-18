@@ -27,8 +27,6 @@ use tokio::net::{TcpListener, TcpStream};
 /// What a stand-in worker was asked to do, by path.
 #[derive(Clone, Default)]
 struct Worker {
-    /// The trained models in use, as `manager.in_use()` has them.
-    in_use: Value,
     calls: Arc<Mutex<Vec<(String, Value)>>>,
 }
 
@@ -50,9 +48,10 @@ async fn answer(
 ) -> Json<Value> {
     let path = uri.path().to_string();
     let body = serde_json::from_slice(&body).unwrap_or(Value::Null);
-    worker.calls.lock().unwrap().push((path.clone(), body));
+    worker.calls.lock().unwrap().push((path.clone(), body.clone()));
     Json(match path.as_str() {
-        "/worker/sync/adapters" => json!({"in_use": worker.in_use}),
+        // It uses the copied models: they pass their checks.
+        "/worker/sync/mirrored" => json!({"active": body["active"]}),
         "/worker/models/loaded" => json!({"loaded": []}),
         "/worker/learning/idle" => json!({"idle": true}),
         _ => json!({}),
@@ -197,11 +196,13 @@ async fn a_capture_a_word_and_a_trained_model_cross_between_two_macs() {
     std::fs::create_dir_all(&adapter).unwrap();
     std::fs::write(adapter.join("adapters.safetensors"), b"weights").unwrap();
     std::fs::write(adapter.join("adapter_config.json"), b"{\"rank\": 8}").unwrap();
-    let shared_worker = Worker {
-        in_use: json!({"llm": {"id": "run-1", "sha256": "abc", "path": adapter}}),
-        ..Worker::default()
-    };
-    let shared = Kass::start(shared_dir, shared_worker, None).await;
+    std::fs::write(
+        shared_dir.join("model-improvement/state.json"),
+        json!({"version": 1, "active": {"llm": {"id": "run-1", "sha256": "abc", "path": adapter}}})
+            .to_string(),
+    )
+    .unwrap();
+    let shared = Kass::start(shared_dir, Worker::default(), None).await;
     shared.add_word("Studio").await;
 
     // The stand-in dictated while the shared Kass was away.
@@ -260,6 +261,12 @@ async fn a_capture_a_word_and_a_trained_model_cross_between_two_macs() {
             .unwrap(),
         &json!({"active": {"llm": {"id": "run-1", "sha256": "abc", "path": mirrored}}})
     );
+    // It's the stand-in's model now.
+    let saved: Value = serde_json::from_slice(
+        &std::fs::read(stand_in.dir.join("model-improvement/state.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved["active"]["llm"]["path"], json!(mirrored));
 
     // Each says how syncing goes.
     let (_, status) = stand_in.call("GET", "/sync/status", None).await;
