@@ -1,6 +1,7 @@
 //! Kass's API without the app, in front of a worker started by hand:
 //!
 //! ```sh
+//! cargo xtask db-init                     # data/kass.db, from the repo root
 //! uvicorn backend.main:app --port 17494   # from the repo root
 //! cargo run -p kass-server --example serve -- 127.0.0.1:17493 127.0.0.1:17494 data/kass.db
 //! ```

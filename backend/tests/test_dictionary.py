@@ -479,35 +479,20 @@ def test_deleting_a_style_moves_its_entries_to_the_default(storage):
     assert sorted((e.scope_id == default, e.written) for e in moved) == [(True, "Kubernetes"), (True, "zed")]
 
 
-def test_the_migration_adds_groups_to_an_existing_dictionary():
-    from sqlalchemy import inspect, text
-
-    from backend.database.migrations import run_migrations
+def test_an_entry_from_before_groups_is_its_own_group_of_the_users():
+    # The app's migration leaves an existing entry as this row
+    # (tauri/src-tauri/server/src/db.rs).
+    from sqlalchemy import text
 
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    with engine.connect() as conn:
+    Base.metadata.create_all(engine)
+    with engine.begin() as conn:
         conn.execute(
             text(
-                "CREATE TABLE dictionary_entries (id VARCHAR PRIMARY KEY, scope VARCHAR NOT NULL, "
-                "scope_id VARCHAR NOT NULL, app_name VARCHAR, written VARCHAR NOT NULL, spoken VARCHAR, "
-                "key VARCHAR NOT NULL, created_at DATETIME)"
+                "INSERT INTO dictionary_entries (id, scope, scope_id, written, key, group_id, match_sound,"
+                " source, phrase) VALUES ('old', 'global', '', 'Zed', 'zed', NULL, 1, NULL, 0)"
             )
         )
-        conn.execute(
-            text("INSERT INTO dictionary_entries VALUES ('old', 'global', '', NULL, 'Zed', NULL, 'zed', NULL)")
-        )
-        conn.commit()
-
-    run_migrations(engine)
-    run_migrations(engine)
-
-    columns = {c["name"] for c in inspect(engine).get_columns("dictionary_entries")}
-    assert {"group_id", "match_sound", "source", "phrase"} <= columns
-    with engine.connect() as conn:
-        # An existing entry keeps matching by sound, is the user's, and is a word.
-        assert conn.execute(text("SELECT id, group_id, match_sound, source, phrase FROM dictionary_entries")).all() == [
-            ("old", None, 1, None, 0)
-        ]
     make = sessionmaker(bind=engine)
     with make() as db:
         [group] = dictionary.list_groups(db)
