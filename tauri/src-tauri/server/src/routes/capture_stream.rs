@@ -102,7 +102,7 @@ async fn stream_capture(
 
 /// The target app field as stored: trimmed, at most 255 characters, None
 /// when blank or not text.
-fn app_field(value: Option<&Value>) -> Option<String> {
+pub(crate) fn app_field(value: Option<&Value>) -> Option<String> {
     let cleaned = py::head(py::strip(value?.as_str()?), MAX_APP_FIELD_CHARS);
     (!cleaned.is_empty()).then(|| cleaned.to_string())
 }

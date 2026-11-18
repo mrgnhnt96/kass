@@ -206,6 +206,81 @@ pub fn insert_capture(
     Ok(capture)
 }
 
+/// A selection rewritten without a streamed recording (`POST /commands/run`).
+#[derive(Clone, Debug, Default)]
+pub struct Command {
+    pub selection: String,
+    pub instruction: String,
+    /// The name of the transform the instruction named.
+    pub transform: Option<String>,
+    pub text: String,
+    pub llm_model: String,
+}
+
+/// Where a command is saved.
+pub enum CommandCapture {
+    /// The capture whose uploaded recording held the instruction.
+    Existing(String),
+    /// A capture without audio, of what was said and the app it was for.
+    New {
+        id: String,
+        spoken: String,
+        app_bundle_id: Option<String>,
+        app_name: Option<String>,
+    },
+}
+
+/// Save `command` as a command capture and return it as stored; None when
+/// an existing capture is gone. Python: `commands.record_command`.
+pub fn save_command(
+    conn: &mut Connection,
+    capture: &CommandCapture,
+    command: &Command,
+    sync: Sync,
+) -> rusqlite::Result<Option<Capture>> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let at = now();
+    let id = match capture {
+        CommandCapture::Existing(id) => id,
+        CommandCapture::New {
+            id,
+            spoken,
+            app_bundle_id,
+            app_name,
+        } => {
+            tx.execute(
+                "INSERT INTO captures (id, audio_path, source, transcript_raw, app_bundle_id, \
+                 app_name, audio_deleted, created_at) VALUES (?1, '', 'command', ?2, ?3, ?4, 0, ?5)",
+                params![id, spoken, app_bundle_id, app_name, stored(at)],
+            )?;
+            id
+        }
+    };
+    // Dictation's cleanup flags and content review don't describe a rewrite.
+    let updated = tx.execute(
+        "UPDATE captures SET source = 'command', command_selection = ?2, \
+         command_instruction = ?3, command_transform = ?4, transcript_refined = ?5, \
+         llm_model = ?6, refinement_flags = NULL, refinement_review = NULL WHERE id = ?1",
+        params![
+            id,
+            command.selection,
+            command.instruction,
+            command.transform,
+            command.text,
+            command.llm_model,
+        ],
+    )?;
+    if updated == 0 {
+        return Ok(None);
+    }
+    let mut changes = Changes::default();
+    changes.changed("capture", id);
+    changes.record(&tx, sync, at)?;
+    let saved = get(&tx, id)?;
+    tx.commit()?;
+    Ok(saved)
+}
+
 // -- reports ------------------------------------------------------------------
 
 /// One `capture_feedback` row.
