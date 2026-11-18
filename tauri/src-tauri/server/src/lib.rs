@@ -142,6 +142,7 @@ pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> Ap
         stand_in: None,
         in_use: Arc::default(),
         teach: Arc::default(),
+        model_improvement: Arc::default(),
     }
 }
 
