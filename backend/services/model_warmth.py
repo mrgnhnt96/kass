@@ -1,4 +1,4 @@
-"""Keep the dictation models in RAM while the user is at the Mac.
+"""Read back whatever of the loaded models macOS took out of RAM.
 
 After a while unused, macOS swaps or compresses the Whisper and Qwen weights
 (and Qwen's cached style prompts). The next dictation's GPU work then waits
@@ -11,17 +11,14 @@ is measured, not guessed. Pages that are out are read back here, one byte
 each, on an ordinary thread: reading a page faults it back in, and the MLX
 thread keeps recognizing meanwhile.
 
-The keeper follows the user. While they are at the Mac (input in the last
-couple of minutes), it checks every minute and reads back whatever was
-taken. Once they have been away a while it stops, and the models may go
-cold. The first input after that brings them back, a few seconds before the
-user can start a dictation.
+When to do it is the app's server's call (``tauri/src-tauri/server/src/warmth.rs``): it
+follows the user and asks through ``/worker/keep-resident``, as a dictation
+does when it starts.
 """
 
 import asyncio
 import ctypes
 import logging
-import platform
 import resource
 import time
 from dataclasses import dataclass
@@ -31,39 +28,10 @@ from .mlx_thread import run_on_mlx_thread, speculative_mlx_work
 logger = logging.getLogger(__name__)
 
 PAGE_SIZE = resource.getpagesize()
-POLL_SECONDS = 5.0
-# Input this recent means the user is at the Mac.
-AT_THE_MAC_SECONDS = 120.0
-# No input for this long and the models may go cold.
-AWAY_SECONDS = 600.0
-CHECK_SECONDS = 60.0
 # Below this share of pages in RAM, read the rest back.
 WARM_ENOUGH = 0.98
 
 _lock = asyncio.Lock()
-
-
-# -- Input idle time --------------------------------------------------------
-
-_HID_SYSTEM_STATE = 1  # kCGEventSourceStateHIDSystemState
-_ANY_INPUT_EVENT = 0xFFFFFFFF  # kCGAnyInputEventType
-_core_graphics = None
-
-
-def seconds_since_input() -> float | None:
-    """Seconds since the last keystroke, click or mouse movement; None off macOS.
-
-    Needs no permission: it reads when the last event happened, not what it was.
-    """
-    global _core_graphics
-    if platform.system() != "Darwin":
-        return None
-    if _core_graphics is None:
-        library = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
-        library.CGEventSourceSecondsSinceLastEventType.restype = ctypes.c_double
-        library.CGEventSourceSecondsSinceLastEventType.argtypes = [ctypes.c_int32, ctypes.c_uint32]
-        _core_graphics = library
-    return _core_graphics.CGEventSourceSecondsSinceLastEventType(_HID_SYSTEM_STATE, _ANY_INPUT_EVENT)
 
 
 # -- Page residency ---------------------------------------------------------
@@ -211,43 +179,3 @@ async def keep_resident(reason: str, llm: bool = True, stt: bool = True) -> None
                 warmth.seconds,
             )
 
-
-# -- Following the user -----------------------------------------------------
-
-
-class Keeper:
-    """When to check the models: often while the user is here, never while away."""
-
-    def __init__(self):
-        self.away = False
-        self.last_check: float | None = None
-
-    def check(self, idle: float, now: float) -> str | None:
-        """The reason to check now, or None."""
-        if idle >= AWAY_SECONDS:
-            self.away = True
-            return None
-        if idle >= AT_THE_MAC_SECONDS:
-            return None
-        if self.away:
-            self.away = False
-            self.last_check = now
-            return "you're back"
-        if self.last_check is None or now - self.last_check >= CHECK_SECONDS:
-            self.last_check = now
-            return "while you're here"
-        return None
-
-
-async def periodic_job():
-    if seconds_since_input() is None:
-        return
-    keeper = Keeper()
-    while True:
-        try:
-            reason = keeper.check(seconds_since_input(), time.monotonic())
-            if reason:
-                await keep_resident(reason)
-        except Exception:
-            logger.warning("Couldn't check whether the models are in RAM", exc_info=True)
-        await asyncio.sleep(POLL_SECONDS)

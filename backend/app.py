@@ -94,10 +94,9 @@ def _jobs():
     from .services.correction_notes import periodic_job as notes_job
     from .services.history_retention import periodic_job as retention_job
     from .services.model_improvement.manager import periodic_job as learning_job
-    from .services.model_warmth import periodic_job as warmth_job
     from .services.usage_report import periodic_job as usage_job
 
-    return (learning_job, notes_job, retention_job, usage_job, warmth_job)
+    return (learning_job, notes_job, retention_job, usage_job)
 
 
 def _stand_in_jobs():

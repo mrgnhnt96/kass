@@ -20,6 +20,7 @@ pub mod routes;
 pub mod settings;
 pub mod stream;
 pub mod styles;
+mod warmth;
 mod worker;
 
 use std::net::SocketAddr;
@@ -76,10 +77,11 @@ pub struct Running {
     _shutdown: oneshot::Sender<()>,
     _relay: Relay,
     _learning: Relay,
+    _warmth: Relay,
 }
 
 /// A background task that stops when the server stops: passing on the
-/// worker's capture events, learning from reports.
+/// worker's capture events, learning from reports, keeping models warm.
 struct Relay(tokio::task::JoinHandle<()>);
 
 impl Drop for Relay {
@@ -135,6 +137,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
         state.proxy.clone(),
     )));
     let learning = Relay(tokio::spawn(learning::watch(state.clone())));
+    let warmth = Relay(tokio::spawn(warmth::watch(state.clone())));
     let app = routes::router(state).into_make_service_with_connect_info::<SocketAddr>();
     // Small dictation frames shouldn't wait on Nagle's algorithm.
     let listener = listener.tap_io(|tcp| {
@@ -156,5 +159,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         _shutdown: shutdown,
         _relay: relay,
         _learning: learning,
+        _warmth: warmth,
     })
 }

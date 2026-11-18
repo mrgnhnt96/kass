@@ -66,6 +66,11 @@ impl Streams {
         lock(&self.running).remove(id);
     }
 
+    /// Whether a dictation is running now.
+    pub fn dictating(&self) -> bool {
+        !lock(&self.running).is_empty()
+    }
+
     pub fn keep(&self, id: &str, result: Value) {
         let mut results = lock(&self.results);
         results.retain(|(kept, _, _)| kept != id);

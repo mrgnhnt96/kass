@@ -404,7 +404,6 @@ def awake_stand_in(monkeypatch):
     monkeypatch.setattr(job.time, "monotonic", lambda: clock["now"])
     monkeypatch.setattr(job, "_awake", True)
     monkeypatch.setattr(job, "_back_since", None)
-    monkeypatch.setattr(job, "_warmth", None)
     monkeypatch.setattr(job, "_wake_lock", asyncio.Lock())
     monkeypatch.setitem(job._state, "reachable", True)
 
