@@ -441,9 +441,13 @@ fn pick_kass_window(windows: &[(String, bool)]) -> &str {
 /// focused Kass window inserts it itself.
 async fn insert_in_app(app: &AppHandle, take_id: u64, text: String) -> Result<bool, String> {
     let window = kass_window_label(app);
-    // In the main window only the Dictionary's "When I say" box takes it.
+    // In the main window the Dictionary's "When I say" box takes it first,
+    // else the field focused there.
     if window == MAIN_WINDOW_LABEL {
-        return Ok(crate::settings::dictionary::claim(take_id, text).await);
+        if crate::settings::dictionary::claim(take_id, text.clone()).await {
+            return Ok(true);
+        }
+        return Ok(type_in_main_window(text).await);
     }
     let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
     let tx = Mutex::new(Some(tx));
@@ -470,6 +474,20 @@ async fn insert_in_app(app: &AppHandle, take_id: u64, text: String) -> Result<bo
     };
     app.unlisten(listener);
     result
+}
+
+/// Type `text` into the native field focused in the main window. False
+/// when none has focus.
+async fn type_in_main_window(text: String) -> bool {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    crate::host::with_app(move |cx| {
+        let _ = tx.send(crate::host::webview::type_text(
+            MAIN_WINDOW_LABEL,
+            &text,
+            cx,
+        ));
+    });
+    rx.await.unwrap_or(false)
 }
 
 /// Take back live text: the final text is delivered another way.
