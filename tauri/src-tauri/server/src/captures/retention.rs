@@ -104,7 +104,7 @@ async fn sweep_db(
     loop {
         let (dir, in_use) = (data_dir.clone(), in_use.clone());
         let (count, audio) = db
-            .call(move |conn| fold_batch(conn, &dir, &in_use, before, keep_audio))
+            .call(move |conn| fold_and_delete(conn, &dir, &in_use, before, keep_audio))
             .await?;
         if count == 0 {
             break;
@@ -189,25 +189,8 @@ fn expired(
 
 /// Fold and delete one batch in one transaction, keeping new holds out
 /// meanwhile. How many went, and the audio they leave to delete.
-fn fold_batch(
-    conn: &mut Connection,
-    data_dir: &Path,
-    in_use: &InUse,
-    before: NaiveDateTime,
-    keep_audio: bool,
-) -> rusqlite::Result<(usize, Vec<String>)> {
-    // Corrections outlive their capture, as they always have in kass.db; the
-    // server's connections check foreign keys, the worker's never did. The
-    // setting can't change inside a transaction.
-    let checked: bool = conn.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
-    conn.pragma_update(None, "foreign_keys", false)?;
-    let folded = fold_and_delete(conn, data_dir, in_use, before, keep_audio);
-    let restored = conn.pragma_update(None, "foreign_keys", checked);
-    let folded = folded?;
-    restored?;
-    Ok(folded)
-}
-
+/// Corrections outlive their capture, as they always have in kass.db: no
+/// connection checks foreign keys (`db::open`).
 fn fold_and_delete(
     conn: &mut Connection,
     data_dir: &Path,
