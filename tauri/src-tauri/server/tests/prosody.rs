@@ -173,10 +173,15 @@ fn python_frames(case: &Value) -> Frames {
 /// The pitch tracker on the takes as the app sends them. Python correlates
 /// by FFT and sums loudness in float32, so values agree to rounding; a frame
 /// right at the voicing threshold may tip either way.
+///
+/// Python also read a lone frame here and there an octave low, where a
+/// period between two whole lags lost to its double; Rust reads those at
+/// the octave of the frames around them.
 #[test]
 fn tracks_pitch_as_python_does() {
     let mut frames_seen = 0;
     let mut flips = 0;
+    let mut octaves = 0;
     let mut worst = (0f64, 0f64);
     for case in golden()["takes"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
@@ -195,6 +200,10 @@ fn tracks_pitch_as_python_does() {
                 (true, true) => {}
                 (false, false) => {
                     let off = (got_hz - want_hz).abs() / want_hz;
+                    if off >= 1e-3 && rejoins_its_neighbours(&want.hz, index, *got_hz) {
+                        octaves += 1;
+                        continue;
+                    }
                     assert!(
                         off < 1e-3,
                         "{name} frame {index}: {got_hz} Hz for {want_hz}"
@@ -217,7 +226,29 @@ fn tracks_pitch_as_python_does() {
         flips * 1000 <= frames_seen,
         "{flips} of {frames_seen} frames voiced differently"
     );
-    eprintln!("pitch: {frames_seen} frames, {flips} voicing flips, worst {worst:?}");
+    assert!(
+        octaves * 100 <= frames_seen,
+        "{octaves} of {frames_seen} frames an octave from Python's"
+    );
+    eprintln!(
+        "pitch: {frames_seen} frames, {flips} voicing flips, {octaves} octaves raised, worst {worst:?}"
+    );
+}
+
+/// Whether `got` is twice Python's frame `index`, within a semitone of the
+/// nearest frames Python read at another octave.
+fn rejoins_its_neighbours(python: &[f64], index: usize, got: f64) -> bool {
+    let want = python[index];
+    if ((got / want) - 2.0).abs() > 2e-3 {
+        return false;
+    }
+    let near = |frames: &mut dyn Iterator<Item = &f64>| {
+        frames
+            .take(5)
+            .find(|hz| !hz.is_nan() && (*hz / want - 1.0).abs() > 0.25)
+            .is_some_and(|hz| (hz / got).log2().abs() * 12.0 < 1.0)
+    };
+    near(&mut python[..index].iter().rev()) && near(&mut python[index + 1..].iter())
 }
 
 #[test]
