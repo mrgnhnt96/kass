@@ -154,12 +154,17 @@ fn rename_old_database(path: &Path) -> std::io::Result<()> {
 
 /// Open the existing database. A missing file is an error: `prepare`
 /// creates it before the server starts.
+///
+/// Foreign keys go unchecked, as Python's connections always left them:
+/// kass.db keeps reports whose capture history retention deleted, and a
+/// synced report can arrive before its capture, or without one.
 fn open(path: &Path) -> rusqlite::Result<Connection> {
     let connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
     connection.busy_timeout(BUSY_TIMEOUT)?;
+    connection.pragma_update(None, "foreign_keys", false)?;
     Ok(connection)
 }
 
@@ -187,6 +192,28 @@ mod tests {
         drop(writer);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(word, "Kass");
+    }
+
+    #[tokio::test]
+    async fn keeps_a_report_whose_capture_is_gone() {
+        let path = temp_path("orphan");
+        let _ = std::fs::remove_file(&path);
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(include_str!("../tests/kass_schema.sql"))
+            .unwrap();
+        let db = Db::new(path.clone());
+        let inserted = db
+            .call(|c| {
+                c.execute(
+                    "INSERT INTO capture_feedback (id, capture_id, target, expected_text, notes, snapshot) \
+                     VALUES ('r', 'gone', 'refined', 'x', '', '{}')",
+                    [],
+                )
+            })
+            .await;
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(inserted.unwrap(), 1);
     }
 
     #[tokio::test]

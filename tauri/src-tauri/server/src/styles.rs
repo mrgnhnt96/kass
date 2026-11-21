@@ -303,12 +303,14 @@ pub struct Listing {
 struct Captured {
     bundle_id: String,
     name: Option<String>,
+    /// When the newest capture with `name` was.
+    named: Option<String>,
     count: i64,
     latest: Option<String>,
 }
 
 /// How many captures each app has, most first; an app's name is the one on
-/// its newest capture (`services/captures.py`, `list_capture_apps`).
+/// its newest capture that has one.
 fn captured_apps(conn: &Connection) -> rusqlite::Result<Vec<Captured>> {
     let mut statement = conn.prepare(
         "SELECT app_bundle_id, app_name, COUNT(id), MAX(created_at) FROM captures \
@@ -333,6 +335,7 @@ fn captured_apps(conn: &Connection) -> rusqlite::Result<Vec<Captured>> {
                 apps.push(Captured {
                     bundle_id,
                     name: None,
+                    named: None,
                     count: 0,
                     latest: None,
                 });
@@ -340,12 +343,14 @@ fn captured_apps(conn: &Connection) -> rusqlite::Result<Vec<Captured>> {
             }
         };
         let app = &mut apps[at];
-        let newer = latest.is_some() && latest > app.latest;
-        if name.as_ref().is_some_and(|name| !name.is_empty()) && (app.latest.is_none() || newer) {
+        if name.as_ref().is_some_and(|name| !name.is_empty())
+            && (app.name.is_none() || latest > app.named)
+        {
             app.name = name;
+            app.named = latest.clone();
         }
         app.count += count;
-        if latest.is_some() && (app.latest.is_none() || newer) {
+        if latest > app.latest {
             app.latest = latest;
         }
     }
@@ -1335,6 +1340,47 @@ mod tests {
             summary,
             vec![("com.b", None, 3), ("com.a", Some("New A"), 2)]
         );
+    }
+
+    #[test]
+    fn an_unnamed_newest_capture_keeps_the_newest_name() {
+        let conn = db();
+        capture(
+            &conn,
+            "a1",
+            "com.a",
+            Some("Zed"),
+            None,
+            "2026-01-01 00:00:00.000000",
+        );
+        capture(
+            &conn,
+            "a2",
+            "com.a",
+            Some("Alpha"),
+            None,
+            "2026-01-02 00:00:00.000000",
+        );
+        capture(
+            &conn,
+            "a3",
+            "com.a",
+            None,
+            None,
+            "2026-01-03 00:00:00.000000",
+        );
+        capture(
+            &conn,
+            "a4",
+            "com.a",
+            Some(""),
+            None,
+            "2026-01-04 00:00:00.000000",
+        );
+        let apps = listing(&conn, None).unwrap().apps;
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].name.as_deref(), Some("Alpha"));
+        assert_eq!(apps[0].count, 4);
     }
 
     #[test]
