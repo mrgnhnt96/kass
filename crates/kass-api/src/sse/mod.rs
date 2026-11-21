@@ -87,6 +87,24 @@ impl SseCancel {
         self.inner.cancelled.load(Ordering::SeqCst)
     }
 
+    /// Ends the open stream without cancelling: its reader may open a new
+    /// one. Over https it can't reach the socket and does nothing.
+    pub(crate) fn sever(&self) {
+        if let Some(socket) = self.lock_socket().take() {
+            let _ = socket.shutdown(Shutdown::Both);
+        }
+    }
+
+    pub(crate) fn same(&self, other: &SseCancel) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+
+    /// No stream or reader holds this handle any more, only the client
+    /// that tracks it.
+    pub(crate) fn is_orphaned(&self) -> bool {
+        Arc::strong_count(&self.inner) == 1
+    }
+
     pub(crate) fn set_socket(&self, socket: TcpStream) {
         let mut slot = self.lock_socket();
         if self.is_cancelled() {

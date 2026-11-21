@@ -10,7 +10,7 @@ mod server;
 mod settings;
 mod writing_style;
 
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -38,6 +38,9 @@ struct Inner {
     agent: ureq::Agent,
     base_url: RwLock<String>,
     mac: RwLock<Option<Mac>>,
+    /// Event streams opened through any clone, ended when the server
+    /// changes.
+    streams: Mutex<Vec<SseCancel>>,
 }
 
 impl ApiClient {
@@ -52,6 +55,7 @@ impl ApiClient {
                 agent,
                 base_url: RwLock::new(trim_base(base_url.into())),
                 mac: RwLock::new(mac),
+                streams: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -71,12 +75,38 @@ impl ApiClient {
 
     /// Send every request from now on to `base_url`: another Mac's server,
     /// or this Mac's while that one is away.
+    ///
+    /// Open event streams belong to the old server. One to another Mac
+    /// that went away may block forever, and one to this Mac's never ends
+    /// when the other comes back, so each ends and its reader opens a new
+    /// one here.
     pub fn set_base_url(&self, base_url: impl Into<String>) {
-        *self
+        let base_url = trim_base(base_url.into());
+        {
+            let mut current = self
+                .inner
+                .base_url
+                .write()
+                .unwrap_or_else(PoisonError::into_inner);
+            if *current == base_url {
+                return;
+            }
+            *current = base_url;
+        }
+        for stream in self.streams().iter() {
+            stream.sever();
+        }
+    }
+
+    /// The tracked streams, without those nothing holds any more.
+    fn streams(&self) -> std::sync::MutexGuard<'_, Vec<SseCancel>> {
+        let mut streams = self
             .inner
-            .base_url
-            .write()
-            .unwrap_or_else(PoisonError::into_inner) = trim_base(base_url.into());
+            .streams
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        streams.retain(|stream| !stream.is_cancelled() && !stream.is_orphaned());
+        streams
     }
 
     pub fn mac(&self) -> Option<Mac> {
@@ -158,7 +188,19 @@ impl ApiClient {
     }
 
     fn events(&self, url: &str, cancel: &SseCancel) -> Result<SseStream> {
-        sse::open(url, &self.mac_headers(), CONNECT_TIMEOUT, cancel)
+        let base_url = self.base_url();
+        {
+            let mut streams = self.streams();
+            if !streams.iter().any(|stream| stream.same(cancel)) {
+                streams.push(cancel.clone());
+            }
+        }
+        let stream = sse::open(url, &self.mac_headers(), CONNECT_TIMEOUT, cancel)?;
+        // The server changed while this one was opening.
+        if self.base_url() != base_url {
+            cancel.sever();
+        }
+        Ok(stream)
     }
 }
 

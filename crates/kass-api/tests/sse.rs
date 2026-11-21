@@ -98,6 +98,60 @@ fn cancelling_from_another_thread_ends_a_blocked_read() {
     assert_eq!(reader.join().unwrap(), None);
 }
 
+/// A stream to another Mac that went away can block forever, and one to
+/// this Mac's server never ends when the other comes back: switching
+/// servers ends it, so its reader reconnects to the new one.
+#[test]
+fn switching_the_server_ends_open_event_streams() {
+    let first = Server::start(vec![stream(EVENT_STREAM, "event: changed\ndata: {}\n\n")]);
+    let second = Server::start(vec![stream(EVENT_STREAM, "event: changed\ndata: {}\n\n")]);
+    let client = ApiClient::new(&first.url, None);
+    let cancel = SseCancel::new();
+    let mut events = client.capture_events(&cancel).unwrap();
+    assert_eq!(events.next().unwrap().unwrap().event, "changed");
+    first.request();
+
+    let (done, finished) = mpsc::channel();
+    let reader = thread::spawn(move || {
+        let next = events.next();
+        done.send(()).unwrap();
+        // Ended: an error, or the end of the stream.
+        next.is_none_or(|event| event.is_err()) && events.next().is_none()
+    });
+    thread::sleep(Duration::from_millis(100));
+    assert!(finished.try_recv().is_err(), "the read should block");
+
+    client.clone().set_base_url(&second.url);
+    finished
+        .recv_timeout(Duration::from_secs(2))
+        .expect("switching servers ended the read");
+    assert!(reader.join().unwrap(), "the stream ended");
+    assert!(!cancel.is_cancelled(), "the reader may reconnect");
+
+    let mut events = client.capture_events(&cancel).unwrap();
+    assert_eq!(events.next().unwrap().unwrap().event, "changed");
+    assert_eq!(second.request().target, "/captures/events");
+}
+
+#[test]
+fn setting_the_same_server_leaves_streams_open() {
+    let server = Server::start(vec![stream(EVENT_STREAM, "event: changed\ndata: {}\n\n")]);
+    let client = ApiClient::new(&server.url, None);
+    let cancel = SseCancel::new();
+    let mut events = client.capture_events(&cancel).unwrap();
+    assert_eq!(events.next().unwrap().unwrap().event, "changed");
+
+    let (done, finished) = mpsc::channel();
+    thread::spawn(move || {
+        let next = events.next().is_some();
+        let _ = done.send(next);
+    });
+    client.set_base_url(format!("{}/", server.url));
+    thread::sleep(Duration::from_millis(200));
+    assert!(finished.try_recv().is_err(), "the stream should stay open");
+    cancel.cancel();
+}
+
 #[test]
 fn a_stream_cancelled_before_it_opens_is_already_over() {
     let server = Server::start(vec![]);
