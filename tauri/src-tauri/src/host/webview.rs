@@ -10,7 +10,7 @@ use std::sync::{Mutex, OnceLock};
 
 use gpui_kit::{
     div, AnyView, AnyWindowHandle, App, AppContext as _, Context, IntoElement, Keystroke,
-    Modifiers, ParentElement, Render, Styled, Window, WindowOptions,
+    Modifiers, ParentElement, Render, Styled, Window, WindowBackgroundAppearance, WindowOptions,
 };
 use objc2::rc::Retained;
 use objc2::{msg_send, MainThreadMarker};
@@ -222,7 +222,8 @@ pub fn open(cx: &mut App, spec: Spec) -> Result<WebviewWindow> {
         on_close,
         root,
     } = spec;
-    gpui_kit::open_window(options, cx, |window, cx| {
+    let see_through = options.window_background != WindowBackgroundAppearance::Opaque;
+    let (handle, _) = gpui_kit::open_window(options, cx, |window, cx| {
         let ns_window = ns_window(window);
         prepare(&ns_window);
         WINDOWS.with(|w| {
@@ -251,9 +252,25 @@ pub fn open(cx: &mut App, spec: Spec) -> Result<WebviewWindow> {
         cx.new(|_| Host { root })
     })
     .map_err(|e| Error(e.to_string()))?;
+    if see_through {
+        let _ = handle.update(cx, |_, window, cx| clear_root_background(window, cx));
+    }
     Ok(WebviewWindow {
         label: label.to_string(),
     })
+}
+
+/// gpui-component's root paints the theme background over the whole
+/// window. A transparent window (the dictate pill, the palette) must show
+/// only what its view draws, so the root's own style clears that fill.
+fn clear_root_background(window: &mut Window, cx: &mut App) {
+    let Some(Some(root)) = window.root::<gpui_kit::base::Root>() else {
+        return;
+    };
+    root.update(cx, |root, cx| {
+        root.style().background = Some(gpui_kit::transparent_black().into());
+        cx.notify();
+    });
 }
 
 fn ns_window(window: &Window) -> Retained<NSWindow> {
