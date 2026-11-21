@@ -13,6 +13,10 @@ pub type Result<T = ()> = std::result::Result<T, String>;
 pub const BACKEND: &str = "backend";
 pub const VENV: &str = "backend/venv";
 pub const APP_DIR: &str = "tauri/src-tauri";
+/// The Cargo workspace of Kass's own crates (the UI, the API client, xtask).
+pub const CRATES: &str = "crates";
+/// Both Rust workspaces: the app's and the crates'.
+pub const RUST_WORKSPACES: [&str; 2] = [APP_DIR, CRATES];
 pub const SERVER_DIR: &str = "tauri/src-tauri/binaries/kass-server";
 pub const BUILT_APP: &str = "tauri/src-tauri/target/release/bundle/macos/Kass.app";
 /// The port the Python model worker listens on; the app serves 17493 itself

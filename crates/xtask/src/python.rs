@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::util::{
-    APP_DIR, BACKEND, Result, VENV, all_output, cmd, ensure_venv, no_more, on_path, output, run,
-    take_flag, venv_bin, which,
+    APP_DIR, BACKEND, RUST_WORKSPACES, Result, VENV, all_output, cmd, ensure_venv, no_more,
+    on_path, output, run, take_flag, venv_bin, which,
 };
 
 /// cargo xtask setup: the Python venv and the pre-push hook.
@@ -137,23 +137,29 @@ pub fn check_python(args: Vec<String>) -> Result {
     run(&mut ruff(&["format", "--check"]))
 }
 
-/// cargo xtask check-rust: rustfmt check and clippy, warnings failing.
+/// cargo xtask check-rust: rustfmt check and clippy, warnings failing, in
+/// both Rust workspaces.
 pub fn check_rust(args: Vec<String>) -> Result {
     no_more(&args)?;
-    run(cmd("cargo", ["fmt", "--all", "--check"]).current_dir(APP_DIR))?;
-    run(cmd(
-        "cargo",
-        [
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--quiet",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )
-    .current_dir(APP_DIR))
+    for workspace in RUST_WORKSPACES {
+        run(cmd("cargo", ["fmt", "--all", "--check"]).current_dir(workspace))?;
+    }
+    for workspace in RUST_WORKSPACES {
+        run(cmd(
+            "cargo",
+            [
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--quiet",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        )
+        .current_dir(workspace))?;
+    }
+    Ok(())
 }
 
 /// cargo xtask lint: ruff check on the backend.
@@ -178,7 +184,7 @@ pub fn fix(args: Vec<String>) -> Result {
     run(&mut ruff(&["format"]))
 }
 
-/// cargo xtask test: the backend's pytest suite, then the app's Rust tests.
+/// cargo xtask test: the backend's pytest suite, then the Rust tests.
 pub fn test(args: Vec<String>) -> Result {
     no_more(&args)?;
     ensure_venv()?;
@@ -186,7 +192,16 @@ pub fn test(args: Vec<String>) -> Result {
         venv_bin("python"),
         ["-m", "pytest", "backend/tests", "-v"],
     ))?;
-    run(cmd("cargo", ["test", "--workspace", "--quiet"]).current_dir(APP_DIR))
+    test_rust(vec![])
+}
+
+/// cargo xtask test-rust: the tests of both Rust workspaces.
+pub fn test_rust(args: Vec<String>) -> Result {
+    no_more(&args)?;
+    for workspace in RUST_WORKSPACES {
+        run(cmd("cargo", ["test", "--workspace", "--quiet"]).current_dir(workspace))?;
+    }
+    Ok(())
 }
 
 /// The kass.db a worker started from the repo root uses (backend/config.py).
