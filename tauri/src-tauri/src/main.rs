@@ -376,7 +376,6 @@ fn prepare_pill(window: &NSWindow) {
     // NSScreenSaverWindowLevel: above fullscreen app content.
     const OVERLAY_WINDOW_LEVEL: isize = 1000;
 
-    make_never_key(window);
     // SAFETY: standard NSWindow/NSPanel setters, on the main thread.
     unsafe {
         let _: () = msg_send![window, setStyleMask: NONACTIVATING_PANEL];
@@ -389,6 +388,11 @@ fn prepare_pill(window: &NSWindow) {
         let _: () = msg_send![window, setHasShadow: false];
         let _: () = msg_send![window, setIgnoresMouseEvents: true];
     }
+    // Swap the class only after the style mask change. Dropping the title bar
+    // makes its view remove a KVO observer from the window, and AppKit can't
+    // find that registration once the class has changed: it throws, and at
+    // startup that aborts the app.
+    make_never_key(window);
     window.setFrame_display(
         NSRect::new(
             NSPoint::new(-10_000.0, -10_000.0),
