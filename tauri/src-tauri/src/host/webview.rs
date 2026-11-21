@@ -9,8 +9,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use gpui_kit::{
-    div, AnyView, AnyWindowHandle, App, AppContext as _, Context, IntoElement, ParentElement,
-    Render, Styled, Window, WindowOptions,
+    div, AnyView, AnyWindowHandle, App, AppContext as _, Context, IntoElement, Keystroke,
+    Modifiers, ParentElement, Render, Styled, Window, WindowOptions,
 };
 use objc2::rc::Retained;
 use objc2::{msg_send, MainThreadMarker};
@@ -66,6 +66,30 @@ pub(crate) fn update_window(label: &str, cx: &mut App, f: impl FnOnce(&mut Windo
     let handle = WINDOWS.with(|w| w.borrow().get(label).map(|e| e.handle));
     if let Some(handle) = handle {
         let _ = handle.update(cx, |_, window, cx| f(window, cx));
+    }
+}
+
+/// Type `text` into the field focused in window `label`, as typing it
+/// would: it replaces the selection, or goes in at the cursor. False when
+/// the window isn't open or no field there has focus.
+pub(crate) fn type_text(label: &str, text: &str, cx: &mut App) -> bool {
+    let handle = WINDOWS.with(|w| w.borrow().get(label).map(|e| e.handle));
+    let Some(handle) = handle else {
+        return false;
+    };
+    handle
+        .update(cx, |_, window, cx| {
+            window.dispatch_keystroke(typed(text), cx)
+        })
+        .unwrap_or(false)
+}
+
+/// A keystroke that types `text` and matches no key binding.
+fn typed(text: &str) -> Keystroke {
+    Keystroke {
+        modifiers: Modifiers::default(),
+        key: String::new(),
+        key_char: Some(text.to_string()),
     }
 }
 
@@ -240,4 +264,17 @@ fn ns_window(window: &Window) -> Retained<NSWindow> {
     // SAFETY: GPUI's AppKit handle points at the window's live content view.
     let view: &NSView = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
     view.window().expect("the content view is in its window")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::typed;
+
+    #[test]
+    fn typed_text_goes_in_whole_and_matches_no_binding() {
+        let keystroke = typed("Sign off, Morgan.").with_simulated_ime();
+        assert_eq!(keystroke.key_char.as_deref(), Some("Sign off, Morgan."));
+        assert!(keystroke.key.is_empty());
+        assert!(!keystroke.modifiers.modified());
+    }
 }

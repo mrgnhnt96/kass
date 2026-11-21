@@ -1205,8 +1205,8 @@ async fn restart_server(
 
 /// Identifier of the Kass app itself — used to short-circuit auto-paste
 /// when the user fires a chord while focus was inside one of our own
-/// windows. Dictation into Kass goes through the main window's DOM
-/// instead (`dictation::insert_in_app`).
+/// windows. Dictation into Kass goes to the focused Kass window's own
+/// field instead (`dictation::insert_in_app`).
 ///
 /// Value matches the reverse-DNS bundle id `focus_capture::capture_focus`
 /// writes into `FocusSnapshot::bundle_id`, and `identifier` in tauri.conf.json.
