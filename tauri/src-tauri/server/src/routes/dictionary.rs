@@ -1,6 +1,7 @@
 //! The dictionary of words and names (docs/plans/DICTIONARIES.md), answered
 //! from `kass.db` as `backend/routes/dictionary.py` answered it. After each
-//! change the worker is told to read the entries again for dictation.
+//! change the worker is told to read the entries again for dictation, and
+//! every open app hears `learned` so it shows the new entries.
 
 use std::collections::HashMap;
 
@@ -17,6 +18,7 @@ use serde_json::{json, Map, Value};
 use super::request::{body, detail, flag, text, Problems};
 use crate::dictionary::store::{self, GroupPatch, NewGroup, PlaceInput};
 use crate::dictionary::{self as words, EditError, Group, Place, PROMPT_TOKENS};
+use crate::events::Kind;
 use crate::{worker, AppState};
 
 pub fn router() -> Router<AppState> {
@@ -289,7 +291,10 @@ async fn add_entry(State(state): State<AppState>, bytes: Bytes) -> Response {
         .call(move |conn| store::add_group(conn, new, sync))
         .await
     {
-        Ok(Ok(group)) => Json(EntryModel::from(group)).into_response(),
+        Ok(Ok(group)) => {
+            state.events.publish(Kind::Learned);
+            Json(EntryModel::from(group)).into_response()
+        }
         Ok(Err(error)) => refused(error),
         Err(error) => failed(error),
     }
@@ -369,7 +374,10 @@ async fn update_entry(
         .call(move |conn| store::update_group(conn, &entry_id, patch, sync))
         .await;
     match updated {
-        Ok(Ok(Some(group))) => Json(EntryModel::from(group)).into_response(),
+        Ok(Ok(Some(group))) => {
+            state.events.publish(Kind::Learned);
+            Json(EntryModel::from(group)).into_response()
+        }
         Ok(Ok(None)) => not_found(),
         Ok(Err(error)) => refused(error),
         Err(error) => failed(error),
@@ -383,7 +391,10 @@ async fn delete_entry(State(state): State<AppState>, Path(entry_id): Path<String
         .call(move |conn| store::delete_group(conn, &entry_id, sync))
         .await
     {
-        Ok(true) => Json(json!({ "deleted": true })).into_response(),
+        Ok(true) => {
+            state.events.publish(Kind::Learned);
+            Json(json!({ "deleted": true })).into_response()
+        }
         Ok(false) => not_found(),
         Err(error) => failed(error),
     }

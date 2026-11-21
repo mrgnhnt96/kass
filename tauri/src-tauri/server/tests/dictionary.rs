@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::routing::post;
@@ -635,4 +636,52 @@ async fn the_worker_s_own_routes_are_not_reachable_from_outside() {
     // Nor is anything else the server doesn't answer itself.
     assert_eq!(kass.call("GET", "/nowhere", None).await, (404, not_found));
     assert_eq!(kass.counted(), 0);
+}
+
+/// Opens `/captures/events` and reads past what every new listener hears.
+async fn listen(kass: &Kass) -> TcpStream {
+    let mut stream = TcpStream::connect(kass.server.address()).await.unwrap();
+    stream
+        .write_all(b"GET /captures/events HTTP/1.1\r\nHost: x\r\n\r\n")
+        .await
+        .unwrap();
+    next_event(&mut stream, "learned").await;
+    stream
+}
+
+/// Reads until `event: <kind>` arrives.
+async fn next_event(stream: &mut TcpStream, kind: &str) {
+    let wanted = format!("event: {kind}\n");
+    let mut seen = String::new();
+    let mut buffer = [0u8; 4096];
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !seen.contains(&wanted) {
+            let n = stream.read(&mut buffer).await.unwrap();
+            assert!(n > 0, "the stream ended: {seen}");
+            seen.push_str(&String::from_utf8_lossy(&buffer[..n]));
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no {kind} event; so far: {seen}"));
+}
+
+#[tokio::test]
+async fn every_change_tells_the_apps_what_was_learned() {
+    let kass = Kass::start(false, None).await;
+    let mut events = listen(&kass).await;
+
+    let (status, added) = kass.add("Kass", None, global()).await;
+    assert_eq!(status, 200);
+    next_event(&mut events, "learned").await;
+
+    let id = added["id"].as_str().unwrap();
+    let path = format!("/dictionary/{id}");
+    let (status, _) = kass
+        .call("PATCH", &path, Some(json!({"spoken": "cass"})))
+        .await;
+    assert_eq!(status, 200);
+    next_event(&mut events, "learned").await;
+
+    assert_eq!(kass.call("DELETE", &path, None).await.0, 200);
+    next_event(&mut events, "learned").await;
 }
