@@ -9,7 +9,9 @@ pydantic>=2.5.0
 sqlalchemy>=2.0.0
 
 # MLX runs Whisper speech-to-text (mlx-audio) and the Qwen3 cleanup LLM (mlx-lm).
-mlx>=0.30.0
+# Pinned: Whisper's text changes between MLX releases (0.32.4 drops a final
+# period 0.32.2 keeps). When bumping it, record scripts/parity/baseline again.
+mlx==0.32.2
 # transformers supplies the Whisper and Qwen tokenizers.
 transformers>=4.36.0,<=4.57.6
 huggingface_hub>=0.20.0

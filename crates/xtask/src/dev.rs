@@ -6,12 +6,17 @@ use std::process::Child;
 use std::time::Duration;
 
 use crate::util::{
-    APP_DIR, BACKEND, Result, VENV, WORKER_PORT, cmd, ensure_venv, home, no_more, path_with, run,
-    succeeds, venv_bin,
+    APP_DIR, BACKEND, Result, VENV, WORKER_PORT, app_data_dir, cmd, ensure_venv, home, no_more,
+    path_with, run, succeeds, venv_bin,
 };
 
-fn worker() -> std::process::Command {
-    cmd(
+/// The worker, on the app's data folder: the debug build serves the API from
+/// the kass.db there and passes model work on to this worker, so both must
+/// open the same one.
+fn worker() -> Result<std::process::Command> {
+    let data_dir = app_data_dir();
+    crate::python::prepare_db(&data_dir.join("kass.db"))?;
+    let mut worker = cmd(
         venv_bin("uvicorn"),
         [
             "backend.main:app",
@@ -19,7 +24,9 @@ fn worker() -> std::process::Command {
             "--port",
             &WORKER_PORT.to_string(),
         ],
-    )
+    );
+    worker.env("KASS_DATA_DIR", data_dir);
+    Ok(worker)
 }
 
 fn worker_running() -> bool {
@@ -47,13 +54,12 @@ impl Drop for Worker {
 pub fn dev(args: Vec<String>) -> Result {
     no_more(&args)?;
     ensure_venv()?;
-    crate::python::db_init(vec![])?;
     let _worker = if worker_running() {
         println!("Model worker already running on http://localhost:{WORKER_PORT}");
         Worker(None)
     } else {
         println!("Starting model worker on http://localhost:{WORKER_PORT} ...");
-        let child = worker()
+        let child = worker()?
             .spawn()
             .map_err(|error| format!("Couldn't start the model worker: {error}"))?;
         std::thread::sleep(Duration::from_secs(2));
@@ -68,9 +74,7 @@ pub fn dev(args: Vec<String>) -> Result {
 pub fn dev_backend(args: Vec<String>) -> Result {
     no_more(&args)?;
     ensure_venv()?;
-    // The worker only uses the tables kass.db already has.
-    crate::python::db_init(vec![])?;
-    run(&mut worker())
+    run(&mut worker()?)
 }
 
 /// cargo xtask dev-app: only a debug build of the app (start the worker

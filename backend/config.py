@@ -18,8 +18,9 @@ if _custom_models_dir:
     os.environ["HF_HUB_CACHE"] = _custom_models_dir
     logger.info("Model download path set to: %s", _custom_models_dir)
 
-# Default data directory (used in development)
-_data_dir = Path("data").resolve()
+# The data directory until --data-dir sets one: KASS_DATA_DIR (cargo xtask dev
+# sets it to the app's), else data/ under the directory the worker starts in.
+_data_dir = Path(os.environ.get("KASS_DATA_DIR") or "data").resolve()
 
 
 def _path_relative_to_any_data_dir(path: Path) -> Path | None:

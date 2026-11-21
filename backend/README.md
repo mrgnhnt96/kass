@@ -57,7 +57,7 @@ The worker only answers `/worker/*` and `/health`, on 127.0.0.1. Kass's API list
   captures/               # Recorded dictation audio
 ```
 
-Default location is the OS-specific app data directory. Override with `--data-dir` or the `KASS_DATA_DIR` environment variable.
+The app passes its own (`~/Library/Application Support/com.mrgnhnt.kass`) with `--data-dir`. Without that flag the worker uses `KASS_DATA_DIR`, or `data/` in the directory it starts in. `cargo xtask dev` and `cargo xtask dev-backend` set `KASS_DATA_DIR` to the app's folder, so the debug app and the worker open the same kass.db.
 
 ## Code quality
 

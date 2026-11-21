@@ -44,7 +44,7 @@ Hold the chord in any app and talk the way you think. Whisper transcribes while 
 
 ## Install
 
-Requires an Apple Silicon Mac. Download the latest DMG from [Releases](https://github.com/mrgnhnt96/kass/releases/latest). Kass updates itself in the background.
+Requires an Apple Silicon Mac with macOS 15 or later. Download the latest DMG from [Releases](https://github.com/mrgnhnt96/kass/releases/latest). Kass updates itself in the background.
 
 ## Development
 
