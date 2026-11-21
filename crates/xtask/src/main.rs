@@ -45,9 +45,10 @@ Build and release
 Code quality
   check                     check-python and check-rust
   check-python              ruff lint and format check on backend/
-  check-rust                rustfmt check and clippy (warnings fail) on the app
+  check-rust                rustfmt check and clippy (warnings fail) on the app and crates/
   lint | format | fix       ruff check, ruff format, or both with fixes, on backend/
-  test                      Backend pytest suite, then the app's Rust tests
+  test                      Backend pytest suite, then test-rust
+  test-rust                 The Rust tests of the app and crates/
 
 Database
   db-init                   Create data/kass.db (a worker started by hand), or bring it up to date
@@ -92,6 +93,7 @@ fn dispatch(command: &str, args: Vec<String>) -> Result {
         "format" | "format-python" => python::format(args),
         "fix" | "fix-python" => python::fix(args),
         "test" => python::test(args),
+        "test-rust" => python::test_rust(args),
         "db-init" => python::db_init(args),
         "db-reset" => python::db_reset(args),
         "update-icons" => build::icons(args),

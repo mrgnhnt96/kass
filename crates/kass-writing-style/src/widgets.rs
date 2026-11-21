@@ -103,12 +103,15 @@ pub fn menu_item(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
         .hover(|s| s.bg(t.secondary))
 }
 
+/// Styles a menu's button, given whether its menu is open.
+type TriggerStyle = Box<dyn Fn(Stateful<Div>, bool, &App) -> Stateful<Div>>;
+
 /// A menu's button: whatever it shows, and an open state the menu sets.
 #[derive(IntoElement)]
 pub struct MenuTrigger {
     id: ElementId,
     content: Option<AnyElement>,
-    style: Box<dyn Fn(Stateful<Div>, bool, &App) -> Stateful<Div>>,
+    style: TriggerStyle,
     open: bool,
 }
 

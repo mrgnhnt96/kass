@@ -24,10 +24,10 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -35,6 +35,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -66,6 +68,14 @@ jobs:
       - name: Backend tests
         run: backend/venv/bin/python -m pytest backend/tests -q -k "not test_hf_progress_tracker"
 
+      # rustfmt and clippy, then the tests, in both workspaces: the app's
+      # (tauri/src-tauri) and Kass's own crates (crates/).
+      - name: Rust checks
+        run: cargo xtask check-rust
+
+      - name: Rust tests
+        run: cargo xtask test-rust
+
       - name: Build Python server
         run: cargo xtask build-server
 
@@ -86,7 +96,7 @@ jobs:
           ditto -c -k --keepParent tauri/src-tauri/target/release/bundle/macos/Kass.app "$name.zip"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.zip.outputs.name }}
           path: ${{ steps.zip.outputs.name }}.zip
@@ -104,9 +114,9 @@ jobs:
       VERSION: ${{ needs.build.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build.outputs.name }}
 

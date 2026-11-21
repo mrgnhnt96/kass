@@ -11,10 +11,10 @@ branch the remote doesn't have yet, from where it left origin's default
 branch.
 
 Fixers run first: ruff (--fix, format) on backend Python, rustfmt on the
-desktop app's Rust. A hook can't change commits already made, so if a fixer
-changed anything the push stops with the files to commit. Then what no tool
-fixes fails the push with the tools' output, along with clippy for the Rust
-crate when its code is pushed.
+Rust of both workspaces (the app's and crates/). A hook can't change commits
+already made, so if a fixer changed anything the push stops with the files to
+commit. Then what no tool fixes fails the push with the tools' output, along
+with clippy for each Rust workspace whose code is pushed.
 
 The tools read the working tree, so an uncommitted edit to a pushed file is
 checked as it is on disk.
@@ -34,7 +34,8 @@ NO_COMMIT = "0" * 40
 RUFF = "backend/venv/bin/ruff"
 # Ruff skips the files pyproject.toml excludes only when told to, if they are named.
 RUFF_FLAGS = ["--force-exclude"]
-CARGO_MANIFEST = "tauri/src-tauri/Cargo.toml"
+# The Rust workspaces, by the folder their files sit under, and their manifests.
+CARGO_WORKSPACES = {"tauri/src-tauri/": "tauri/src-tauri/Cargo.toml", "crates/": "crates/Cargo.toml"}
 
 
 def git(*args: str) -> str | None:
@@ -92,7 +93,12 @@ def main() -> int:
 
     files = pushed_files(sys.stdin.read().splitlines())
     python = [path for path in files if path.startswith("backend/") and path.endswith(".py")]
-    rust = [path for path in files if path.startswith("tauri/src-tauri/") and path.endswith(".rs")]
+    rust_by_manifest = {
+        manifest: [path for path in files if path.startswith(folder) and path.endswith(".rs")]
+        for folder, manifest in CARGO_WORKSPACES.items()
+    }
+    rust_by_manifest = {manifest: paths for manifest, paths in rust_by_manifest.items() if paths}
+    rust = [path for paths in rust_by_manifest.values() for path in paths]
     if not python and not rust:
         return 0
 
@@ -117,8 +123,8 @@ def main() -> int:
     if python:
         step("ruff check --fix", [RUFF, "check", "--fix", "--quiet", *RUFF_FLAGS, *python])
         step("ruff format", [RUFF, "format", "--quiet", *RUFF_FLAGS, *python])
-    if rust:
-        step("cargo fmt", ["cargo", "fmt", "--manifest-path", CARGO_MANIFEST, "--", *rust])
+    for manifest, paths in rust_by_manifest.items():
+        step("cargo fmt", ["cargo", "fmt", "--manifest-path", manifest, "--", *paths])
 
     fixed = [path for path in checked if digest(path) != before[path]]
     if fixed:
@@ -132,11 +138,11 @@ def main() -> int:
     if python:
         step("ruff check", [RUFF, "check", *RUFF_FLAGS, *python])
         step("ruff format --check", [RUFF, "format", "--check", *RUFF_FLAGS, *python])
-    if rust:
-        # clippy reads every crate in the workspace; warnings fail, as in cargo xtask check.
+    # clippy reads every crate in the workspace; warnings fail, as in cargo xtask check.
+    for manifest in rust_by_manifest:
         step(
-            "cargo clippy",
-            ["cargo", "clippy", "--manifest-path", CARGO_MANIFEST, "--workspace", "--all-targets", "--quiet", "--", "-D", "warnings"],
+            f"cargo clippy ({manifest})",
+            ["cargo", "clippy", "--manifest-path", manifest, "--workspace", "--all-targets", "--quiet", "--", "-D", "warnings"],
         )
     if not failures:
         return 0

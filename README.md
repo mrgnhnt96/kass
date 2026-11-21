@@ -54,7 +54,7 @@ Built in Rust with GPUI. A bundled Python worker runs Whisper and Qwen3 on MLX.
 cargo xtask setup     # Python venv, dependencies and the pre-push hook
 cargo xtask dev       # backend + desktop app
 cargo xtask check     # lint and format
-cargo xtask test      # backend and app tests
+cargo xtask test      # backend and Rust tests
 cargo xtask install   # build and install to /Applications
 ```
 
