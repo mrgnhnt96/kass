@@ -9,8 +9,7 @@ Building Kass yourself is for working on it. To just use Kass, [download the DMG
 
 - An Apple Silicon Mac
 - [Xcode](https://developer.apple.com/xcode/)
-- [Bun](https://bun.sh), [Rust](https://rustup.rs) and [Python 3.12](https://python.org)
-- The [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+- [Rust](https://rustup.rs) and [Python 3.12](https://python.org)
 
 ## Build and install
 
@@ -27,20 +26,18 @@ Every build is signed with the same identity, so updates keep your Microphone, A
 ## Develop
 
 ```bash
-brew install just
-just setup   # Python environment, dependencies and the pre-push hook
-just dev     # runs the backend and the desktop app
+cargo xtask setup   # Python environment, dependencies and the pre-push hook
+cargo xtask dev     # runs the model worker and the desktop app
 ```
+
+Run the commands from the repo root. `cargo xtask --help` lists every command.
 
 `git push` lints and formats the files it pushes, and only those. If it fixes anything, it stops the push and lists the files: commit them and push again. `SKIP=1 git push` skips it once.
 
-Run `just --list` to see every command.
-
 | Part | Built with |
 | --- | --- |
-| Desktop app | Tauri (Rust) |
+| Desktop app and interface | Rust, with GPUI |
 | Hotkeys, audio, text insertion | Native Rust |
-| Interface | React, TypeScript, Tailwind CSS |
 | Local server | FastAPI (Python), bundled with the app |
 | Speech and cleanup | Whisper and Qwen3 on MLX |
 | Storage | SQLite |
