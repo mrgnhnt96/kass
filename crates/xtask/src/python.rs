@@ -189,16 +189,23 @@ pub fn test(args: Vec<String>) -> Result {
     run(cmd("cargo", ["test", "--workspace", "--quiet"]).current_dir(APP_DIR))
 }
 
-/// The kass.db a worker started from the repo root uses (backend/config.py).
+/// The kass.db a worker started by hand from the repo root uses, with no
+/// --data-dir or KASS_DATA_DIR (backend/config.py). cargo xtask dev and
+/// dev-backend use the app's own instead (`util::app_data_dir`).
 pub const DEV_DATABASE: &str = "data/kass.db";
 
-/// cargo xtask db-init: creates data/kass.db, or brings it up to date, as the
-/// app does before it starts the worker (server/src/db.rs).
+/// cargo xtask db-init: creates data/kass.db, or brings it up to date.
 pub fn db_init(args: Vec<String>) -> Result {
     no_more(&args)?;
     let database = fs::canonicalize(".")
         .map_err(|error| format!("Couldn't find the repo root: {error}"))?
         .join(DEV_DATABASE);
+    prepare_db(&database)
+}
+
+/// Creates `database`, or brings it up to date, as the app does before it
+/// starts the worker (server/src/db.rs).
+pub fn prepare_db(database: &Path) -> Result {
     run(cmd(
         "cargo",
         [

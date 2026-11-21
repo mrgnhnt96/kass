@@ -13,7 +13,7 @@
         "Resources/kass-server": "binaries/kass-server",
         "Resources/kass-report.sh": "../../scripts/kass-report.sh"
       },
-      "minimumSystemVersion": "11.0",
+      "minimumSystemVersion": "15.0",
       "infoPlist": "Info.plist",
       "entitlements": "Entitlements.plist"
     },

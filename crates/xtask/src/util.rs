@@ -141,6 +141,15 @@ pub fn home() -> PathBuf {
     env::var_os("HOME").map(PathBuf::from).unwrap_or_default()
 }
 
+/// The app's bundle identifier (tauri.conf.json).
+pub const BUNDLE_ID: &str = "com.mrgnhnt.kass";
+
+/// The folder the app keeps kass.db and its other data in. A debug build uses
+/// the same one as the installed app.
+pub fn app_data_dir() -> PathBuf {
+    home().join("Library/Application Support").join(BUNDLE_ID)
+}
+
 /// A fresh directory under the system's temp folder, removed when dropped.
 pub struct TempDir(pub PathBuf);
 

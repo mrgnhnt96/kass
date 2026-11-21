@@ -8,8 +8,8 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 
 use crate::util::{
-    BUILT_APP, Result, SERVER_DIR, all_output, cmd, home, is_executable, no_more, on_path, output,
-    path_with, run, style, succeeds, take_flag,
+    BUILT_APP, BUNDLE_ID, Result, SERVER_DIR, all_output, app_data_dir, cmd, home, is_executable,
+    no_more, on_path, output, path_with, run, style, succeeds, take_flag,
 };
 use crate::{build, python, sign};
 
@@ -32,7 +32,6 @@ Options:
 /// Always /Applications: macOS privacy permissions (Input Monitoring,
 /// Accessibility, Microphone) don't work reliably for an app anywhere else.
 const APP: &str = "/Applications/Kass.app";
-const BUNDLE_ID: &str = "com.mrgnhnt.kass";
 const SERVICES: [&str; 4] = ["Microphone", "Accessibility", "ListenEvent", "PostEvent"];
 const PYTHON_STAMP: &str = "backend/venv/.kass-install-stamp";
 const SERVER_STAMP: &str = "tauri/src-tauri/binaries/.kass-server-stamp";
@@ -269,7 +268,7 @@ pub fn install(mut args: Vec<String>) -> Result {
 
     // Builds from a checkout are internal builds: internal features run
     // (backend/internal.py). The release DMG never writes this file.
-    let data_dir = home().join("Library/Application Support").join(BUNDLE_ID);
+    let data_dir = app_data_dir();
     fs::create_dir_all(&data_dir)
         .map_err(|error| format!("Couldn't create {}: {error}", data_dir.display()))?;
     let internal = data_dir.join("internal");
