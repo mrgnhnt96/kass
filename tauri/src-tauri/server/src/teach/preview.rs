@@ -116,7 +116,7 @@ async fn clean(state: &AppState, source: &Source, said: &str, use_examples: bool
             return said.to_string();
         }
     };
-    let (refined, _) = content_check::check_refinement(
+    let (refined, verdict) = content_check::check_refinement(
         said,
         &refined,
         &inputs.flags,
@@ -124,6 +124,11 @@ async fn clean(state: &AppState, source: &Source, said: &str, use_examples: bool
         "",
         Some(&inputs.punctuation),
     );
+    let refined = if verdict.outcome == "reject" {
+        refinement::stand_in_for_cleanup(&refined)
+    } else {
+        refined
+    };
     refinement::style_first_word(&refined, &inputs.flags, &source.names)
 }
 

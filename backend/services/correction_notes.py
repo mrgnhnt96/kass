@@ -82,8 +82,15 @@ def _load(style: str | None = None) -> dict:
     return {**_empty(), **_read()["styles"].get(_style_id(style), {})}
 
 
+def about_exclamation(note: str) -> bool:
+    """Whether ``note`` is about "!", which only how it was said or the user's
+    own edits may add. As the Rust server's ``correction_notes::about_exclamation``;
+    such a note is never used."""
+    return "!" in note or "exclamation" in note.casefold()
+
+
 def notes(style: str | None = None) -> list[str]:
-    return list(_load(style)["notes"])
+    return [note for note in _load(style)["notes"] if not about_exclamation(note)]
 
 
 def prompt_section(style: str | None = None, candidate: list[str] | None = None) -> str | None:

@@ -52,3 +52,9 @@ def test_the_notes_are_reread_when_the_server_changes_them(storage):
     assert correction_notes.notes("personal") == [RULE]
     _write(storage, {"version": 2, "styles": {"personal": {"notes": []}}})
     assert correction_notes.notes("personal") == []
+
+
+def test_notes_about_exclamation_marks_are_not_used(storage):
+    exclaim = "Add an exclamation mark to statements that end with a period."
+    _write(storage, {"version": 2, "styles": {"personal": {"notes": [RULE, exclaim, "End excited lines with !"]}}})
+    assert correction_notes.notes("personal") == [RULE]

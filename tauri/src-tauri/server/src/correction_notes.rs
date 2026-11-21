@@ -79,6 +79,14 @@ pub fn summary_request(current: &[String], batch: &[PersonalExample]) -> String 
     format!("Current rules:\n{rules}\n\nNew examples:\n\n{examples}")
 }
 
+/// Whether `note` is about exclamation marks. "!" is written only where the
+/// speaker said it with more energy (`prosody`) or taught it with their own
+/// edits; a rule would have cleanup add it where none was heard. Such a note
+/// is never learned, and one saved before is dropped when the notes are read.
+pub fn about_exclamation(note: &str) -> bool {
+    note.contains('!') || py::casefold(note).contains("exclamation")
+}
+
 /// Every `COPIED_WORDS` words in a row in `text`, casefolded.
 fn runs(text: &str) -> HashSet<Vec<String>> {
     let folded = py::casefold(text);
@@ -116,6 +124,7 @@ pub fn parse(reply: &str, examples: &[PersonalExample]) -> Vec<String> {
         if note.is_empty()
             || py::len(note) > MAX_NOTE_CHARS
             || seen.contains(&key)
+            || about_exclamation(note)
             || !runs(note).is_disjoint(&copied)
         {
             continue;
@@ -602,6 +611,15 @@ mod tests {
             parse(reply, &examples),
             vec!["Turn items said in a row into a list, one item per line."]
         );
+    }
+
+    #[test]
+    fn rules_about_exclamation_marks_are_never_learned() {
+        let reply = "- Add an exclamation mark to statements that end with a period.\n\
+                     - End excited sentences with !\n\
+                     - Use EXCLAMATION points for emphasis.\n\
+                     - Drop 'basically'.";
+        assert_eq!(parse(reply, &[]), vec!["Drop 'basically'."]);
     }
 
     /// What Python's `parse` gave for the same replies.

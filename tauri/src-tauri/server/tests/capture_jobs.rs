@@ -351,10 +351,8 @@ async fn a_cleanup_that_adds_words_is_refused_and_flagged() {
         .await;
     assert_eq!(status, 200, "{refined}");
     assert_eq!(refined["refinement_review"]["outcome"], "reject");
-    assert!(!refined["transcript_refined"]
-        .as_str()
-        .unwrap()
-        .contains("Paris"));
+    // The transcript stands in, written as cleanup would start and end it.
+    assert_eq!(refined["transcript_refined"], "Say more.");
 }
 
 #[tokio::test]

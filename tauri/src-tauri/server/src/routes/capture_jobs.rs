@@ -635,6 +635,11 @@ async fn refine_capture(
         "",
         Some(&inputs.punctuation),
     );
+    let refined = if verdict.outcome == "reject" {
+        refinement::stand_in_for_cleanup(&refined)
+    } else {
+        refined
+    };
     // The user's own dictionary entries win over learned corrections.
     let corrected = inputs
         .rules

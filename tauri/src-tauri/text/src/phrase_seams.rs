@@ -430,6 +430,27 @@ pub fn keep_raw_capitals(text: &str, raw: &str, names: &Names) -> String {
     parts.concat()
 }
 
+/// `text` started as a sentence, the way cleanup starts every text.
+///
+/// For a transcript that stands in for a cleanup the content check rejected:
+/// a plain lowercase first word gets its capital. A technical one
+/// ("package.json", "npm/run", "iOS") is kept as heard. A style that starts
+/// sentences in lowercase, or a dictation that continues a sentence, applies
+/// after this.
+pub fn start_sentence(text: &str) -> String {
+    let Some(found) = re!(r#"^[\s"'(\u{201c}\u{2018}]*([^\W\d_][\w']*)([./@_-]\w)?"#).match_(text)
+    else {
+        return text.to_string();
+    };
+    let word = found.g(1);
+    if found.get(2).is_some() || !py::islower(word) {
+        return text.to_string();
+    }
+    let start = found.get(1).map_or(0, |group| group.start());
+    let capital = crate::spoken_punctuation::upper_first(word);
+    format!("{}{capital}{}", &text[..start], &text[start + word.len()..])
+}
+
 /// End a finished dictation that was left open at its last pause.
 ///
 /// A spoken line break at the end stays, after the period.
@@ -530,5 +551,27 @@ mod tests {
             join_phrases("I went home.", "Then I slept", "Then I slept", "casual"),
             "I went home, then I slept"
         );
+    }
+
+    #[test]
+    fn starts_a_sentence_like_cleanup() {
+        assert_eq!(
+            start_sentence("set the retry count to 7 open package.json"),
+            "Set the retry count to 7 open package.json"
+        );
+        assert_eq!(
+            start_sentence("\"it's fine\" he said"),
+            "\"It's fine\" he said"
+        );
+        assert_eq!(start_sentence("éclair recipes"), "Éclair recipes");
+        assert_eq!(start_sentence("Already capital"), "Already capital");
+        assert_eq!(
+            start_sentence("package.json is open"),
+            "package.json is open"
+        );
+        assert_eq!(start_sentence("npm/run the build"), "npm/run the build");
+        assert_eq!(start_sentence("iOS builds"), "iOS builds");
+        assert_eq!(start_sentence("7 open tabs"), "7 open tabs");
+        assert_eq!(start_sentence(""), "");
     }
 }
