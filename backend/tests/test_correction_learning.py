@@ -174,6 +174,12 @@ def test_rules_learned_before_edges_keep_matching_as_they_did():
     assert rules.apply_rules("Please use, voice box today.", compiled) == "Please use, voice box today."
 
 
+def test_a_rule_learned_before_edges_with_only_its_anchors_changes_nothing():
+    legacy = {"id": "old", "source": ["voice", "box"], "replacement": ["Voicebox"], "language": None}
+    compiled = rules.compile_rules([legacy])
+    assert rules.apply_rules("Please use voice box today.", compiled) == "Please use voice box today."
+
+
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path}/test.db")

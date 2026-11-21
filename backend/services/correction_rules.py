@@ -129,6 +129,10 @@ def apply_rules(text, compiled, language=None):
                 start, replacement = match.start() + tokens[0].end(), " " + replacement
             else:
                 start = match.start() + tokens[1].start()
+            # A rule learned before edges needs a misheard word between its
+            # anchors; one without (a saved state written by hand) has nothing to replace.
+            if start > end:
+                continue
             edits.append((start, end, replacement))
             if len(edits) > 128:
                 return text

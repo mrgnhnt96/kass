@@ -205,6 +205,12 @@ impl Rules {
                     };
                     found.start() + second.start()
                 };
+                // A rule learned before edges needs a misheard word between
+                // its anchors; one without (a saved state written by hand)
+                // has nothing to replace.
+                if start > end {
+                    continue;
+                }
                 edits.push((start, end, replacement));
                 if edits.len() > 128 {
                     return text.to_string();
@@ -933,6 +939,15 @@ mod tests {
         assert_eq!(
             rules.apply("Commit, merge, domain.", None),
             "Commit, merge to main."
+        );
+    }
+
+    #[test]
+    fn a_rule_learned_before_edges_with_only_its_anchors_changes_nothing() {
+        let rules = Rules::new(vec![rule(&["voice", "box"], &["Voicebox"], None)]);
+        assert_eq!(
+            rules.apply("Please use voice box today.", None),
+            "Please use voice box today."
         );
     }
 
