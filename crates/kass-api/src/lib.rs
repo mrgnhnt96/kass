@@ -14,7 +14,10 @@ mod multipart;
 mod sse;
 pub mod types;
 
-pub use address::{LOCAL_SERVER_URL, SERVER_PORT, answers_as_kass, normalize_server_address};
+pub use address::{
+    LOCAL_SERVER_URL, SERVER_PORT, answers_as_kass, find_kass, kass_at, normalize_server_address,
+    renamed_addresses,
+};
 pub use client::{ApiClient, hugging_face_model_info};
 pub use error::{Error, Result};
 pub use mac::Mac;

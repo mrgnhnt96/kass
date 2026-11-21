@@ -311,6 +311,7 @@ mod tests {
             started_at: Some(1_000.),
             pid: Some(42),
             peak_memory_mb: None,
+            mac_id: None,
         };
         assert_eq!(
             server_stats(&health, 1_000. + 3_600.),

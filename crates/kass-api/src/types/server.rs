@@ -28,6 +28,10 @@ pub struct HealthResponse {
     /// Peak resident memory of the server process.
     #[serde(default)]
     pub peak_memory_mb: Option<u64>,
+    /// The id of the Mac the server runs on, which stays when its network
+    /// name changes. None from an older Kass.
+    #[serde(default)]
+    pub mac_id: Option<String>,
 }
 
 /// `GET /health/filesystem`: whether the server's folders are there and writable.

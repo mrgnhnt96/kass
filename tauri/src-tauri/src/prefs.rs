@@ -23,6 +23,9 @@ pub struct Prefs {
     pub share_on_network: bool,
     /// Beta `network`: the other Mac whose Kass this one uses.
     pub remote_server_url: Option<String>,
+    /// Beta `network`: that Mac's id, as its Kass gave it, to find it again
+    /// when its network name changes (`studio.local` to `studio-2.local`).
+    pub remote_mac_id: Option<String>,
     /// The folder models are kept in, when the user moved it.
     pub custom_models_dir: Option<String>,
     /// Set once the page's old values were taken, or anything was changed
@@ -36,6 +39,7 @@ impl Default for Prefs {
             theme: "system".into(),
             share_on_network: false,
             remote_server_url: None,
+            remote_mac_id: None,
             custom_models_dir: None,
             adopted: false,
         }
@@ -68,6 +72,7 @@ impl Prefs {
             },
             share_on_network: page.share_on_network,
             remote_server_url: page.remote_server_url.filter(|url| !url.is_empty()),
+            remote_mac_id: None,
             custom_models_dir: page.custom_models_dir.filter(|dir| !dir.is_empty()),
             adopted: true,
         })
@@ -226,13 +231,49 @@ pub async fn set_share_on_network(share: bool) -> Result<(), String> {
 /// Use another Mac's server (or this Mac's again with `None`), then
 /// restart the app onto it.
 pub async fn use_remote(url: Option<String>) -> Result<(), String> {
-    let previous = get().remote_server_url;
-    change(|prefs| prefs.remote_server_url = url);
+    let before = get();
+    change(|prefs| {
+        prefs.remote_server_url = url;
+        // Another Mac, maybe: its id is learned once it answers.
+        prefs.remote_mac_id = None;
+    });
     let result = crate::restart_app(AppHandle.state::<ServerState>()).await;
     if result.is_err() {
-        change(|prefs| prefs.remote_server_url = previous);
+        change(|prefs| {
+            prefs.remote_server_url = before.remote_server_url;
+            prefs.remote_mac_id = before.remote_mac_id;
+        });
     }
     result
+}
+
+/// The other Mac answered with this id: remember it, to know it again
+/// under another name.
+pub fn remember_remote_mac(id: String) {
+    if get().remote_mac_id.as_deref() != Some(id.as_str()) {
+        change(|prefs| prefs.remote_mac_id = Some(id));
+    }
+}
+
+/// The other Mac is now at `url`: its network name changed. Requests and
+/// new takes go there at once. This Mac's server stands in for it at its
+/// old address until it restarts, once no take is still on its way in, so
+/// none of them is cut off.
+pub fn follow_remote(url: String) {
+    change(|prefs| prefs.remote_server_url = Some(url));
+    if cfg!(debug_assertions) {
+        // A development build's server is run by hand.
+        return;
+    }
+    host::async_runtime::spawn(async {
+        while !crate::dictation::idle(AppHandle.state()) {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+        let state = AppHandle.state::<ServerState>();
+        if let Err(e) = crate::start_server(AppHandle, state, None).await {
+            eprintln!("[network] this Mac's server didn't follow the other Mac: {e}");
+        }
+    });
 }
 
 /// Keep models in this folder (the default with `None`), then restart the

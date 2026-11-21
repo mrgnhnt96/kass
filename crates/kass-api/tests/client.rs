@@ -6,7 +6,7 @@ use kass_api::types::{
     CaptureUpload, DictionaryEntryUpdate, HistoryRetentionDays, MovedCorrections, TeachKind,
     UsagePeriod, WhisperModelSize,
 };
-use kass_api::{ApiClient, Error, Mac};
+use kass_api::{ApiClient, Error, Mac, find_kass, kass_at};
 use serde_json::json;
 
 const STYLES: &str = r#"{"styles":[],"apps":[],"max_styles":5}"#;
@@ -78,6 +78,41 @@ fn switching_the_server_switches_every_clone() {
         clone.migration_progress_url(),
         format!("{}/models/migrate/progress", second.url)
     );
+}
+
+#[test]
+fn says_which_mac_a_kass_runs_on() {
+    let current = Server::start(vec![Reply::ok(r#"{"status":"healthy","mac_id":"m-1"}"#)]);
+    let older = Server::start(vec![Reply::ok(r#"{"status":"healthy"}"#)]);
+    let other = Server::start(vec![Reply::ok(r#"{"status":"starting","mac_id":"m-1"}"#)]);
+    let timeout = std::time::Duration::from_secs(2);
+    assert_eq!(kass_at(&current.url, timeout), Some(Some("m-1".into())));
+    assert_eq!(kass_at(&older.url, timeout), Some(None));
+    assert_eq!(kass_at(&other.url, timeout), None);
+    assert_eq!(current.request().target, "/health");
+}
+
+#[test]
+fn finds_the_kass_on_a_given_mac_among_addresses() {
+    let someone_else = Server::start(vec![Reply::ok(r#"{"status":"healthy","mac_id":"m-2"}"#)]);
+    let older = Server::start(vec![Reply::ok(r#"{"status":"healthy"}"#)]);
+    let ours = Server::start(vec![Reply::ok(r#"{"status":"healthy","mac_id":"m-1"}"#)]);
+    // Nothing listens on a port just freed.
+    let gone = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://{}", listener.local_addr().unwrap())
+    };
+    let urls = [
+        gone,
+        someone_else.url.clone(),
+        older.url.clone(),
+        ours.url.clone(),
+    ];
+    let timeout = std::time::Duration::from_secs(2);
+    assert_eq!(find_kass(&urls, "m-1", timeout), Some(ours.url.clone()));
+
+    let someone_else = Server::start(vec![Reply::ok(r#"{"status":"healthy","mac_id":"m-2"}"#)]);
+    assert_eq!(find_kass(std::slice::from_ref(&someone_else.url), "m-1", timeout), None);
 }
 
 #[test]

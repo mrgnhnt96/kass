@@ -1220,6 +1220,11 @@ pub fn dictation_configure(
     Ok(())
 }
 
+/// No take is recording or still on its way in.
+pub fn idle(state: crate::host::State<'_, DictationState>) -> bool {
+    state.active.lock().is_ok_and(|takes| takes.is_idle())
+}
+
 /// Whether the other Mac's server in use is away (beta `network`), from the
 /// main window's health checks.
 pub fn dictation_set_away(state: crate::host::State<'_, DictationState>, away: bool) {

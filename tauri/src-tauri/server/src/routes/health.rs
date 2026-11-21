@@ -29,6 +29,9 @@ const LOW_DISK_MB: f64 = 500.0;
 /// checkout, which shows internal features (backend/internal.py).
 const INTERNAL_MARKER: &str = "internal";
 
+/// The app keeps this Mac's id in the data dir (src/this_mac.rs).
+const MAC_ID_FILE: &str = "mac-id";
+
 /// `/shutdown` answers before anything stops.
 const ANSWER_FIRST: Duration = Duration::from_millis(100);
 
@@ -87,6 +90,9 @@ struct Health {
     started_at: Option<Value>,
     pid: Option<Value>,
     peak_memory_mb: Option<Value>,
+    /// This Mac's id, which stays when its network name changes, so a Mac
+    /// using this Kass can find it under the new name.
+    mac_id: Option<String>,
 }
 
 /// Whether the Whisper model chosen in the capture settings is downloaded;
@@ -132,8 +138,16 @@ async fn health(State(state): State<AppState>) -> Response {
         started_at: field("started_at"),
         pid: field("pid"),
         peak_memory_mb: field("peak_memory_mb"),
+        mac_id: mac_id(&state),
     })
     .into_response()
+}
+
+/// The id the app saved for this Mac, if it has one.
+fn mac_id(state: &AppState) -> Option<String> {
+    let saved = std::fs::read_to_string(data_dir(state).join(MAC_ID_FILE)).ok()?;
+    let id = saved.trim();
+    (!id.is_empty()).then(|| id.to_string())
 }
 
 /// The folder `kass.db` is in, where everything else Kass keeps lives too.
