@@ -446,16 +446,11 @@ async fn withdrawing_a_report_takes_its_changes_out_of_newer_ones() {
         .collect();
     assert_eq!(left, vec![(next["id"].clone(), json!("wrong Wordz"))]);
     assert_ne!(undone["id"], next["id"]);
-    // The first one's word went; the newer one still fixes "Wordz", so it
-    // keeps that word.
+    // The first one's word went, and so did the one the newer report learned
+    // from text holding it; the newer one still fixes "Wordz", so it keeps
+    // that word.
     let next_id = next["id"].as_str().unwrap().to_string();
-    assert_eq!(
-        kass.words(),
-        vec![
-            ("Rong Wordz".into(), next_id.clone()),
-            ("Wordz".into(), next_id)
-        ]
-    );
+    assert_eq!(kass.words(), vec![("Wordz".into(), next_id)]);
     assert!(kass.forgot().is_empty());
     assert_eq!(kass.call("DELETE", &path, None).await, (404, missing));
 }

@@ -695,7 +695,14 @@ async fn withdraw(
             if !store::withdraw(conn, &id, &kept, sync)? {
                 return Ok(false);
             }
+            // Every newer report's words go with this one's: those it learned
+            // from text that held this report's fix are stale, and one left
+            // changing nothing was deleted. Those still fixing something
+            // learn again from their new text.
             delete_added_by(conn, &id, sync)?;
+            for (report_id, _) in &kept {
+                delete_added_by(conn, report_id, sync)?;
+            }
             for (report_id, source, expected) in &relearn {
                 store::learn_words(conn, report_id, source, &original, expected, sync);
             }
