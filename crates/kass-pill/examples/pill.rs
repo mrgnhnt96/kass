@@ -44,7 +44,10 @@ impl Gallery {
             ("preparing", pill(Phase::Preparing, cx)),
             ("recording", recording.clone()),
             ("style", styled.clone()),
-            ("transcribing", pill(Phase::Transcribing { elapsed_ms: 0 }, cx)),
+            (
+                "transcribing",
+                pill(Phase::Transcribing { elapsed_ms: 0 }, cx),
+            ),
             (
                 "error",
                 pill(
@@ -60,7 +63,9 @@ impl Gallery {
         let levels = cx.spawn(async move |_, cx| {
             let mut t = 0f32;
             loop {
-                cx.background_executor().timer(Duration::from_millis(50)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(50))
+                    .await;
                 t += 0.05;
                 let db = -32. + 18. * (t * 3.1).sin().abs() + 6. * (t * 11.).sin();
                 for pill in [&recording, &styled] {
@@ -92,7 +97,12 @@ impl Render for Gallery {
                     .text_xs()
                     .text_color(white().opacity(0.6))
                     .child(*name)
-                    .child(div().w(px(420.)).h(px(PILL_SPACE + 40.)).child(pill.clone()))
+                    .child(
+                        div()
+                            .w(px(420.))
+                            .h(px(PILL_SPACE + 40.))
+                            .child(pill.clone()),
+                    )
             }))
     }
 }

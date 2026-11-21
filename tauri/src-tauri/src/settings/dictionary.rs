@@ -257,7 +257,7 @@ fn fill(claimed: Option<String>, on_take: OnTake, cx: &mut App) {
     cx.spawn(async move |cx: &mut AsyncApp| {
         let phrase = heard(newest.await.as_ref(), claimed.as_deref());
         if !phrase.is_empty() {
-            let _ = cx.update(|cx| on_take(PhraseTake::Heard(phrase), cx));
+            cx.update(|cx| on_take(PhraseTake::Heard(phrase), cx));
         }
     })
     .detach();

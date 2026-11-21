@@ -33,8 +33,14 @@ pub(super) struct FormFor {
 
 fn punctuation_options(ready: bool) -> SelectOptions<PunctuationStyle> {
     vec![
-        SelectOption::new(PunctuationStyle::Casual, tr!(&format!("{PUNCTUATION}-casual"))),
-        SelectOption::new(PunctuationStyle::Standard, tr!(&format!("{PUNCTUATION}-standard"))),
+        SelectOption::new(
+            PunctuationStyle::Casual,
+            tr!(&format!("{PUNCTUATION}-casual")),
+        ),
+        SelectOption::new(
+            PunctuationStyle::Standard,
+            tr!(&format!("{PUNCTUATION}-standard")),
+        ),
         SelectOption::new(
             PunctuationStyle::Learned,
             if ready {
@@ -82,16 +88,24 @@ impl WritingStylePage {
 
         let name_focused = self.name.read(cx).focus_handle(cx).is_focused(window);
         if switched || (!name_focused && before.as_ref().is_some_and(|b| b.name != next.name)) {
-            self.name
-                .update(cx, |input, cx| input.set_value(next.name.clone(), window, cx));
+            self.name.update(cx, |input, cx| {
+                input.set_value(next.name.clone(), window, cx)
+            });
         }
-        let description_focused = self.description.read(cx).focus_handle(cx).is_focused(window);
+        let description_focused = self
+            .description
+            .read(cx)
+            .focus_handle(cx)
+            .is_focused(window);
         if switched
             || (!description_focused
-                && before.as_ref().is_some_and(|b| b.description != next.description))
+                && before
+                    .as_ref()
+                    .is_some_and(|b| b.description != next.description))
         {
-            self.description
-                .update(cx, |input, cx| input.set_value(next.description.clone(), window, cx));
+            self.description.update(cx, |input, cx| {
+                input.set_value(next.description.clone(), window, cx)
+            });
         }
         self.punctuation.update(cx, |select, cx| {
             select.set_items(punctuation_options(next.ready), window, cx);
@@ -100,7 +114,12 @@ impl WritingStylePage {
     }
 
     /// Saves one change to the chosen style, then fetches the styles again.
-    fn update_style(&mut self, patch: WritingStyleUpdate, window: &mut Window, cx: &mut Context<Self>) {
+    fn update_style(
+        &mut self,
+        patch: WritingStyleUpdate,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(id) = self.style_id() else {
             return;
         };
@@ -110,7 +129,12 @@ impl WritingStylePage {
             move |client| client.update_writing_style(&id, &patch).map(|_| ()),
             |page, result, window, cx| {
                 if let Err(error) = result {
-                    toast_error("writing-style-styles-settings-save-failed", error, window, cx);
+                    toast_error(
+                        "writing-style-styles-settings-save-failed",
+                        error,
+                        window,
+                        cx,
+                    );
                     // Show the saved settings again, not the refused ones.
                     page.form_for = None;
                 }
@@ -119,7 +143,12 @@ impl WritingStylePage {
         );
     }
 
-    pub(super) fn name_input(&mut self, event: &InputEvent, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn name_input(
+        &mut self,
+        event: &InputEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match event {
             InputEvent::PressEnter { .. } => window.blur(cx),
             InputEvent::Blur => self.rename(window, cx),
@@ -186,7 +215,12 @@ impl WritingStylePage {
     }
 
     /// Adds what a Say it take said after what's in the box, and saves it.
-    pub(super) fn append_description(&mut self, said: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn append_description(
+        &mut self,
+        said: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let current = self.description.read(cx).value().to_string();
         let joined = if current.trim().is_empty() {
             said
@@ -241,9 +275,12 @@ impl WritingStylePage {
                         page.form_for = None;
                         page.filter = crate::model::AppFilter::All;
                     }
-                    Err(error) => {
-                        toast_error("writing-style-styles-settings-delete-failed", error, window, cx)
-                    }
+                    Err(error) => toast_error(
+                        "writing-style-styles-settings-delete-failed",
+                        error,
+                        window,
+                        cx,
+                    ),
                 }
                 page.reload(cx);
             },
@@ -327,82 +364,93 @@ impl WritingStylePage {
         let default_description = if style.is_default {
             tr!("writing-style-styles-settings-default-on")
         } else {
-            tr!("writing-style-styles-settings-default-description", style = style.name.clone())
+            tr!(
+                "writing-style-styles-settings-default-description",
+                style = style.name.clone()
+            )
         };
 
-        SettingSection::new(tr!("writing-style-styles-settings-title", style = style.name.clone()))
-            .child(SettingRow::new(tr!("writing-style-styles-settings-name")).action(name))
-            .child(description)
-            .child(
-                SettingRow::new(tr!(&format!("{PUNCTUATION}-title")))
-                    .description(tr!("writing-style-styles-settings-punctuation-description"))
-                    .action(div().w(px(300.)).child(select(&self.punctuation, cx))),
-            )
-            .child(
-                SettingRow::new(tr!("writing-style-styles-settings-technical"))
-                    .description(tr!("settings-captures-refinement-preserve-technical-description"))
-                    .action(technical),
-            )
-            .child(
-                SettingRow::new(tr!("writing-style-styles-settings-default"))
-                    .description(default_description)
-                    .when(!style.is_default, |row| {
-                        row.action(
-                            Button::new("make-default")
-                                .outline()
-                                .small()
-                                .label(tr!("writing-style-styles-settings-make-default"))
-                                .on_click(cx.listener(|page, _, window, cx| {
-                                    page.update_style(
-                                        WritingStyleUpdate {
-                                            is_default: Some(true),
-                                            ..Default::default()
-                                        },
-                                        window,
-                                        cx,
-                                    )
-                                })),
-                        )
-                    }),
-            )
-            .when(!style.is_default, |section| {
-                let name = style.name.clone();
-                section.child(
-                    SettingRow::new(tr!("writing-style-styles-settings-delete", style = name.clone()))
-                        .description(tr!("writing-style-styles-settings-delete-description"))
-                        .action(
-                            destructive_outline("delete-style", tr!(
-                                "writing-style-styles-settings-delete-action"
-                            ), cx)
-                            .on_click(move |_, window, cx| {
-                                let page = page.clone();
-                                open_confirm(
+        SettingSection::new(tr!(
+            "writing-style-styles-settings-title",
+            style = style.name.clone()
+        ))
+        .child(SettingRow::new(tr!("writing-style-styles-settings-name")).action(name))
+        .child(description)
+        .child(
+            SettingRow::new(tr!(&format!("{PUNCTUATION}-title")))
+                .description(tr!("writing-style-styles-settings-punctuation-description"))
+                .action(div().w(px(300.)).child(select(&self.punctuation, cx))),
+        )
+        .child(
+            SettingRow::new(tr!("writing-style-styles-settings-technical"))
+                .description(tr!(
+                    "settings-captures-refinement-preserve-technical-description"
+                ))
+                .action(technical),
+        )
+        .child(
+            SettingRow::new(tr!("writing-style-styles-settings-default"))
+                .description(default_description)
+                .when(!style.is_default, |row| {
+                    row.action(
+                        Button::new("make-default")
+                            .outline()
+                            .small()
+                            .label(tr!("writing-style-styles-settings-make-default"))
+                            .on_click(cx.listener(|page, _, window, cx| {
+                                page.update_style(
+                                    WritingStyleUpdate {
+                                        is_default: Some(true),
+                                        ..Default::default()
+                                    },
                                     window,
                                     cx,
-                                    Confirm {
-                                        title: tr!(
-                                            "writing-style-styles-settings-delete-confirm-title",
-                                            style = name.clone()
-                                        )
-                                        .into(),
-                                        description: Some(
-                                            tr!("writing-style-styles-settings-delete-description")
-                                                .into(),
-                                        ),
-                                        confirm: tr!("writing-style-styles-settings-delete-action")
-                                            .into(),
-                                        cancel: tr!("common-cancel").into(),
-                                        destructive: true,
-                                        on_confirm: Rc::new(move |window, cx| {
-                                            page.update(cx, |page, cx| page.delete_style(window, cx))
-                                                .ok();
-                                        }),
-                                    },
-                                );
-                            }),
-                        ),
-                )
-            })
+                                )
+                            })),
+                    )
+                }),
+        )
+        .when(!style.is_default, |section| {
+            let name = style.name.clone();
+            section.child(
+                SettingRow::new(tr!(
+                    "writing-style-styles-settings-delete",
+                    style = name.clone()
+                ))
+                .description(tr!("writing-style-styles-settings-delete-description"))
+                .action(
+                    destructive_outline(
+                        "delete-style",
+                        tr!("writing-style-styles-settings-delete-action"),
+                        cx,
+                    )
+                    .on_click(move |_, window, cx| {
+                        let page = page.clone();
+                        open_confirm(
+                            window,
+                            cx,
+                            Confirm {
+                                title: tr!(
+                                    "writing-style-styles-settings-delete-confirm-title",
+                                    style = name.clone()
+                                )
+                                .into(),
+                                description: Some(
+                                    tr!("writing-style-styles-settings-delete-description").into(),
+                                ),
+                                confirm: tr!("writing-style-styles-settings-delete-action").into(),
+                                cancel: tr!("common-cancel").into(),
+                                destructive: true,
+                                on_confirm: Rc::new(move |window, cx| {
+                                    page.update(cx, |page, cx| page.delete_style(window, cx))
+                                        .ok();
+                                }),
+                            },
+                        );
+                    }),
+                ),
+            )
+        })
     }
 
     /// "Say it": dictates the description; the hold-to-talk keys show beside it.
@@ -446,7 +494,11 @@ impl WritingStylePage {
                     }))
             })
             .child(if listening {
-                div().size(px(10.)).rounded(px(2.)).bg(fg).into_any_element()
+                div()
+                    .size(px(10.))
+                    .rounded(px(2.))
+                    .bg(fg)
+                    .into_any_element()
             } else {
                 icon(IconName::Mic, px(14.), t.accent).into_any_element()
             })
@@ -463,7 +515,11 @@ impl WritingStylePage {
 }
 
 /// An outline button in red, for deleting or forgetting.
-pub(super) fn destructive_outline(id: &'static str, label: impl Into<SharedString>, cx: &App) -> Button {
+pub(super) fn destructive_outline(
+    id: &'static str,
+    label: impl Into<SharedString>,
+    cx: &App,
+) -> Button {
     let t = theme(cx);
     Button::new(id)
         .outline()

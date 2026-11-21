@@ -117,7 +117,10 @@ pub fn sync_label(sync: &SharedSync) -> String {
 pub fn sync_details(sync: &SharedSync) -> String {
     let mac = mac_name(&sync.remote);
     if !sync.away {
-        return format!("Sending {} made on this Mac to {mac}.", changes(sync.pending));
+        return format!(
+            "Sending {} made on this Mac to {mac}.",
+            changes(sync.pending)
+        );
     }
     let waiting = if sync.pending > 0 {
         format!(" {} will sync when it's back.", changes(sync.pending))
@@ -202,7 +205,12 @@ pub fn bar(
     if let Some(sync) = data.shared_sync().filter(|s| s.away || s.pending > 0) {
         let accent = t.accent;
         bar = bar.child(
-            item("status-sync", sync_details(&sync), Target::Path("/settings")).child(
+            item(
+                "status-sync",
+                sync_details(&sync),
+                Target::Path("/settings"),
+            )
+            .child(
                 div()
                     .when(sync.away, |d| d.text_color(accent))
                     .child(sync_label(&sync)),
@@ -251,7 +259,11 @@ pub fn bar(
     }
     bar = bar.child(div().flex_1());
     if data.examples > 0 {
-        let noun = if data.examples == 1 { "example" } else { "examples" };
+        let noun = if data.examples == 1 {
+            "example"
+        } else {
+            "examples"
+        };
         bar = bar.child(
             item(
                 "status-examples",
@@ -266,9 +278,7 @@ pub fn bar(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        format_duration, format_memory, mac_name, server_stats, sync_details, sync_label,
-    };
+    use super::{format_duration, format_memory, mac_name, server_stats, sync_details, sync_label};
     use crate::shell::data::SharedSync;
     use kass_api::types::HealthResponse;
 

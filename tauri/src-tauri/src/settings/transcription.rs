@@ -47,7 +47,10 @@ fn whisper_label(size: WhisperModelSize) -> String {
         WhisperModelSize::Unknown => "turbo",
         size => size.as_str(),
     };
-    kass_i18n::tr!(&format!("{P}-model-{key}"), tail = t(format!("{P}-model-tail-{tail}")))
+    kass_i18n::tr!(
+        &format!("{P}-model-{key}"),
+        tail = t(format!("{P}-model-tail-{tail}"))
+    )
 }
 
 /// The Qwen3 label and the Models tab's id for it.
@@ -57,7 +60,10 @@ fn qwen(size: Qwen3ModelSize) -> (String, &'static str) {
         Qwen3ModelSize::Size4B => ("size40", "full-quality", "qwen3-4b"),
         _ => ("size06", "very-fast", "qwen3-0.6b"),
     };
-    let label = kass_i18n::tr!(&format!("{R}-model-{key}"), tail = t(format!("{R}-model-tail-{tail}")));
+    let label = kass_i18n::tr!(
+        &format!("{R}-model-{key}"),
+        tail = t(format!("{R}-model-tail-{tail}"))
+    );
     (label, id)
 }
 
@@ -143,27 +149,29 @@ impl TranscriptionPage {
     }
 
     fn poll(cx: &mut Context<Self>) -> Task<()> {
-        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| loop {
-            let Ok(api) = this.read_with(cx, |this, cx| this.data.read(cx).api.clone()) else {
-                return;
-            };
-            let status = cx
-                .background_executor()
-                .spawn(async move { api.correction_learning_status().ok() })
-                .await;
-            let Ok(busy) = this.update(cx, |this, cx| {
-                if status.is_some() {
-                    this.learning = status;
-                }
-                cx.notify();
-                this.busy()
-            }) else {
-                return;
-            };
-            cx.background_executor()
-                .timer(if busy { BUSY_POLL } else { IDLE_POLL })
-                .await;
-        })
+        cx.spawn(
+            async move |this: WeakEntity<Self>, cx: &mut AsyncApp| loop {
+                let Ok(api) = this.read_with(cx, |this, cx| this.data.read(cx).api.clone()) else {
+                    return;
+                };
+                let status = cx
+                    .background_executor()
+                    .spawn(async move { api.correction_learning_status().ok() })
+                    .await;
+                let Ok(busy) = this.update(cx, |this, cx| {
+                    if status.is_some() {
+                        this.learning = status;
+                    }
+                    cx.notify();
+                    this.busy()
+                }) else {
+                    return;
+                };
+                cx.background_executor()
+                    .timer(if busy { BUSY_POLL } else { IDLE_POLL })
+                    .await;
+            },
+        )
     }
 
     fn busy(&self) -> bool {
@@ -220,10 +228,12 @@ impl TranscriptionPage {
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { call(&api).and_then(|status| match status {
-                    Some(status) => Ok(Some(status)),
-                    None => api.correction_learning_status().map(Some),
-                }) })
+                .spawn(async move {
+                    call(&api).and_then(|status| match status {
+                        Some(status) => Ok(Some(status)),
+                        None => api.correction_learning_status().map(Some),
+                    })
+                })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 *flag(this) = false;
@@ -298,14 +308,22 @@ impl TranscriptionPage {
         let mut lines = vec![if voice.active.is_some() {
             kass_i18n::tr!(
                 &format!("{V}-model-active"),
-                date = voice.active_since.as_deref().map(local_date).unwrap_or_default()
+                date = voice
+                    .active_since
+                    .as_deref()
+                    .map(local_date)
+                    .unwrap_or_default()
             )
         } else {
             t(format!("{V}-model-plain"))
         }];
         if let Some(metrics) = &voice.metrics {
             if let Some(candidate) = &metrics.candidate {
-                let key = if metrics.passed { "last-passed" } else { "last-kept" };
+                let key = if metrics.passed {
+                    "last-passed"
+                } else {
+                    "last-kept"
+                };
                 let mut line = kass_i18n::tr!(
                     &format!("{V}-model-{key}"),
                     before = metrics.production.as_ref().map_or(0., |p| p.noisy),
@@ -323,7 +341,9 @@ impl TranscriptionPage {
             .flex()
             .flex_col()
             .children(lines)
-            .when_some(error, |d, error| d.child(div().text_color(destructive).child(error)));
+            .when_some(error, |d, error| {
+                d.child(div().text_color(destructive).child(error))
+            });
 
         SettingSection::new(t(format!("{V}-title")))
             .description(t(format!("{V}-description")))
@@ -440,12 +460,16 @@ impl Render for TranscriptionPage {
         let shared_section = SettingSection::new(t(format!("{S}-title"))).child(
             SettingRow::new(t(format!("{S}-toggle-title")))
                 .description(t(format!("{S}-toggle-description")))
-                .action(self.toggle("shared-adapters", shared, !loaded, |v| {
-                    CaptureSettingsUpdate {
+                .action(self.toggle(
+                    "shared-adapters",
+                    shared,
+                    !loaded,
+                    |v| CaptureSettingsUpdate {
                         shared_adapters: Some(v),
                         ..Default::default()
-                    }
-                }, cx)),
+                    },
+                    cx,
+                )),
         );
 
         let transcription = SettingSection::new(t(format!("{P}-title")))
@@ -476,12 +500,16 @@ impl Render for TranscriptionPage {
             .child(
                 SettingRow::new(t(format!("{R}-auto-title")))
                     .description(t(format!("{R}-auto-description")))
-                    .action(self.toggle("auto-refine", auto_refine, false, |v| {
-                        CaptureSettingsUpdate {
+                    .action(self.toggle(
+                        "auto-refine",
+                        auto_refine,
+                        false,
+                        |v| CaptureSettingsUpdate {
                             auto_refine: Some(v),
                             ..Default::default()
-                        }
-                    }, cx)),
+                        },
+                        cx,
+                    )),
             )
             .child(
                 SettingRow::new(t(format!("{R}-model-title")))
@@ -496,22 +524,30 @@ impl Render for TranscriptionPage {
             .child(
                 SettingRow::new(t(format!("{R}-self-correction-title")))
                     .description(t(format!("{R}-self-correction-description")))
-                    .action(self.toggle("self-correction", self_correction, !auto_refine, |v| {
-                        CaptureSettingsUpdate {
+                    .action(self.toggle(
+                        "self-correction",
+                        self_correction,
+                        !auto_refine,
+                        |v| CaptureSettingsUpdate {
                             self_correction: Some(v),
                             ..Default::default()
-                        }
-                    }, cx)),
+                        },
+                        cx,
+                    )),
             )
             .child(
                 SettingRow::new(t(format!("{R}-expressive-title")))
                     .description(t(format!("{R}-expressive-description")))
-                    .action(self.toggle("expressive", expressive, !auto_refine, |v| {
-                        CaptureSettingsUpdate {
+                    .action(self.toggle(
+                        "expressive",
+                        expressive,
+                        !auto_refine,
+                        |v| CaptureSettingsUpdate {
                             expressive: Some(v),
                             ..Default::default()
-                        }
-                    }, cx)),
+                        },
+                        cx,
+                    )),
             )
             .child(
                 SettingRow::new(t(format!("{R}-styles-title")))
@@ -521,7 +557,9 @@ impl Render for TranscriptionPage {
                             .outline()
                             .small()
                             .label(t(format!("{R}-styles-open")))
-                            .on_click(|_, _, cx| shell::navigate("/settings/writing-style", "", cx)),
+                            .on_click(|_, _, cx| {
+                                shell::navigate("/settings/writing-style", "", cx)
+                            }),
                     ),
             );
 

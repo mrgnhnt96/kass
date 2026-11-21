@@ -63,7 +63,7 @@ impl HudPreview {
                 }
                 let (current, length) = STEPS[step];
                 let start = since.is_zero();
-                let _ = pill.update(cx, |pill, cx| {
+                pill.update(cx, |pill, cx| {
                     if start {
                         if current == Step::Recording {
                             take += 1;

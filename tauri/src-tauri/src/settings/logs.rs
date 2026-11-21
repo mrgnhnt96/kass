@@ -75,8 +75,13 @@ impl Render for LogsPage {
 
         let filter_button = |id: &'static str, label: String, filter: Filter| {
             let active = self.filter == filter;
-            let (fg, muted, border, input, secondary) =
-                (t.foreground, t.muted_foreground, t.border, t.input, t.secondary);
+            let (fg, muted, border, input, secondary) = (
+                t.foreground,
+                t.muted_foreground,
+                t.border,
+                t.input,
+                t.secondary,
+            );
             div()
                 .id(id)
                 .h(px(28.))
@@ -86,7 +91,9 @@ impl Render for LogsPage {
                 .rounded(metrics::RADIUS_MD)
                 .border_1()
                 .cursor_pointer()
-                .when(active, |b| b.border_color(input).bg(secondary).text_color(fg))
+                .when(active, |b| {
+                    b.border_color(input).bg(secondary).text_color(fg)
+                })
                 .when(!active, |b| {
                     b.border_color(border)
                         .text_color(muted)

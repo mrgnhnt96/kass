@@ -178,7 +178,11 @@ impl TeachView {
                 .iter()
                 .flat_map(|s| s.conversations.iter().map(|c| c.id.as_str()))
                 .collect();
-            if let Some(new) = next.conversations.iter().find(|c| !before.contains(c.id.as_str())) {
+            if let Some(new) = next
+                .conversations
+                .iter()
+                .find(|c| !before.contains(c.id.as_str()))
+            {
                 self.selected = Some(new.id.clone());
             }
         }
@@ -238,9 +242,13 @@ impl TeachView {
         let Some(id) = self.conversation_id() else {
             return;
         };
-        self.update_session(Busy::Switching, false, window, cx, move |client, session| {
-            client.wrap_teach_conversation(session, &id)
-        });
+        self.update_session(
+            Busy::Switching,
+            false,
+            window,
+            cx,
+            move |client, session| client.wrap_teach_conversation(session, &id),
+        );
     }
 
     fn can_send(&self, cx: &App) -> bool {
@@ -263,7 +271,8 @@ impl TeachView {
         let text = self.reply.read(cx).value().trim().to_string();
         self.sent = Some((text.clone(), turn));
         self.reply_had_text = false;
-        self.reply.update(cx, |reply, cx| reply.set_value("", window, cx));
+        self.reply
+            .update(cx, |reply, cx| reply.set_value("", window, cx));
         self.busy = Busy::Sending;
         cx.notify();
         let written = text.clone();
@@ -279,7 +288,8 @@ impl TeachView {
                         toast_error("writing-style-teach-failed", error, window, cx);
                         // Not saved: put it back to try again.
                         view.reply_had_text = true;
-                        view.reply.update(cx, |reply, cx| reply.set_value(text, window, cx));
+                        view.reply
+                            .update(cx, |reply, cx| reply.set_value(text, window, cx));
                     }
                 }
                 cx.notify();
@@ -308,7 +318,9 @@ impl TeachView {
                 match result {
                     Ok(finished) => {
                         view.session = None;
-                        view.page.update(cx, |page, cx| page.teach_done(true, cx)).ok();
+                        view.page
+                            .update(cx, |page, cx| page.teach_done(true, cx))
+                            .ok();
                         if closing {
                             show_toast(
                                 window,
@@ -348,7 +360,9 @@ impl TeachView {
 
     fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(self.take, TakeState::Listening { from_button: true }) {
-            self.page.update(cx, |page, cx| page.teach_take(false, cx)).ok();
+            self.page
+                .update(cx, |page, cx| page.teach_take(false, cx))
+                .ok();
         }
         self.page.update(cx, |page, _| page.teach_closed()).ok();
         window.close_dialog(cx);
@@ -393,7 +407,9 @@ impl TeachView {
                 self.reply_had_text = has_text;
                 cx.notify();
             }
-            InputEvent::PressEnter { secondary: true, .. } => self.send(window, cx),
+            InputEvent::PressEnter {
+                secondary: true, ..
+            } => self.send(window, cx),
             _ => {}
         }
     }
@@ -432,7 +448,12 @@ impl TeachView {
         cx.spawn(async move |view, cx| {
             let text = cx
                 .background_executor()
-                .spawn(async move { client.teach_dictated(&session, &id).ok().and_then(|d| d.text) })
+                .spawn(async move {
+                    client
+                        .teach_dictated(&session, &id)
+                        .ok()
+                        .and_then(|d| d.text)
+                })
                 .await;
             if let Some(text) = text {
                 view.update(cx, |view, cx| {
@@ -446,7 +467,9 @@ impl TeachView {
     }
 
     fn dictate(&mut self, start: bool, cx: &mut Context<Self>) {
-        self.page.update(cx, |page, cx| page.teach_take(start, cx)).ok();
+        self.page
+            .update(cx, |page, cx| page.teach_take(start, cx))
+            .ok();
     }
 
     /// Empties the reply box for a new conversation or turn, and adds

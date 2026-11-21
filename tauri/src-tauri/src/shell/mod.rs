@@ -22,9 +22,7 @@ use gpui_kit::*;
 use kass_captures::CapturesPage;
 use kass_insights::{InsightsPage, Link};
 use kass_models::ModelsPage;
-use kass_ui::{
-    metrics, theme, AlertLevel, Sidebar, SidebarFooter, SidebarTab, TabAlert,
-};
+use kass_ui::{metrics, theme, AlertLevel, Sidebar, SidebarFooter, SidebarTab, TabAlert};
 
 use crate::host::{self, AppHandle, Listener, Manager};
 use crate::settings::{self, Settings};
@@ -328,10 +326,22 @@ impl MainShell {
         };
         Sidebar::new()
             .logo(img(self.logo.clone()).size(px(32.)))
-            .tab(tab("captures", &kass_i18n::t("nav-captures"), IconName::Captions))
-            .tab(tab("insights", &kass_i18n::t("nav-insights"), IconName::ChartColumn))
+            .tab(tab(
+                "captures",
+                &kass_i18n::t("nav-captures"),
+                IconName::Captions,
+            ))
+            .tab(tab(
+                "insights",
+                &kass_i18n::t("nav-insights"),
+                IconName::ChartColumn,
+            ))
             .tab(tab("models", &kass_i18n::t("nav-models"), IconName::Box).alert(alerts))
-            .tab(tab("reports", &kass_i18n::t("nav-reports"), IconName::FileArchive))
+            .tab(tab(
+                "reports",
+                &kass_i18n::t("nav-reports"),
+                IconName::FileArchive,
+            ))
             .tab(tab(
                 "settings",
                 &kass_i18n::t("nav-settings"),
@@ -382,7 +392,10 @@ fn model_alerts(data: &ShellData) -> Option<TabAlert> {
         .iter()
         .filter(|download| download.status == "error")
         .map(|download| {
-            kass_i18n::tr!("nav-alerts-download-failed", name = download.model_name.clone())
+            kass_i18n::tr!(
+                "nav-alerts-download-failed",
+                name = download.model_name.clone()
+            )
         })
         .collect();
     let level = if !errors.is_empty() {
