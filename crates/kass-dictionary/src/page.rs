@@ -47,8 +47,15 @@ fn bind_keys(cx: &mut App) {
     cx.bind_keys([KeyBinding::new(
         "cmd-enter",
         SubmitPhrase,
-        Some("PhraseWrite Input"),
+        Some(&phrase_write_input()),
     )]);
+}
+
+/// The text box inside a phrase's write field. GPUI context predicates need
+/// `>` between a parent and its descendant; `KeyBinding::new` panics on any
+/// other spelling, and at startup that aborts the app.
+fn phrase_write_input() -> String {
+    format!("{PHRASE_WRITE} > Input")
 }
 
 /// The dictionary entries, styles and chord as last fetched.
@@ -1962,4 +1969,18 @@ fn inherited_row(entry: &InheritedEntry, cx: &App) -> Div {
                 })
                 .child(entry.written.clone()),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::phrase_write_input;
+    use gpui_kit::KeyBindingContextPredicate;
+
+    // KeyBinding::new unwraps this parse when the Dictionary page opens, so a
+    // bad context aborts Kass at launch (0.10.0-beta.8).
+    #[test]
+    fn phrase_write_binding_context_parses() {
+        KeyBindingContextPredicate::parse(&phrase_write_input())
+            .expect("the ⌘⏎ binding's context should parse");
+    }
 }
