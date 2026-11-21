@@ -37,6 +37,13 @@ const HISTORY: usize = 10;
 /// the old one may still be finishing a job.
 static JOB: Mutex<()> = Mutex::new(());
 
+/// Run `work` while no job is learning or rolling back, as a sync from the
+/// shared Kass writes the rules file. Blocks: call it off the runtime.
+pub fn between_jobs<T>(work: impl FnOnce() -> T) -> T {
+    let _job = JOB.lock().unwrap_or_else(|e| e.into_inner());
+    work()
+}
+
 pub fn path(state: &AppState) -> PathBuf {
     state
         .db
@@ -481,6 +488,17 @@ pub async fn watch(state: AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sync_waits_for_the_job_under_way() {
+        let job = JOB.lock().unwrap_or_else(|e| e.into_inner());
+        let (done, finished) = std::sync::mpsc::channel();
+        let sync = std::thread::spawn(move || between_jobs(|| done.send(()).unwrap()));
+        assert!(finished.recv_timeout(Duration::from_millis(100)).is_err());
+        drop(job);
+        finished.recv_timeout(Duration::from_secs(5)).unwrap();
+        sync.join().unwrap();
+    }
 
     fn example(id: &str, capture: &str, original: &str, expected: &str) -> Example {
         Example {

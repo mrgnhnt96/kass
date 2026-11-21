@@ -34,7 +34,7 @@ use super::models::{self, CleanupPrompt, Foreground, Generate, Recognize, Recogn
 use super::prosody::{self, measure_voice, Baseline, Expression, Learned as Taught, Said, Voice};
 use crate::captures::store::{self as captures, NewCapture, NewReport};
 use crate::cleanup_inputs::{self, CleanupInputs};
-use crate::events::{ascii_json, Kind};
+use crate::events::{ascii_json, Kind, Mac};
 use crate::settings::{self, Settings, Transform};
 use crate::styles::{self, Snapshot, Style};
 use crate::{learned, worker, AppState};
@@ -323,6 +323,8 @@ pub struct Session {
     app: AppState,
     pub settings: Settings,
     pub start: Start,
+    /// The Mac dictating, stamped on the capture.
+    mac: Option<Mac>,
     /// The speech model recognition runs, as the worker resolved it.
     stt_model: String,
     snapshot: Snapshot,
@@ -336,11 +338,12 @@ pub struct Session {
 
 impl Session {
     /// A session for `start`, with the user's settings, styles and
-    /// dictionary; events go to `events`. Also the worker's foreground
-    /// hold, released when the session ends.
+    /// dictionary, dictated on `mac`; events go to `events`. Also the
+    /// worker's foreground hold, released when the session ends.
     pub async fn open(
         app: &AppState,
         start: &Value,
+        mac: Option<Mac>,
         events: mpsc::UnboundedSender<Value>,
     ) -> Result<(Arc<Session>, Foreground), String> {
         let settings = app
@@ -447,6 +450,7 @@ impl Session {
             app: app.clone(),
             settings,
             start,
+            mac,
             stt_model,
             snapshot,
             data_dir,
@@ -1878,6 +1882,8 @@ impl Session {
                 app_bundle_id: st.app_bundle_id.clone(),
                 app_name: st.app_name.clone(),
                 app_category: st.app_category.clone(),
+                mac_id: self.mac.as_ref().map(|mac| mac.id.clone()),
+                mac_name: self.mac.as_ref().and_then(|mac| mac.name.clone()),
                 ..NewCapture::default()
             };
             if self.is_command() {
@@ -1930,6 +1936,7 @@ impl Session {
             .await
             .map_err(|e| e.to_string())?;
         self.lock().persisted = true;
+        self.app.events.publish(Kind::Changed);
         let mut response = serde_json::to_value(&capture).map_err(|e| e.to_string())?;
         if let Value::Object(fields) = &mut response {
             fields.insert("auto_refine".into(), auto_refine.into());

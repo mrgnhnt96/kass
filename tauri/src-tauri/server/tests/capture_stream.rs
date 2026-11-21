@@ -366,3 +366,54 @@ async fn refuses_other_origins_and_a_third_session() {
     let url = format!("ws://{}/captures/stream", kass.server.address());
     assert!(tokio_tungstenite::connect_async(url).await.is_err());
 }
+
+/// Reads until `event: <kind>` arrives on `/captures/events`.
+async fn next_event(stream: &mut TcpStream, kind: &str) {
+    let wanted = format!("event: {kind}\n");
+    let mut seen = String::new();
+    let mut buffer = [0u8; 4096];
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !seen.contains(&wanted) {
+            let n = stream.read(&mut buffer).await.unwrap();
+            assert!(n > 0, "the stream ended: {seen}");
+            seen.push_str(&String::from_utf8_lossy(&buffer[..n]));
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no {kind} event; so far: {seen}"));
+}
+
+#[tokio::test]
+async fn a_saved_dictation_names_its_mac_and_tells_the_apps() {
+    let kass = Kass::start().await;
+    let mut events = TcpStream::connect(kass.server.address()).await.unwrap();
+    events
+        .write_all(b"GET /captures/events HTTP/1.1\r\nHost: x\r\n\r\n")
+        .await
+        .unwrap();
+    next_event(&mut events, "learned").await;
+
+    let mut request = format!("ws://{}/captures/stream", kass.server.address())
+        .into_client_request()
+        .unwrap();
+    let headers = request.headers_mut();
+    headers.insert("x-kass-mac", "mac-1".parse().unwrap());
+    headers.insert(
+        "x-kass-mac-name",
+        "Morgan%E2%80%99s%20Desk".parse().unwrap(),
+    );
+    let mut socket = tokio_tungstenite::connect_async(request).await.unwrap().0;
+    send(&mut socket, start("dictation")).await;
+    assert_eq!(event(&mut socket).await["type"], "ready");
+    socket.send(Message::binary(audio())).await.unwrap();
+    send(&mut socket, json!({"type": "finish"})).await;
+    let last = until(&mut socket, "final").await.pop().unwrap();
+    assert_eq!(last["type"], "final", "{last:?}");
+    assert_eq!(last["capture"]["mac_id"], "mac-1");
+    assert_eq!(last["capture"]["mac_name"], "Morgan\u{2019}s Desk");
+    next_event(&mut events, "changed").await;
+
+    let id = last["capture"]["id"].as_str().unwrap();
+    let (_, saved) = kass.get(&format!("/captures/{id}")).await;
+    assert_eq!(saved["mac_id"], "mac-1");
+}

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, Path, State};
+use axum::extract::{ConnectInfo, Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -25,6 +25,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use super::request::detail;
+use crate::events::{mac_of, Mac};
 use crate::stream::models::{self, Foreground};
 use crate::stream::session::{Session, MAX_SELECTION_CHARS};
 use crate::stream::{Outcome, Place};
@@ -87,6 +88,7 @@ fn allowed(headers: &HeaderMap, peer: Option<SocketAddr>) -> bool {
 async fn stream_capture(
     State(state): State<AppState>,
     headers: HeaderMap,
+    RawQuery(query): RawQuery,
     peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
@@ -97,7 +99,8 @@ async fn stream_capture(
         // socket with 1008.
         _ => return StatusCode::FORBIDDEN.into_response(),
     };
-    upgrade.on_upgrade(move |socket| serve(state, socket, place))
+    let mac = mac_of(&headers, query.as_deref());
+    upgrade.on_upgrade(move |socket| serve(state, socket, place, mac))
 }
 
 /// The target app field as stored: trimmed, at most 255 characters, None
@@ -119,6 +122,8 @@ fn target_app(fields: &Map<String, Value>) -> (Option<String>, Option<String>, O
 /// What a connection holds, released however it ends.
 struct Connection {
     app: AppState,
+    /// The Mac dictating, stamped on the capture it saves.
+    mac: Option<Mac>,
     events: mpsc::UnboundedSender<Value>,
     session: Option<Arc<Session>>,
     worker: Option<JoinHandle<Result<(), String>>>,
@@ -138,12 +143,13 @@ impl From<String> for Ended {
     }
 }
 
-async fn serve(app: AppState, socket: WebSocket, place: Place) {
+async fn serve(app: AppState, socket: WebSocket, place: Place, mac: Option<Mac>) {
     let (sink, mut incoming) = socket.split();
     let (events, outgoing) = mpsc::unbounded_channel();
     let writer = tokio::spawn(write(sink, outgoing));
     let mut connection = Connection {
         app,
+        mac,
         events,
         session: None,
         worker: None,
@@ -215,7 +221,7 @@ impl Connection {
             Err(error) => return Ended::Failed(error),
         };
         let (session, foreground) =
-            match Session::open(&self.app, &start, self.events.clone()).await {
+            match Session::open(&self.app, &start, self.mac.clone(), self.events.clone()).await {
                 Ok(opened) => opened,
                 Err(error) => return Ended::Failed(error),
             };
