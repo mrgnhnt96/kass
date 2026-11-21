@@ -250,7 +250,25 @@ pub fn read_notes(data_dir: &Path) -> Value {
             path.display()
         ),
     }
+    drop_exclamation_notes(&mut state);
     state
+}
+
+/// Drop every style's notes about "!" (`correction_notes::about_exclamation`),
+/// so the next save leaves them out of the file too.
+fn drop_exclamation_notes(state: &mut Value) {
+    let Some(styles) = state["styles"].as_object_mut() else {
+        return;
+    };
+    for style in styles.values_mut() {
+        if let Some(notes) = style.get_mut("notes").and_then(Value::as_array_mut) {
+            notes.retain(|note| {
+                !note
+                    .as_str()
+                    .is_some_and(crate::correction_notes::about_exclamation)
+            });
+        }
+    }
 }
 
 /// `style_id`'s notes state over the empty one.
@@ -658,6 +676,24 @@ mod tests {
         let notes = read_notes(&dir);
         assert_eq!(notes["styles"][MIGRATED_STYLE]["notes"], json!(["a"]));
         assert_eq!(notes["version"], json!(2));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn saved_notes_about_exclamation_marks_are_dropped() {
+        let dir = std::env::temp_dir().join(format!("kass-notes-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let exclaim = "Add an exclamation mark to statements that end with a period.";
+        let saved = json!({"version": 2, "styles": {"s": {
+            "notes": ["Write Kass as one word.", exclaim, "End excited lines with !", exclaim],
+        }}});
+        fs::write(dir.join(CORRECTION_NOTES), saved.to_string()).unwrap();
+        let notes = read_notes(&dir);
+        assert_eq!(current_notes(&notes, "s"), vec!["Write Kass as one word."]);
+        assert_eq!(
+            crate::cleanup_inputs::correction_notes(&dir, "s"),
+            vec!["Write Kass as one word."]
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 }

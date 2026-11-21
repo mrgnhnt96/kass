@@ -388,15 +388,16 @@ async fn dictation_in_kass_becomes_the_reply_and_finishing_saves_it() {
     assert_eq!(finished["status"]["runs"], 1);
     assert_eq!(finished["status"]["example_count"], 2);
     // No longer dictation elsewhere to show: the dictated reply, cleaned up
-    // without and with the user's examples.
+    // without and with the user's examples. The transcript stands in for a
+    // rejected cleanup, started as cleanup starts a text.
     assert!(finished["before"]
         .as_str()
         .unwrap()
-        .contains("sounds good see you there"));
+        .contains("Sounds good see you there"));
     assert!(finished["after"]
         .as_str()
         .unwrap()
-        .contains("sounds good see you there"));
+        .contains("Sounds good see you there"));
 
     let writing = kass.file("writing-style.json");
     let examples = writing["styles"]["personal"]["examples"]

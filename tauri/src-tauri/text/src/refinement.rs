@@ -659,6 +659,13 @@ pub fn style_first_word(text: &str, flags: &Flags, names: &Names) -> String {
     }
 }
 
+/// The transcript a whole text pastes when the content check rejected its
+/// cleanup, started and closed as a sentence the way cleanup writes one.
+/// [`style_first_word`] still applies after.
+pub fn stand_in_for_cleanup(transcript: &str) -> String {
+    crate::phrase_seams::close_phrase(&crate::phrase_seams::start_sentence(transcript))
+}
+
 /// Every example the cleanup model sees: the built-in ones and the user's.
 pub fn shown_examples(personal: &[Example]) -> Vec<Example> {
     let mut examples = owned(REFINEMENT_EXAMPLES);

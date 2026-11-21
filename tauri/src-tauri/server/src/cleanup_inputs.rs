@@ -369,6 +369,7 @@ pub fn correction_notes(data_dir: &Path, style_id: &str) -> Vec<String> {
     };
     entries(notes)
         .filter_map(|note| note.as_str().map(String::from))
+        .filter(|note| !crate::correction_notes::about_exclamation(note))
         .collect()
 }
 

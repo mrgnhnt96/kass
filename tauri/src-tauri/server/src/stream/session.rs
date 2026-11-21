@@ -1419,6 +1419,12 @@ impl Session {
         );
         st.tail_dirty = false;
         let rejected = verdict.outcome == "reject";
+        if rejected && py::strip(&st.settled).is_empty() {
+            // The transcript stands in at the start of the dictation, where
+            // cleanup would have written a capital. The period comes when
+            // it closes (`cleanup_closed`).
+            refined = phrase_seams::start_sentence(&refined);
+        }
         let mut reviews = st.settled_reviews.clone();
         if verdict.outcome != "ok" {
             reviews.push(verdict);
@@ -1569,6 +1575,11 @@ impl Session {
             "",
             Some(&st.inputs.punctuation),
         );
+        let refined = if verdict.outcome == "reject" {
+            refinement::stand_in_for_cleanup(&refined)
+        } else {
+            refined
+        };
         let refined = self.start_like_raw(&st, &refined);
         st.reviews = vec![verdict];
         let corrected = self.corrected(&st, &refined);
