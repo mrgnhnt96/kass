@@ -24,6 +24,12 @@ const YIN_THRESHOLD: f64 = 0.1;
 /// A frame is voiced when its best lag's normalized difference is under
 /// this.
 const MAX_APERIODICITY: f64 = 0.35;
+/// The doubled period replaces the first dip only when its interpolated
+/// difference is lower by this much. A pure tone fits both equally, and
+/// whichever lands nearer a whole lag would otherwise win, halving the
+/// pitch; a weak fundamental under a strong second harmonic leaves its
+/// first dip at least this much worse.
+const OCTAVE_MARGIN: f64 = 0.01;
 /// Quieter frames are never voiced (dB relative to full scale).
 const SILENCE_DB: f64 = -55.0;
 
@@ -175,27 +181,34 @@ pub fn analyse(frame: &[f32; WINDOW]) -> (f64, f64) {
         .unwrap_or_else(|| argmin(window));
     lag = slide_down(window, lag);
     // A strong second harmonic dips first, at half the period: take the
-    // period itself when it is the better fit.
+    // period itself when it is clearly the better fit. Compared between
+    // whole lags, a period that falls between two would lose to its double.
     let doubled = 2 * (lag + MIN_LAG) - MIN_LAG;
     if doubled < last - 1 {
         let near = slide_down(window, doubled.saturating_sub(2).min(last));
-        if window[near] < window[lag] {
+        if vertex(window, near).1 + OCTAVE_MARGIN < vertex(window, lag).1 {
             lag = near;
         }
     }
     let aperiodicity = window[lag];
-    // Parabolic interpolation between neighbouring lags.
-    let left = window[lag.saturating_sub(1)];
-    let right = window[(lag + 1).min(last)];
-    let curve = left - 2.0 * aperiodicity + right;
-    let offset = if curve.abs() > 1e-9 {
-        (0.5 * (left - right) / curve).clamp(-0.5, 0.5)
-    } else {
-        0.0
-    };
+    let (offset, _) = vertex(window, lag);
     let hz = ANALYSIS_RATE / ((lag + MIN_LAG) as f64 + offset);
     let voiced = aperiodicity < MAX_APERIODICITY && db > SILENCE_DB;
     (if voiced { hz } else { f64::NAN }, db)
+}
+
+/// The parabola through `lag` and its neighbours: where its minimum lies
+/// (in lags from `lag`, within half a lag) and how low it reaches.
+fn vertex(window: &[f64], lag: usize) -> (f64, f64) {
+    let middle = window[lag];
+    let left = window[lag.saturating_sub(1)];
+    let right = window[(lag + 1).min(window.len() - 1)];
+    let curve = left - 2.0 * middle + right;
+    if curve.abs() <= 1e-9 {
+        return (0.0, middle);
+    }
+    let offset = (0.5 * (left - right) / curve).clamp(-0.5, 0.5);
+    (offset, middle - 0.25 * (left - right) * offset)
 }
 
 fn argmin(values: &[f64]) -> usize {
@@ -249,6 +262,46 @@ mod tests {
                 assert!(
                     (value - hz).abs() / hz < 0.01,
                     "{rate} Hz: {value} for {hz}"
+                );
+            }
+        }
+    }
+
+    /// Higher voices (many women and children speak at 180-300 Hz) were
+    /// read an octave low wherever a tone's period fell between two lags.
+    #[test]
+    fn reads_every_tone_in_range_at_its_own_octave() {
+        for rate in [16_000, 44_100, 48_000] {
+            let mut wrong = Vec::new();
+            for hz in (75..=480).step_by(5).map(f64::from) {
+                let mut track = PitchTrack::new(rate);
+                track.feed(&tone(rate, hz, 0.08));
+                // The first two windows start before the tone does.
+                let whole = &track.frames().hz[2..];
+                let off = |v: &&f64| v.is_nan() || (*v - hz).abs() / hz >= 0.01;
+                if let Some(value) = whole.iter().find(off) {
+                    wrong.push(format!("{hz} Hz read as {value}"));
+                }
+            }
+            assert!(wrong.is_empty(), "{rate}: {}", wrong.join(", "));
+        }
+    }
+
+    /// A weak fundamental under a strong second harmonic dips first at half
+    /// the period; the period itself is still the pitch.
+    #[test]
+    fn a_weak_fundamental_is_still_the_pitch() {
+        for hz in [90.0, 120.0, 150.0, 200.0, 250.0] {
+            for weak in [0.15, 0.3] {
+                let mut frame = [0f32; WINDOW];
+                for (i, sample) in frame.iter_mut().enumerate() {
+                    let phase = 2.0 * std::f64::consts::PI * hz * i as f64 / ANALYSIS_RATE;
+                    *sample = (0.3 * (weak * phase.sin() + (2.0 * phase).sin())) as f32;
+                }
+                let (got, _) = analyse(&frame);
+                assert!(
+                    (got - hz).abs() / hz < 0.01,
+                    "{hz} Hz under its harmonic at {weak}: {got}"
                 );
             }
         }
