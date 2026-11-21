@@ -143,6 +143,11 @@ impl<R> Takes<R> {
     pub fn end(&mut self, id: u64) {
         self.open.retain(|(open, _)| *open != id);
     }
+
+    /// No take is recording, or still being transcribed or put in.
+    pub fn is_idle(&self) -> bool {
+        self.recording.is_none() && self.open.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +158,18 @@ mod tests {
         let switch = CancelSwitch::new();
         takes.begin(id, switch.clone(), "microphone");
         switch
+    }
+
+    #[test]
+    fn idle_once_every_take_has_settled() {
+        let mut takes = Takes::default();
+        assert!(takes.is_idle());
+        recording_take(&mut takes, 1);
+        assert!(!takes.is_idle());
+        takes.release(|_| true);
+        assert!(!takes.is_idle(), "still being transcribed");
+        takes.end(1);
+        assert!(takes.is_idle());
     }
 
     #[test]

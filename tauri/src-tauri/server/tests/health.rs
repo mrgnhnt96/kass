@@ -256,13 +256,31 @@ async fn health_reports_the_worker_and_the_chosen_whisper_model() {
          \"model_size\":\"turbo\",\"gpu_available\":true,\
          \"gpu_type\":\"Metal (Apple Silicon via MLX)\",\"backend_type\":\"mlx\",\
          \"version\":\"1.2.3-beta.4\",\"started_at\":1763000000.25,\"pid\":4242,\
-         \"peak_memory_mb\":1800}"
+         \"peak_memory_mb\":1800,\"mac_id\":null}"
     );
 
     // Downloaded counts .npz weights for Whisper too.
     downloaded(&kass.cache, "openai/whisper-large-v3-turbo", "weights.npz");
     let (_, body) = kass.get("/health").await;
     assert_eq!(body["model_downloaded"], true);
+}
+
+/// The id the app keeps in the data folder (src/this_mac.rs), so another
+/// Mac can tell it's still this Kass after its network name changes.
+#[tokio::test]
+async fn health_names_this_mac_by_its_saved_id() {
+    let kass = Kass::start(Worker::default()).await;
+    std::fs::write(
+        kass.data.join("mac-id"),
+        "0123456789abcdef0123456789abcdef\n",
+    )
+    .unwrap();
+    let (status, body) = kass.get("/health").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["mac_id"], "0123456789abcdef0123456789abcdef");
+
+    std::fs::write(kass.data.join("mac-id"), "   ").unwrap();
+    assert_eq!(kass.get("/health").await.1["mac_id"], Value::Null);
 }
 
 #[tokio::test]

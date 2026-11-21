@@ -3,7 +3,7 @@
 //! downloads, the shared Mac's sync, permissions and the updater. Also
 //! checks whether the other Mac in use is away (beta `network`).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui_kit::{App, AsyncApp, Context, Task, WeakEntity};
 use kass_api::types::{
@@ -23,6 +23,8 @@ const POLL: Duration = Duration::from_secs(5);
 /// answer. Macs on one network answer in milliseconds.
 const AWAY_CHECK: Duration = Duration::from_secs(3);
 const AWAY_TIMEOUT: Duration = Duration::from_millis(1500);
+/// While it's away, how often to look for it under a changed network name.
+const RENAMED_SEARCH: Duration = Duration::from_secs(30);
 /// Microphones and learned examples change rarely: every this many polls.
 const SLOW_EVERY: u32 = 6;
 
@@ -265,23 +267,60 @@ impl ShellData {
 /// requests go there, its models load, and new takes start there. When it's
 /// back, everything goes back to it; this Mac's server sends it what was
 /// done meanwhile (backend/services/sync).
+///
+/// Its Kass says which Mac it's on, and that id is remembered. When its
+/// network name changes (macOS makes `studio.local` into `studio-2.local`
+/// when the name is taken), it's looked for under the names macOS gives
+/// and followed to the one with the same id.
 async fn check_away(this: WeakEntity<ShellData>, cx: &mut AsyncApp) {
     // This Mac's server may still be starting when the other Mac is first
     // found away, so it's asked to load its models until it has.
     let mut woken = false;
+    let mut searched: Option<Instant> = None;
     loop {
         let Ok((remote, api)) = this.read_with(cx, |this, _| (this.remote(), this.api.clone()))
         else {
             return;
         };
+        let saved = prefs::get().remote_mac_id;
         let away = match remote {
             None => false,
             Some(remote) => {
-                let up = cx
+                let probe = remote.clone();
+                let answer = cx
                     .background_executor()
-                    .spawn(async move { kass_api::answers_as_kass(&remote, AWAY_TIMEOUT) })
+                    .spawn(async move { kass_api::kass_at(&probe, AWAY_TIMEOUT) })
                     .await;
-                if up {
+                let found = match judge(answer, saved.as_deref()) {
+                    Answer::Up { remember } => {
+                        if let Some(id) = remember {
+                            prefs::remember_remote_mac(id);
+                        }
+                        true
+                    }
+                    Answer::Away => match saved {
+                        Some(id) if searched.is_none_or(|at| at.elapsed() >= RENAMED_SEARCH) => {
+                            searched = Some(Instant::now());
+                            let moved = cx
+                                .background_executor()
+                                .spawn(async move {
+                                    let urls = kass_api::renamed_addresses(&remote);
+                                    kass_api::find_kass(&urls, &id, AWAY_TIMEOUT)
+                                })
+                                .await;
+                            if let Some(url) = &moved {
+                                eprintln!(
+                                    "[network] The other Mac's name changed; now using {url}"
+                                );
+                                prefs::follow_remote(url.clone());
+                                searched = None;
+                            }
+                            moved.is_some()
+                        }
+                        _ => false,
+                    },
+                };
+                if found {
                     woken = false;
                 } else if !woken {
                     woken = cx
@@ -289,7 +328,7 @@ async fn check_away(this: WeakEntity<ShellData>, cx: &mut AsyncApp) {
                         .spawn(async move { api.local_sync_wake().is_ok() })
                         .await;
                 }
-                !up
+                !found
             }
         };
         if prefs::set_away(away) {
@@ -303,6 +342,27 @@ async fn check_away(this: WeakEntity<ShellData>, cx: &mut AsyncApp) {
             );
         }
         cx.background_executor().timer(AWAY_CHECK).await;
+    }
+}
+
+/// What the other Mac's address answering means.
+#[derive(Debug, PartialEq)]
+enum Answer {
+    /// It's there, with its id to remember the first time.
+    Up { remember: Option<String> },
+    /// Nothing answers as Kass, or another Mac's Kass took the name.
+    Away,
+}
+
+/// `answer` is [`kass_api::kass_at`]'s, `saved` the id remembered for the
+/// other Mac.
+fn judge(answer: Option<Option<String>>, saved: Option<&str>) -> Answer {
+    match (answer, saved) {
+        (None, _) => Answer::Away,
+        (Some(Some(id)), Some(saved)) if id != saved => Answer::Away,
+        (Some(Some(id)), None) => Answer::Up { remember: Some(id) },
+        // An older Kass doesn't say which Mac it's on.
+        (Some(_), _) => Answer::Up { remember: None },
     }
 }
 
@@ -341,4 +401,44 @@ pub fn background<R: Send + 'static>(
     work: impl FnOnce() -> R + Send + 'static,
 ) -> Task<R> {
     cx.background_executor().spawn(async move { work() })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn id(id: &str) -> Option<Option<String>> {
+        Some(Some(id.into()))
+    }
+
+    #[test]
+    fn the_other_macs_id_is_remembered_the_first_time() {
+        assert_eq!(
+            judge(id("m-1"), None),
+            Answer::Up {
+                remember: Some("m-1".into())
+            }
+        );
+        assert_eq!(judge(id("m-1"), Some("m-1")), Answer::Up { remember: None });
+    }
+
+    #[test]
+    fn another_macs_kass_under_its_old_name_is_not_it() {
+        assert_eq!(judge(id("m-2"), Some("m-1")), Answer::Away);
+    }
+
+    #[test]
+    fn nothing_answering_is_away() {
+        assert_eq!(judge(None, Some("m-1")), Answer::Away);
+        assert_eq!(judge(None, None), Answer::Away);
+    }
+
+    #[test]
+    fn an_older_kass_that_names_no_mac_is_taken_at_its_word() {
+        assert_eq!(
+            judge(Some(None), Some("m-1")),
+            Answer::Up { remember: None }
+        );
+        assert_eq!(judge(Some(None), None), Answer::Up { remember: None });
+    }
 }
