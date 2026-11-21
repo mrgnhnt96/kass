@@ -3,16 +3,23 @@
 
 use super::style::destructive_outline;
 use super::{WritingStylePage, toast_error};
-use crate::model::{Day, app_label, apps_in, day_of, habit_key, parse_time, recent_corrections, short_date};
+use crate::model::{
+    Day, app_label, apps_in, day_of, habit_key, parse_time, recent_corrections, short_date,
+};
 use crate::widgets::{app_tile, icon, mono_label, pill};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use kass_api::types::{PersonalExampleSource, PunctuationStyle, WritingStyleHabit, WritingStyleUpdate, WritingStylesResponse};
+use kass_api::types::{
+    PersonalExampleSource, PunctuationStyle, WritingStyleHabit, WritingStyleUpdate,
+    WritingStylesResponse,
+};
 use kass_i18n::tr;
-use kass_ui::{Button, Confirm, SettingRow, SettingSection, dialog_header, metrics, open_confirm, theme};
+use kass_ui::{
+    Button, Confirm, SettingRow, SettingSection, dialog_header, metrics, open_confirm, theme,
+};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -128,7 +135,9 @@ impl WritingStylePage {
                                 tr!("writing-style-settings-calibrate-start")
                             })
                             .font_weight(FontWeight::SEMIBOLD)
-                            .on_click(cx.listener(|page, _, window, cx| page.open_teach(window, cx))),
+                            .on_click(
+                                cx.listener(|page, _, window, cx| page.open_teach(window, cx)),
+                            ),
                     ),
             )
             .when(runs > 0, |el| {
@@ -139,8 +148,11 @@ impl WritingStylePage {
                         .text_size(metrics::TEXT_CAPTION)
                         .text_color(t.muted_foreground)
                         .child(
-                            tr!("writing-style-settings-calibrate-habits-label", style = name.clone())
-                                .to_uppercase(),
+                            tr!(
+                                "writing-style-settings-calibrate-habits-label",
+                                style = name.clone()
+                            )
+                            .to_uppercase(),
                         )
                         .when_some(last_run, |el, last| el.child(format!(" · {last}"))),
                 )
@@ -165,93 +177,104 @@ impl WritingStylePage {
             .is_some_and(|status| status.ready || status.runs > 0);
         let page = cx.entity().downgrade();
 
-        SettingSection::new(tr!("writing-style-settings-learns-from", style = name.clone()))
-            .child(
-                SettingRow::new(tr!("writing-style-settings-examples-title"))
-                    .description(if examples > 0 {
-                        tr!("writing-style-settings-examples-description", count = examples)
-                    } else {
-                        tr!("writing-style-settings-examples-empty")
-                    })
-                    .action(
-                        Button::new("view-examples")
-                            .outline()
-                            .small()
-                            .disabled(examples == 0)
-                            .label(tr!("writing-style-settings-examples-view"))
-                            .on_click(cx.listener(|page, _, window, cx| page.open_examples(window, cx))),
-                    ),
-            )
-            .child(
-                SettingRow::new(tr!("writing-style-settings-notes-title"))
-                    .description(if notes > 0 {
-                        tr!("writing-style-settings-notes-description", count = notes)
-                    } else {
-                        tr!("writing-style-settings-notes-empty")
-                    })
-                    .action(
-                        Button::new("view-notes")
-                            .outline()
-                            .small()
-                            .disabled(notes == 0)
-                            .label(tr!("writing-style-settings-notes-view"))
-                            .on_click(cx.listener(|page, _, window, cx| page.open_notes(window, cx))),
-                    ),
-            )
-            .child(
-                SettingRow::new(tr!("writing-style-settings-export-title"))
-                    .description(tr!("writing-style-settings-export-description"))
-                    .action(
-                        Button::new("export-corrections")
-                            .outline()
-                            .small()
-                            .label(tr!("writing-style-settings-export-action"))
-                            .on_click(cx.listener(|page, _, window, cx| page.export(window, cx))),
-                    ),
-            )
-            .when(learned, |section| {
-                section.child(
-                    SettingRow::new(tr!("writing-style-settings-reset-title", style = name.clone()))
-                        .description(tr!(
-                            "writing-style-settings-reset-description",
-                            style = name.clone()
-                        ))
-                        .action(
-                            destructive_outline(
-                                "reset-style",
-                                tr!("writing-style-settings-reset-action"),
-                                cx,
-                            )
-                            .on_click(move |_, window, cx| {
-                                let page = page.clone();
-                                open_confirm(
-                                    window,
-                                    cx,
-                                    Confirm {
-                                        title: tr!(
-                                            "writing-style-settings-reset-confirm-title",
-                                            style = name.clone()
-                                        )
-                                        .into(),
-                                        description: Some(
-                                            tr!(
-                                                "writing-style-settings-reset-description",
-                                                style = name.clone()
-                                            )
-                                            .into(),
-                                        ),
-                                        confirm: tr!("writing-style-settings-reset-confirm").into(),
-                                        cancel: tr!("common-cancel").into(),
-                                        destructive: true,
-                                        on_confirm: Rc::new(move |window, cx| {
-                                            page.update(cx, |page, cx| page.reset(window, cx)).ok();
-                                        }),
-                                    },
-                                );
-                            }),
+        SettingSection::new(tr!(
+            "writing-style-settings-learns-from",
+            style = name.clone()
+        ))
+        .child(
+            SettingRow::new(tr!("writing-style-settings-examples-title"))
+                .description(if examples > 0 {
+                    tr!(
+                        "writing-style-settings-examples-description",
+                        count = examples
+                    )
+                } else {
+                    tr!("writing-style-settings-examples-empty")
+                })
+                .action(
+                    Button::new("view-examples")
+                        .outline()
+                        .small()
+                        .disabled(examples == 0)
+                        .label(tr!("writing-style-settings-examples-view"))
+                        .on_click(
+                            cx.listener(|page, _, window, cx| page.open_examples(window, cx)),
                         ),
-                )
-            })
+                ),
+        )
+        .child(
+            SettingRow::new(tr!("writing-style-settings-notes-title"))
+                .description(if notes > 0 {
+                    tr!("writing-style-settings-notes-description", count = notes)
+                } else {
+                    tr!("writing-style-settings-notes-empty")
+                })
+                .action(
+                    Button::new("view-notes")
+                        .outline()
+                        .small()
+                        .disabled(notes == 0)
+                        .label(tr!("writing-style-settings-notes-view"))
+                        .on_click(cx.listener(|page, _, window, cx| page.open_notes(window, cx))),
+                ),
+        )
+        .child(
+            SettingRow::new(tr!("writing-style-settings-export-title"))
+                .description(tr!("writing-style-settings-export-description"))
+                .action(
+                    Button::new("export-corrections")
+                        .outline()
+                        .small()
+                        .label(tr!("writing-style-settings-export-action"))
+                        .on_click(cx.listener(|page, _, window, cx| page.export(window, cx))),
+                ),
+        )
+        .when(learned, |section| {
+            section.child(
+                SettingRow::new(tr!(
+                    "writing-style-settings-reset-title",
+                    style = name.clone()
+                ))
+                .description(tr!(
+                    "writing-style-settings-reset-description",
+                    style = name.clone()
+                ))
+                .action(
+                    destructive_outline(
+                        "reset-style",
+                        tr!("writing-style-settings-reset-action"),
+                        cx,
+                    )
+                    .on_click(move |_, window, cx| {
+                        let page = page.clone();
+                        open_confirm(
+                            window,
+                            cx,
+                            Confirm {
+                                title: tr!(
+                                    "writing-style-settings-reset-confirm-title",
+                                    style = name.clone()
+                                )
+                                .into(),
+                                description: Some(
+                                    tr!(
+                                        "writing-style-settings-reset-description",
+                                        style = name.clone()
+                                    )
+                                    .into(),
+                                ),
+                                confirm: tr!("writing-style-settings-reset-confirm").into(),
+                                cancel: tr!("common-cancel").into(),
+                                destructive: true,
+                                on_confirm: Rc::new(move |window, cx| {
+                                    page.update(cx, |page, cx| page.reset(window, cx)).ok();
+                                }),
+                            },
+                        );
+                    }),
+                ),
+            )
+        })
     }
 
     /// Forgets the style's calibration, habits and rules. With nothing left
@@ -278,7 +301,12 @@ impl WritingStylePage {
             },
             |page, result, window, cx| {
                 if let Err(error) = result {
-                    toast_error("writing-style-styles-settings-save-failed", error, window, cx);
+                    toast_error(
+                        "writing-style-styles-settings-save-failed",
+                        error,
+                        window,
+                        cx,
+                    );
                 }
                 page.loaded_for = None;
                 page.reload(cx);
@@ -297,7 +325,9 @@ impl WritingStylePage {
             let written = cx
                 .background_executor()
                 .spawn(async move {
-                    let reports = client.export_capture_feedback().map_err(|e| e.to_string())?;
+                    let reports = client
+                        .export_capture_feedback()
+                        .map_err(|e| e.to_string())?;
                     let json = serde_json::to_string_pretty(&serde_json::json!({
                         "schema_version": 1,
                         "reports": reports,
@@ -325,7 +355,12 @@ impl WritingStylePage {
             move |client| client.remove_personal_example(&id),
             |page, result, window, cx| {
                 if let Err(error) = result {
-                    toast_error("writing-style-settings-examples-remove-failed", error, window, cx);
+                    toast_error(
+                        "writing-style-settings-examples-remove-failed",
+                        error,
+                        window,
+                        cx,
+                    );
                 }
                 page.loaded_for = None;
                 page.load_style(cx);
@@ -343,7 +378,12 @@ impl WritingStylePage {
             move |client| client.remove_correction_note(&id, style.as_deref()),
             |page, result, window, cx| {
                 if let Err(error) = result {
-                    toast_error("writing-style-settings-notes-remove-failed", error, window, cx);
+                    toast_error(
+                        "writing-style-settings-notes-remove-failed",
+                        error,
+                        window,
+                        cx,
+                    );
                 }
                 page.loaded_for = None;
                 page.load_style(cx);
@@ -358,7 +398,11 @@ impl WritingStylePage {
         cx: &mut Context<Self>,
         title: &'static str,
         description: &'static str,
-        rows: fn(&mut WritingStylePage, &WeakEntity<WritingStylePage>, &mut Context<WritingStylePage>) -> Vec<AnyElement>,
+        rows: fn(
+            &mut WritingStylePage,
+            &WeakEntity<WritingStylePage>,
+            &mut Context<WritingStylePage>,
+        ) -> Vec<AnyElement>,
     ) {
         let page = cx.entity().downgrade();
         window.open_dialog(cx, move |dialog, _, cx| {
@@ -504,8 +548,10 @@ impl WritingStylePage {
                                     .label(tr!("writing-style-settings-notes-remove"))
                                     .on_click(move |_, window, cx| {
                                         let id = id.clone();
-                                        page.update(cx, |page, cx| page.remove_note(id, window, cx))
-                                            .ok();
+                                        page.update(cx, |page, cx| {
+                                            page.remove_note(id, window, cx)
+                                        })
+                                        .ok();
                                     }),
                             )
                             .into_any_element()
@@ -552,7 +598,9 @@ impl WritingStylePage {
                     .gap_3()
                     .px(px(14.))
                     .py(px(10.))
-                    .when(index > 0, |el| el.border_t_1().border_color(t.border.opacity(0.7)))
+                    .when(index > 0, |el| {
+                        el.border_t_1().border_color(t.border.opacity(0.7))
+                    })
                     .font_family(t.mono_font.clone())
                     .text_size(metrics::TEXT_XS)
                     .child(app_tile(&app, px(20.), px(10.), px(5.), cx))
@@ -586,7 +634,8 @@ impl WritingStylePage {
                             .cursor_pointer()
                             .hover(|s| s.bg(t.secondary))
                             .tooltip(|window, cx| {
-                                Tooltip::new(tr!("writing-style-settings-recent-remove")).build(window, cx)
+                                Tooltip::new(tr!("writing-style-settings-recent-remove"))
+                                    .build(window, cx)
                             })
                             .child(icon(IconName::X, px(14.), t.muted_foreground))
                             .on_click(cx.listener(move |page, _, window, cx| {
@@ -603,7 +652,10 @@ impl WritingStylePage {
             .mb(px(28.))
             .child(
                 mono_label(
-                    tr!("writing-style-settings-recent-title", style = self.style_name()),
+                    tr!(
+                        "writing-style-settings-recent-title",
+                        style = self.style_name()
+                    ),
                     cx,
                 )
                 .text_size(metrics::TEXT_CAPTION)

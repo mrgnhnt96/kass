@@ -92,8 +92,7 @@ impl Settings {
         Self {
             general: cx.new(|cx| general::GeneralPage::new(data.clone(), window, cx)),
             dictation: cx.new(|cx| dictation::DictationPage::new(data.clone(), window, cx)),
-            command_mode: cx
-                .new(|cx| command_mode::CommandModePage::new(data.clone(), window, cx)),
+            command_mode: cx.new(|cx| command_mode::CommandModePage::new(data.clone(), window, cx)),
             transcription: cx
                 .new(|cx| transcription::TranscriptionPage::new(data.clone(), window, cx)),
             writing_style: cx.new(|cx| {
@@ -171,13 +170,7 @@ impl Settings {
                     .flex_1()
                     .min_w_0()
                     .overflow_y_scroll()
-                    .child(
-                        div()
-                            .px(px(48.))
-                            .py(px(28.))
-                            .max_w(px(760.))
-                            .child(view),
-                    )
+                    .child(div().px(px(48.)).py(px(28.)).max_w(px(760.)).child(view))
                     .into_any_element()
             }
             // No section by that path.
@@ -195,8 +188,13 @@ impl Settings {
 fn nav(path: &str, cx: &App) -> impl IntoElement {
     let t = theme(cx);
     let current = path.trim_end_matches('/');
-    let (muted, hover_fg, fg, accent, active_bg) =
-        (t.muted_foreground, t.foreground, t.foreground, t.accent, t.muted);
+    let (muted, hover_fg, fg, accent, active_bg) = (
+        t.muted_foreground,
+        t.foreground,
+        t.foreground,
+        t.accent,
+        t.muted,
+    );
     div()
         .w(px(NAV_WIDTH))
         .flex_shrink_0()
@@ -258,7 +256,12 @@ pub(crate) fn note(text: impl Into<SharedString>, cx: &App) -> Div {
 }
 
 /// Say that `title` failed, with the error under it.
-pub(crate) fn toast_error(title: impl Into<SharedString>, error: &str, window: &mut Window, cx: &mut App) {
+pub(crate) fn toast_error(
+    title: impl Into<SharedString>,
+    error: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
     show_toast(
         window,
         cx,
@@ -276,8 +279,14 @@ mod tests {
     fn native_pages_by_path() {
         assert_eq!(Page::of("/settings"), Some(Page::General));
         assert_eq!(Page::of("/settings/"), Some(Page::General));
-        assert_eq!(Page::of("/settings/transcription"), Some(Page::Transcription));
-        assert_eq!(Page::of("/settings/writing-style"), Some(Page::WritingStyle));
+        assert_eq!(
+            Page::of("/settings/transcription"),
+            Some(Page::Transcription)
+        );
+        assert_eq!(
+            Page::of("/settings/writing-style"),
+            Some(Page::WritingStyle)
+        );
         assert_eq!(Page::of("/settings/dictionary"), Some(Page::Dictionary));
         assert_eq!(Page::of("/settings/features"), Some(Page::Features));
         assert_eq!(Page::of("/settings/logs"), Some(Page::Logs));

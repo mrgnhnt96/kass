@@ -3,8 +3,8 @@
 
 use super::{WritingStylePage, toast_error};
 use crate::model::{
-    AppFilter, MovePlan, PREVIEW_APPS, app_label, apps_in, can_add_style, confirmed,
-    default_style, filter_apps, moved, plan_move, suggested_style,
+    AppFilter, MovePlan, PREVIEW_APPS, app_label, apps_in, can_add_style, confirmed, default_style,
+    filter_apps, moved, plan_move, suggested_style,
 };
 use crate::widgets::{MenuTrigger, app_tile, icon, menu_item, mono_label};
 use gpui_kit::assets::IconName;
@@ -12,10 +12,13 @@ use gpui_kit::component::input::{Escape, InputEvent, InputState};
 use gpui_kit::component::popover::Popover;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use kass_api::types::{AppToConfirm, MovedCorrections, StyledApp, WritingStyle, WritingStylesResponse};
+use kass_api::types::{
+    AppToConfirm, MovedCorrections, StyledApp, WritingStyle, WritingStylesResponse,
+};
 use kass_i18n::tr;
 use kass_ui::{
-    Button, SettingSection, close_dialog, dialog_footer, dialog_header, metrics, open_dialog, text_input, theme,
+    Button, SettingSection, close_dialog, dialog_footer, dialog_header, metrics, open_dialog,
+    text_input, theme,
 };
 
 /// An app being dragged from one style's card to another.
@@ -90,11 +93,9 @@ impl WritingStylePage {
                     .text_size(px(12.5))
                     .text_color(t.foreground)
                     .when(can_add, |el| {
-                        el.cursor_pointer()
-                            .hover(|s| s.bg(t.secondary))
-                            .on_click(cx.listener(|page, _, window, cx| {
-                                page.begin_draft(window, cx)
-                            }))
+                        el.cursor_pointer().hover(|s| s.bg(t.secondary)).on_click(
+                            cx.listener(|page, _, window, cx| page.begin_draft(window, cx)),
+                        )
                     })
                     .when(!can_add, |el| el.opacity(0.5))
                     .child(icon(IconName::Plus, px(14.), t.foreground))
@@ -174,9 +175,13 @@ impl WritingStylePage {
                 })
                 .tooltip({
                     let label = label.clone();
-                    move |window, cx| gpui_kit::component::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                    move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                    }
                 })
-                .on_drag(dragged, |app, _, _, cx| cx.new(|_| DragPreview(app.label.clone())))
+                .on_drag(dragged, |app, _, _, cx| {
+                    cx.new(|_| DragPreview(app.label.clone()))
+                })
         });
 
         let border = if selected {
@@ -316,12 +321,11 @@ impl WritingStylePage {
                 .placeholder(tr!("writing-style-styles-name-placeholder"))
                 .validate(|text, _| text.chars().count() <= crate::model::MAX_NAME)
         });
-        let subscription = cx.subscribe_in(&input, window, |page, _, event, window, cx| {
-            match event {
+        let subscription =
+            cx.subscribe_in(&input, window, |page, _, event, window, cx| match event {
                 InputEvent::PressEnter { .. } | InputEvent::Blur => page.finish_draft(window, cx),
                 _ => {}
-            }
-        });
+            });
         input.update(cx, |input, cx| input.focus(window, cx));
         self.draft = Some((input, subscription));
         cx.notify();
@@ -350,9 +354,7 @@ impl WritingStylePage {
                     page.wanted = Some(style.id);
                     page.reload(cx);
                 }
-                Err(error) => {
-                    toast_error("writing-style-styles-create-failed", error, window, cx)
-                }
+                Err(error) => toast_error("writing-style-styles-create-failed", error, window, cx),
             },
         );
     }
@@ -367,7 +369,9 @@ impl WritingStylePage {
     ) -> impl IntoElement {
         let t = theme(cx).clone();
         let fresh: Vec<&StyledApp> = data.apps.iter().filter(|app| !app.confirmed).collect();
-        let default_name = default_style(data).map(|s| s.name.clone()).unwrap_or_default();
+        let default_name = default_style(data)
+            .map(|s| s.name.clone())
+            .unwrap_or_default();
         let query = self.search.read(cx).value().to_string();
         let apps = filter_apps(data, &self.filter, &query);
 
@@ -406,7 +410,10 @@ impl WritingStylePage {
                 .child(
                     Button::new("keep-all")
                         .small()
-                        .label(tr!("writing-style-styles-keep-all", style = default_name.clone()))
+                        .label(tr!(
+                            "writing-style-styles-keep-all",
+                            style = default_name.clone()
+                        ))
                         .on_click(cx.listener(move |page, _, window, cx| {
                             page.keep_all(to_confirm.clone(), window, cx)
                         })),
@@ -433,10 +440,13 @@ impl WritingStylePage {
             .gap_2()
             .mb_3()
             .child(
-                div().w(px(260.)).child(
-                    text_input(&self.search, cx)
-                        .prefix(icon(IconName::Search, px(14.), t.muted_foreground)),
-                ),
+                div()
+                    .w(px(260.))
+                    .child(text_input(&self.search, cx).prefix(icon(
+                        IconName::Search,
+                        px(14.),
+                        t.muted_foreground,
+                    ))),
             )
             .when_some(filter_chip, |el, label| {
                 el.child(
@@ -470,7 +480,11 @@ impl WritingStylePage {
             .px(px(14.))
             .py_2()
             .bg(t.card)
-            .child(div().flex_1().child(mono_label(tr!("writing-style-styles-col-app"), cx)))
+            .child(
+                div()
+                    .flex_1()
+                    .child(mono_label(tr!("writing-style-styles-col-app"), cx)),
+            )
             .child(
                 div()
                     .w(px(88.))
@@ -478,7 +492,11 @@ impl WritingStylePage {
                     .justify_end()
                     .child(mono_label(tr!("writing-style-styles-col-count"), cx)),
             )
-            .child(div().w(px(180.)).child(mono_label(tr!("writing-style-styles-col-style"), cx)));
+            .child(
+                div()
+                    .w(px(180.))
+                    .child(mono_label(tr!("writing-style-styles-col-style"), cx)),
+            );
 
         let rows: Vec<AnyElement> = apps
             .iter()
@@ -486,44 +504,42 @@ impl WritingStylePage {
             .collect();
 
         SettingSection::new(tr!("writing-style-styles-apps-title"))
-            .description(tr!("writing-style-styles-apps-total", count = data.apps.len()))
+            .description(tr!(
+                "writing-style-styles-apps-total",
+                count = data.apps.len()
+            ))
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .children(notice)
-                    .child(tools)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .rounded(px(10.))
-                            .border_1()
-                            .border_color(t.border)
-                            .overflow_hidden()
-                            .child(head)
-                            .child(
-                                div()
-                                    .id("app-rows")
-                                    .flex()
-                                    .flex_col()
-                                    .max_h(px(340.))
-                                    .overflow_y_scroll()
-                                    .children(rows)
-                                    .when(apps.is_empty(), |el| {
-                                        el.child(
-                                            div()
-                                                .px(px(14.))
-                                                .py(px(16.))
-                                                .border_t_1()
-                                                .border_color(t.border.opacity(0.6))
-                                                .text_size(px(12.5))
-                                                .text_color(t.muted_foreground)
-                                                .child(tr!("writing-style-styles-no-match")),
-                                        )
-                                    }),
-                            ),
-                    ),
+                div().flex().flex_col().children(notice).child(tools).child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(t.border)
+                        .overflow_hidden()
+                        .child(head)
+                        .child(
+                            div()
+                                .id("app-rows")
+                                .flex()
+                                .flex_col()
+                                .max_h(px(340.))
+                                .overflow_y_scroll()
+                                .children(rows)
+                                .when(apps.is_empty(), |el| {
+                                    el.child(
+                                        div()
+                                            .px(px(14.))
+                                            .py(px(16.))
+                                            .border_t_1()
+                                            .border_color(t.border.opacity(0.6))
+                                            .text_size(px(12.5))
+                                            .text_color(t.muted_foreground)
+                                            .child(tr!("writing-style-styles-no-match")),
+                                    )
+                                }),
+                        ),
+                ),
             )
     }
 
@@ -542,8 +558,12 @@ impl WritingStylePage {
                 .find(|s| s.id == app.style_id)
                 .map(|s| (s.name.clone(), false))
         } else {
-            suggested_style(data, app)
-                .map(|s| (tr!("writing-style-styles-suggested", style = s.name.clone()), true))
+            suggested_style(data, app).map(|s| {
+                (
+                    tr!("writing-style-styles-suggested", style = s.name.clone()),
+                    true,
+                )
+            })
         };
         let (current_label, suggested) = current.unwrap_or_default();
 
@@ -594,23 +614,30 @@ impl WritingStylePage {
             .content(move |_, _, cx| {
                 let t = theme(cx).clone();
                 let popover = cx.entity();
-                div().flex().flex_col().children(styles.iter().map(|(id, name)| {
-                    let page = page.clone();
-                    let popover = popover.clone();
-                    let bundle = bundle.clone();
-                    let to = id.clone();
-                    menu_item(SharedString::from(format!("to-{id}")), cx)
-                        .child(div().w(px(14.)).flex_none().when(
-                            chosen.as_deref() == Some(id.as_str()),
-                            |el| el.child(icon(IconName::Check, px(14.), t.foreground)),
-                        ))
-                        .child(div().flex_1().truncate().child(name.clone()))
-                        .on_click(move |_, window, cx| {
-                            popover.update(cx, |p, cx| p.dismiss(window, cx));
-                            page.update(cx, |page, cx| page.move_app(&bundle, &to, window, cx))
-                                .ok();
-                        })
-                }))
+                div()
+                    .flex()
+                    .flex_col()
+                    .children(styles.iter().map(|(id, name)| {
+                        let page = page.clone();
+                        let popover = popover.clone();
+                        let bundle = bundle.clone();
+                        let to = id.clone();
+                        menu_item(SharedString::from(format!("to-{id}")), cx)
+                            .child(
+                                div()
+                                    .w(px(14.))
+                                    .flex_none()
+                                    .when(chosen.as_deref() == Some(id.as_str()), |el| {
+                                        el.child(icon(IconName::Check, px(14.), t.foreground))
+                                    }),
+                            )
+                            .child(div().flex_1().truncate().child(name.clone()))
+                            .on_click(move |_, window, cx| {
+                                popover.update(cx, |p, cx| p.dismiss(window, cx));
+                                page.update(cx, |page, cx| page.move_app(&bundle, &to, window, cx))
+                                    .ok();
+                            })
+                    }))
             });
 
         div()
@@ -729,8 +756,10 @@ impl WritingStylePage {
                 let to = ask.to_id.clone();
                 move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
                     close_dialog(window, cx);
-                    page.update(cx, |page, cx| page.assign(&bundle, &to, corrections, window, cx))
-                        .ok();
+                    page.update(cx, |page, cx| {
+                        page.assign(&bundle, &to, corrections, window, cx)
+                    })
+                    .ok();
                 }
             };
             div()

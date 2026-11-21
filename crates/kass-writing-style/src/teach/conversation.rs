@@ -522,36 +522,39 @@ fn for_you(note: &TeachNote, persona: &str, cx: &App) -> Div {
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(tr!("writing-style-teach-what-to-answer")),
                 )
-                .child(div().flex().flex_col().gap(px(2.)).children(
-                    note.answers.iter().map(|pair| {
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .max_w(px(220.))
-                                    .text_color(t.foreground.opacity(0.7))
-                                    .child(pair.ask.clone()),
-                            )
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .w(px(14.))
-                                    .text_color(t.foreground.opacity(0.5))
-                                    .child("→"),
-                            )
-                            .child(div().flex_1().min_w_0().child(pair.answer.clone()))
-                    }),
-                ))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .children(note.answers.iter().map(|pair| {
+                            div()
+                                .flex()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .max_w(px(220.))
+                                        .text_color(t.foreground.opacity(0.7))
+                                        .child(pair.ask.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .w(px(14.))
+                                        .text_color(t.foreground.opacity(0.5))
+                                        .child("→"),
+                                )
+                                .child(div().flex_1().min_w_0().child(pair.answer.clone()))
+                        })),
+                )
             } else if let Some(facts) = note.facts.clone() {
                 el.child(
                     div()
-                        .child(
-                            div()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(tr!("writing-style-teach-tell", persona = persona.to_string())),
-                        )
+                        .child(div().font_weight(FontWeight::SEMIBOLD).child(tr!(
+                            "writing-style-teach-tell",
+                            persona = persona.to_string()
+                        )))
                         .child(facts),
                 )
             } else {

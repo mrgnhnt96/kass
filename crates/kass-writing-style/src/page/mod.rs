@@ -73,9 +73,8 @@ pub struct WritingStylePage {
 
 impl WritingStylePage {
     pub fn new(client: ApiClient, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(tr!("writing-style-styles-search"))
-        });
+        let search = cx
+            .new(|cx| InputState::new(window, cx).placeholder(tr!("writing-style-styles-search")));
         let name = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder(tr!("writing-style-styles-name-placeholder"))
@@ -84,9 +83,7 @@ impl WritingStylePage {
         let description = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .rows(4)
-                .placeholder(tr!(
-                    "writing-style-styles-settings-description-placeholder"
-                ))
+                .placeholder(tr!("writing-style-styles-settings-description-placeholder"))
         });
         let punctuation = cx.new(|cx| style::punctuation_state(None, false, window, cx));
 
@@ -146,7 +143,11 @@ impl WritingStylePage {
     }
 
     /// Lets the page dictate a description or a teach reply.
-    pub fn with_dictation(mut self, dictation: Rc<dyn StyleDictation>, cx: &mut Context<Self>) -> Self {
+    pub fn with_dictation(
+        mut self,
+        dictation: Rc<dyn StyleDictation>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let page = cx.entity().downgrade();
         self.following = Some(dictation.follow(
             Rc::new(move |state, cx| {
@@ -166,9 +167,10 @@ impl WritingStylePage {
                 .background_executor()
                 .spawn(async move {
                     let styles = client.list_writing_styles().map_err(|e| e.to_string());
-                    let keys = client.capture_settings().ok().map(|s| {
-                        (s.chord_push_to_talk_keys, s.chord_toggle_to_talk_keys)
-                    });
+                    let keys = client
+                        .capture_settings()
+                        .ok()
+                        .map(|s| (s.chord_push_to_talk_keys, s.chord_toggle_to_talk_keys));
                     (styles, keys)
                 })
                 .await;
@@ -211,7 +213,9 @@ impl WritingStylePage {
     }
 
     fn style_name(&self) -> String {
-        self.style().map(|style| style.name.clone()).unwrap_or_default()
+        self.style()
+            .map(|style| style.name.clone())
+            .unwrap_or_default()
     }
 
     fn choose_style(&mut self, id: Option<String>, cx: &mut Context<Self>) {
@@ -405,12 +409,7 @@ impl WritingStylePage {
     }
 }
 
-pub(crate) fn toast_error(
-    title: &'static str,
-    error: String,
-    window: &mut Window,
-    cx: &mut App,
-) {
+pub(crate) fn toast_error(title: &'static str, error: String, window: &mut Window, cx: &mut App) {
     show_toast(
         window,
         cx,
@@ -437,7 +436,11 @@ impl Render for WritingStylePage {
                 .py(px(64.))
                 .gap_2()
                 .text_color(t.muted_foreground)
-                .child(spinner("writing-style-loading", px(16.), t.muted_foreground))
+                .child(spinner(
+                    "writing-style-loading",
+                    px(16.),
+                    t.muted_foreground,
+                ))
                 .when_some(self.load_error.clone(), |el, error| el.child(error))
                 .into_any_element();
         };

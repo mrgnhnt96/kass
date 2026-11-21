@@ -97,9 +97,12 @@ impl TeachView {
                     .px(px(28.))
                     .py_2()
                     .child(
-                        column_label(tr!("writing-style-summary-habits-title"), t.muted_foreground)
-                            .pt_3()
-                            .pb_1(),
+                        column_label(
+                            tr!("writing-style-summary-habits-title"),
+                            t.muted_foreground,
+                        )
+                        .pt_3()
+                        .pb_1(),
                     )
                     .map(|el| {
                         if habits.is_empty() {

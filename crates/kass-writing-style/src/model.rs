@@ -283,7 +283,10 @@ pub fn confirmed(data: &mut WritingStylesResponse) {
 }
 
 /// The style a new app is shown in until it's confirmed.
-pub fn suggested_style<'a>(data: &'a WritingStylesResponse, app: &StyledApp) -> Option<&'a WritingStyle> {
+pub fn suggested_style<'a>(
+    data: &'a WritingStylesResponse,
+    app: &StyledApp,
+) -> Option<&'a WritingStyle> {
     let find = |id: &str| data.styles.iter().find(|style| style.id == id);
     app.suggested_style_id
         .as_deref()
@@ -294,7 +297,9 @@ pub fn suggested_style<'a>(data: &'a WritingStylesResponse, app: &StyledApp) -> 
 
 /// `text` cut to `max` characters, or `None` when it already fits.
 pub fn clipped(text: &str, max: usize) -> Option<String> {
-    text.char_indices().nth(max).map(|(at, _)| text[..at].to_string())
+    text.char_indices()
+        .nth(max)
+        .map(|(at, _)| text[..at].to_string())
 }
 
 #[cfg(test)]
@@ -314,7 +319,13 @@ mod tests {
         }
     }
 
-    fn app(bundle: &str, name: Option<&str>, style: &str, count: u64, confirmed: bool) -> StyledApp {
+    fn app(
+        bundle: &str,
+        name: Option<&str>,
+        style: &str,
+        count: u64,
+        confirmed: bool,
+    ) -> StyledApp {
         StyledApp {
             bundle_id: bundle.into(),
             name: name.map(Into::into),
@@ -371,7 +382,10 @@ mod tests {
                 .map(app_label)
                 .collect()
         };
-        assert_eq!(labels(AppFilter::All, ""), ["Mail", "com.notes", "Slack", "Zed"]);
+        assert_eq!(
+            labels(AppFilter::All, ""),
+            ["Mail", "com.notes", "Slack", "Zed"]
+        );
         assert_eq!(labels(AppFilter::Style("chat".into()), ""), ["Slack"]);
         assert_eq!(labels(AppFilter::New, ""), ["com.notes", "Zed"]);
         assert_eq!(labels(AppFilter::All, " ZE "), ["Zed"]);
@@ -470,8 +484,12 @@ mod tests {
     fn every_kind_and_habit_has_a_message() {
         for kind in TEACH_KINDS {
             let key = kind_key(kind);
-            assert!(kass_i18n::has(&format!("writing-style-teach-kinds-{key}-label")));
-            assert!(kass_i18n::has(&format!("writing-style-teach-kinds-{key}-short")));
+            assert!(kass_i18n::has(&format!(
+                "writing-style-teach-kinds-{key}-label"
+            )));
+            assert!(kass_i18n::has(&format!(
+                "writing-style-teach-kinds-{key}-short"
+            )));
         }
         for habit in [
             WritingStyleHabit::BoundaryPeriod,
@@ -514,12 +532,21 @@ mod tests {
     fn a_new_app_shows_its_suggested_style() {
         let data = data();
         let mut zed = app("com.zed", Some("Zed"), "work", 1, false);
-        assert_eq!(suggested_style(&data, &zed).map(|s| s.id.as_str()), Some("work"));
+        assert_eq!(
+            suggested_style(&data, &zed).map(|s| s.id.as_str()),
+            Some("work")
+        );
         zed.suggested_style_id = Some("chat".into());
-        assert_eq!(suggested_style(&data, &zed).map(|s| s.id.as_str()), Some("chat"));
+        assert_eq!(
+            suggested_style(&data, &zed).map(|s| s.id.as_str()),
+            Some("chat")
+        );
         zed.suggested_style_id = Some("gone".into());
         zed.style_id = "gone".into();
-        assert_eq!(suggested_style(&data, &zed).map(|s| s.id.as_str()), Some("chat"));
+        assert_eq!(
+            suggested_style(&data, &zed).map(|s| s.id.as_str()),
+            Some("chat")
+        );
     }
 
     #[test]
