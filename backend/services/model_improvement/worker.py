@@ -9,6 +9,7 @@ import gc
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -28,6 +29,33 @@ def phase(directory, name):
     write_json(directory / "progress.json", {"phase": name})
 
 
+# A sentence's end mark, with any closing quotes or brackets after it.
+_END_MARK = re.compile(r"[.?!\u2026]+[\"'\u201d\u2019)\]]*$")
+# A list item: "- Milk", "* Milk", "1. Milk", "2) Milk".
+_LIST_ITEM = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)])\s")
+
+
+def target(sample):
+    """What the cleanup adapter learns to write for ``sample``: the user's fix,
+    with an end mark when the fix left it off.
+
+    Fixes typed in Captures often leave off the final period, and the output
+    they corrected may have lost it to the style's habit; learning that taught
+    the adapter to drop it in every style. Leaving it off is a writing style
+    habit, learned per style and applied after the model (``apply_learned``),
+    which only ever drops a period. So the mark is the output's, else a period.
+    An end mark the user typed ("?" for ".") is kept, and so is a short command
+    ("/clear") or a list item written without one.
+    """
+    expected = sample["expected"].rstrip()
+    if _END_MARK.search(expected) or not expected[-1:].isalnum():
+        return expected
+    if len(re.findall(r"\w+", expected)) < 3 or _LIST_ITEM.match(expected.rsplit("\n", 1)[-1]):
+        return expected
+    end = _END_MARK.search((sample.get("output") or "").rstrip())
+    return expected + (end.group() if end else ".")
+
+
 def token_dataset(samples, tokenizer):
     from ...backends.qwen_llm_backend import _build_messages
     from ..refinement import RefinementFlags, build_refinement_prompt, prepare_refinement, refinement_examples
@@ -42,7 +70,7 @@ def token_dataset(samples, tokenizer):
         prefix = tokenizer.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True, enable_thinking=False
         )
-        answer = [*tokenizer.encode(sample["expected"], add_special_tokens=False), tokenizer.eos_token_id]
+        answer = [*tokenizer.encode(target(sample), add_special_tokens=False), tokenizer.eos_token_id]
         if len(prefix) + len(answer) > 4096:
             continue
         result.append((prefix + answer, len(prefix)))
@@ -205,6 +233,8 @@ def evaluate_adapter(plan, directory, candidate_adapter="trained", candidate_stt
     heldout = [s for s in plan["samples"] if s["target"] == "refined" and s["split"] == "test"]
     audio = transcribe_samples(plan, heldout, plan["stt_model"])
     candidate_audio = transcribe_samples(plan, heldout, candidate_stt) if candidate_stt else audio
+    # Judged against what the adapter learns to write (:func:`target`).
+    heldout = [dict(s, expected=target(s)) for s in heldout]
     cases = [dict(s, kind="heldout") for s in heldout]
     cases += [dict(s, raw=audio[s["id"]][0], kind="audio") for s in heldout if s["id"] in audio]
     # All evaluated flag combinations are recorded; other settings keep the base model.
