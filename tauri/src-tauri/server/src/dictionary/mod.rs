@@ -11,9 +11,11 @@
 //!
 //! This module holds the rules; [`store`] reads and writes `kass.db`, and
 //! [`matching`] builds the dictionary a dictation applies to its text
-//! (kass-text). Dictations still run in the Python worker, which re-reads
+//! (kass-text); [`hints`] finds phrases fixed in several takes, which
+//! Whisper is prompted with. Dictations still run in the Python worker, which re-reads
 //! the entries when this server tells it they changed.
 
+pub mod hints;
 pub mod matching;
 pub mod store;
 

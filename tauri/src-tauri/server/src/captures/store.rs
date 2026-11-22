@@ -4,12 +4,17 @@
 //! changed in `sync_changes` the way the worker's `services/sync/changes.py`
 //! does.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use chrono::NaiveDateTime;
 use rusqlite::types::ValueRef;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction, TransactionBehavior};
 
 use super::{stored_flags, stored_review, Capture};
-use crate::dictionary::store::{add_corrected_words, now, parse_stored, stored, Sync};
+use crate::dictionary::hints::{self, Phrase};
+use crate::dictionary::store::{
+    add_corrected_words, add_prompted_phrases, now, parse_stored, stored, Sync,
+};
 
 const COLUMNS: &str = "id, audio_path, source, language, duration_ms, transcript_raw, \
                        transcript_refined, stt_model, llm_model, refinement_flags, \
@@ -463,9 +468,10 @@ pub fn save_report(
 }
 
 /// Put the words a report fixed in the dictionary, so they aren't misheard
-/// again (`dictionary::store::add_corrected_words`). Only reports the user
-/// made on purpose teach words. Like Python, a failure is logged and the
-/// report stands.
+/// again (`dictionary::store::add_corrected_words`), and the phrases it
+/// fixed that earlier takes fixed too, so Whisper is prompted with them
+/// (`dictionary::hints`). Only reports the user made on purpose teach
+/// words. Like Python, a failure is logged and the report stands.
 pub fn learn_words(
     conn: &mut Connection,
     report_id: &str,
@@ -480,6 +486,64 @@ pub fn learn_words(
     if let Err(error) = add_corrected_words(conn, original, expected, report_id, sync) {
         eprintln!("[server] couldn't add the corrected words to the dictionary: {error}");
     }
+    if let Err(error) = learn_phrases(conn, report_id, original, expected, sync) {
+        eprintln!("[server] couldn't add the repeatedly fixed phrases to the dictionary: {error}");
+    }
+}
+
+/// Prompt the phrases this report fixed that enough takes fixed
+/// (`dictionary::hints::chosen`), counting each capture once however many
+/// of its reports fixed one.
+fn learn_phrases(
+    conn: &mut Connection,
+    report_id: &str,
+    original: &str,
+    expected: &str,
+    sync: Sync,
+) -> rusqlite::Result<()> {
+    let phrases = hints::fixed_phrases(original, expected);
+    if phrases.is_empty() {
+        return Ok(());
+    }
+    let wanted: BTreeSet<&str> = phrases.iter().map(|phrase| phrase.key.as_str()).collect();
+    let mut takes: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for report in list_reports(conn, None)? {
+        if !super::EXPLICIT_SOURCES.contains(&report.source.as_str()) {
+            continue;
+        }
+        let snapshot: serde_json::Value =
+            serde_json::from_str(&report.snapshot).unwrap_or_default();
+        let field = if report.target == "raw" {
+            "transcript_raw"
+        } else {
+            "transcript_refined"
+        };
+        let heard = snapshot.get(field).and_then(|text| text.as_str());
+        let fixed = match heard {
+            _ if report.id == report_id => phrases.clone(),
+            Some(heard) => hints::fixed_phrases(heard, &report.expected_text),
+            None => continue,
+        };
+        for Phrase { key, .. } in fixed {
+            if wanted.contains(key.as_str()) {
+                takes
+                    .entry(key)
+                    .or_default()
+                    .insert(report.capture_id.clone());
+            }
+        }
+    }
+    let counts = takes
+        .into_iter()
+        .map(|(key, captures)| (key, captures.len()))
+        .collect();
+    let chosen: BTreeSet<&str> = hints::chosen(&counts).into_iter().collect();
+    let written = phrases
+        .into_iter()
+        .filter(|phrase| chosen.contains(phrase.key.as_str()))
+        .map(|phrase| phrase.written)
+        .collect();
+    add_prompted_phrases(conn, written, report_id, sync).map(|_| ())
 }
 
 /// A report and the capture's reports of the same target, oldest first,
@@ -853,6 +917,66 @@ mod tests {
         assert!(get(&conn, "take").unwrap().is_none());
         assert_eq!(delete(&mut conn, "take", STAND_IN).unwrap(), None);
         assert!(changes(&conn).contains(&("capture".into(), "take".into(), true)));
+    }
+
+    #[test]
+    fn a_phrase_fixed_in_three_takes_is_prompted() {
+        let mut conn = database();
+        let prompted = |conn: &Connection| -> Vec<(String, bool, String, String)> {
+            let mut query = conn
+                .prepare(
+                    "SELECT written, match_sound, source, added_by FROM dictionary_entries \
+                     WHERE written = 'merge to main'",
+                )
+                .unwrap();
+            let rows = query
+                .query_map([], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })
+                .unwrap();
+            rows.map(Result::unwrap).collect()
+        };
+        let report = |conn: &mut Connection, take: &str, heard: &str, wrote: &str| {
+            conn.execute(
+                "INSERT INTO captures (id, audio_path, source, transcript_raw, audio_deleted, created_at) \
+                 VALUES (?1, '', 'dictation', ?2, 0, '2026-03-05 05:06:07.000000')",
+                [take, heard],
+            )
+            .unwrap();
+            let new = NewReport {
+                capture_id: take.into(),
+                target: "raw".into(),
+                expected_text: wrote.into(),
+                notes: String::new(),
+                source: "manual".into(),
+                replaces: None,
+                seen: get(conn, take).unwrap().unwrap(),
+                filed_by: None,
+            };
+            let saved = save_report(conn, new, STAND_IN).unwrap().unwrap().report;
+            learn_words(conn, &saved.id, "manual", heard, wrote, STAND_IN);
+            saved.id
+        };
+        report(
+            &mut conn,
+            "t1",
+            "commit and merge to mean",
+            "commit and merge to main",
+        );
+        report(&mut conn, "t2", "merge the name", "merge to main");
+        assert!(prompted(&conn).is_empty());
+        let third = report(&mut conn, "t3", "now merge to me", "now merge to main");
+        assert_eq!(
+            prompted(&conn),
+            vec![(
+                "merge to main".into(),
+                false,
+                "correction".into(),
+                third.clone()
+            )]
+        );
+        assert!(crate::dictionary::store::delete_added_by(&mut conn, &third, STAND_IN).unwrap());
+        assert!(prompted(&conn).is_empty());
     }
 
     #[test]
