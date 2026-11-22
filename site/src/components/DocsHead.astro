@@ -1,0 +1,9 @@
+---
+// Starlight's head plus the site's analytics loader, so docs pages load the
+// same bundled script as the marketing pages.
+import Default from '@astrojs/starlight/components/Head.astro';
+import Amplitude from './Amplitude.astro';
+---
+
+<Default />
+<Amplitude />

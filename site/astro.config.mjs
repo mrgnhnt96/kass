@@ -37,6 +37,8 @@ export default defineConfig({
       description: 'Private, local dictation for Apple Silicon Macs.',
       logo: { src: './src/assets/icon.png', alt: '' },
       favicon: '/favicon.svg',
+      // Adds the bundled analytics loader (src/scripts/site-stats.ts) to docs pages.
+      components: { Head: './src/components/DocsHead.astro' },
       head: [
         { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
         { tag: 'link', attrs: { rel: 'icon', href: '/favicon-96.png', sizes: '96x96', type: 'image/png' } },
@@ -45,7 +47,6 @@ export default defineConfig({
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
         { tag: 'meta', attrs: { property: 'og:image:alt', content: OG_IMAGE_ALT } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: OG_IMAGE } },
-        { tag: 'script', attrs: { src: '/site-stats.js', async: true } },
         // Docs search-term tracking. Pagefind creates its search input lazily when the
         // search modal opens, so we delegate from the document and match the Pagefind
         // UI input (class `pagefind-ui__search-input`). Each settled query (debounced
