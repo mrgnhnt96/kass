@@ -30,6 +30,7 @@ use crate::difflib::{SequenceMatcher, Tag};
 use crate::py::{self, Groups, Re};
 use crate::re;
 use crate::refinement::{prepare_refinement, Example, Flags};
+use crate::spoken_corrections::correction_cue;
 use crate::spoken_punctuation::Learned;
 use crate::voice_commands::count_commands;
 
@@ -385,13 +386,6 @@ fn names(text: &str) -> BTreeSet<String> {
 
 fn number(token: &str) -> String {
     token.replace(',', "")
-}
-
-fn correction_cue() -> &'static Re {
-    re!(
-        r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b",
-        py::I
-    )
 }
 
 /// What the speaker took back: the words before their last correction cue,

@@ -180,6 +180,17 @@ fn restates(phrase: &[String], earlier: &[String], anchor: usize) -> bool {
     false
 }
 
+/// Cues that only ever take words back ("no, wait", "scratch that").
+const RETRACTION_CUES: &str = r"no[,\s]+(?:no|wait|actually)|wait[,\s]+no|scratch that|make that|I meant|or rather|sorry[,\s]+I mean";
+
+/// A cue anywhere in a take that may correct earlier words: one that only
+/// ever takes words back, or "actually" and "I mean". The cues that can also
+/// open an answer ("no", "wait") count only at the start of a phrase, in
+/// [`retracted_by`].
+pub fn correction_cue() -> &'static Re {
+    re!(format!(r"\b(?:{RETRACTION_CUES}|actually|I mean)\b"), I)
+}
+
 /// What `phrase`, said after `earlier`, may take back: `earlier` and the cue;
 /// None if it corrects nothing.
 ///
@@ -190,11 +201,7 @@ fn restates(phrase: &[String], earlier: &[String], anchor: usize) -> bool {
 /// and then differ.
 pub fn retracted_by(phrase: &str, earlier: &str) -> Option<String> {
     let phrase = py::strip(phrase);
-    // Cues that only ever take words back.
-    let retraction = re!(
-        r"\b(?:no[,\s]+(?:no|wait|actually)|wait[,\s]+no|scratch that|make that|I meant|or rather|sorry[,\s]+I mean)\b",
-        I
-    );
+    let retraction = re!(format!(r"\b(?:{RETRACTION_CUES})\b"), I);
     if let Some(found) = retraction.search(phrase) {
         return Some(format!("{earlier} {}", &phrase[..found.end()]));
     }
@@ -226,6 +233,28 @@ pub fn retracted_by(phrase: &str, earlier: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn correction_cue_finds_every_retraction_cue() {
+        for said in [
+            "3, actually 4",
+            "Tuesday, no wait, Wednesday",
+            "at 5, no actually 6",
+            "two, make that three",
+            "Sam, I mean Sara",
+            "red, scratch that",
+            "at 5, no, wait, 6",
+            "Sam, I meant Sara",
+            "red, or rather blue",
+            "Friday, wait no Saturday",
+            "two, sorry, I mean three",
+        ] {
+            assert!(correction_cue().is_match(said), "{said}");
+        }
+        for said in ["no way", "wait for me", "meaning", "factually"] {
+            assert!(!correction_cue().is_match(said), "{said}");
+        }
+    }
 
     #[test]
     fn replaces_a_corrected_clause() {
