@@ -12,6 +12,7 @@ cpal = "0.15"
 gpui-kit = "0.7"
 hound = "3.5"
 kass-api.workspace = true
+kass-dictionary = { path = "../kass-dictionary" }
 kass-i18n.workspace = true
 kass-ui = { path = "../kass-ui" }
 regex = "1"

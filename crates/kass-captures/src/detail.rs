@@ -7,7 +7,7 @@ use crate::host::Route;
 use crate::keys::{key_label, side_hint, sort_chord};
 use crate::page::{CapturesPage, Detail, Load};
 use crate::phrases::{
-    FiredPhrase, dictionary_word, fired_phrases, mark_phrases, phrase_from_hunk, phrase_key,
+    FiredPhrase, dictionary_word, fired_phrases, mark_phrases, phrase_from_hunk, phrase_key, pick,
 };
 use crate::widgets::{
     app_tile, disclosure, hunk_action, hunk_list, icon, icon_button, kbd, mono_label, symbol_tile,
@@ -537,6 +537,9 @@ impl CapturesPage {
                             .bg(gpui_kit::transparent_black()),
                     ),
             );
+            if let Some(add) = self.render_pick(cx) {
+                card = card.child(add);
+            }
             card = card.child(self.render_teach_actions(window, cx));
         } else {
             let text = if let Some(saved) = saved {
@@ -607,6 +610,63 @@ impl CapturesPage {
             }
         }
         card
+    }
+
+    /// "Add to dictionary" over a word or phrase selected in the edit box:
+    /// above the selection, or below it near the top of the window.
+    fn render_pick(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let detail = self.detail.as_ref()?;
+        if detail.teach.saving || self.adding_entry {
+            return None;
+        }
+        let state = detail.editor.read(cx);
+        let range = state.selected_range();
+        let picked = pick(&state.value(), range.start, range.end)?;
+        let bounds = state.range_to_bounds(&range)?;
+        let t = theme(cx).clone();
+        let x = bounds.origin.x + bounds.size.width.max(px(0.)) / 2.;
+        let (anchor, y) = if bounds.origin.y > px(44.) {
+            (Anchor::BottomCenter, bounds.origin.y - px(8.))
+        } else {
+            (Anchor::TopCenter, bounds.bottom() + px(8.))
+        };
+        let button = div()
+            .id("pick-add")
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .h(px(28.))
+            .px(px(10.))
+            .rounded(metrics::RADIUS_MD)
+            .bg(t.primary)
+            .text_color(t.primary_foreground)
+            .text_size(metrics::TEXT_XS)
+            .font_weight(FontWeight::MEDIUM)
+            .shadow_md()
+            .cursor_pointer()
+            .child(icon(IconName::BookPlus, px(14.), t.primary_foreground))
+            .child(tr!("captures-dictionary-add"))
+            // On press, so the edit box keeps its selection and focus until
+            // the dialog takes it.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |page, _, window, cx| {
+                    cx.stop_propagation();
+                    window.prevent_default();
+                    page.pick_word(picked.clone(), window, cx);
+                }),
+            );
+        Some(
+            deferred(
+                anchored()
+                    .anchor(anchor)
+                    .position(point(x, y))
+                    .snap_to_window_with_margin(px(8.))
+                    .child(button),
+            )
+            .with_priority(1)
+            .into_any_element(),
+        )
     }
 
     /// Under the text while editing: what changed, with one-click dictionary

@@ -12,6 +12,7 @@ mod list;
 mod page;
 pub mod phrases;
 pub mod player;
+mod spelling;
 pub mod teach;
 mod widgets;
 pub mod word_diff;
