@@ -843,12 +843,31 @@ pub fn add_corrected_words(
     sync: Sync,
 ) -> rusqlite::Result<Vec<Group>> {
     let found = kass_text::dictionary::corrected_words(original, corrected);
-    add_corrected(conn, found, added_by, sync)
+    add_corrected(conn, found, true, added_by, sync)
+}
+
+/// Prompt Whisper with phrases the user fixed in several takes
+/// ([`super::hints`]), everywhere.
+///
+/// Each is a term with sound matching off: it only ever goes in the
+/// prompt, and never respells what a take heard. A phrase an entry already
+/// writes is left to that entry. `added_by` is the report that made it
+/// qualify, so withdrawing that report removes it (a later report that
+/// still has the evidence adds it again). Returns the entries added.
+pub fn add_prompted_phrases(
+    conn: &mut Connection,
+    phrases: Vec<String>,
+    added_by: &str,
+    sync: Sync,
+) -> rusqlite::Result<Vec<Group>> {
+    let found = phrases.into_iter().map(|phrase| (phrase, None)).collect();
+    add_corrected(conn, found, false, added_by, sync)
 }
 
 fn add_corrected(
     conn: &mut Connection,
     found: Vec<(String, Option<String>)>,
+    match_sound: bool,
     added_by: &str,
     sync: Sync,
 ) -> rusqlite::Result<Vec<Group>> {
@@ -870,6 +889,7 @@ fn add_corrected(
                 continue;
             }
             let mut new = NewGroup::new(written.clone(), spoken, vec![Place::global().into()]);
+            new.match_sound = match_sound;
             new.source = "correction".into();
             new.added_by = Some(added_by.into());
             match add_in(tx, new, sync)? {
@@ -1334,7 +1354,7 @@ pub(crate) mod tests {
     fn corrected_words_are_added_everywhere_and_fix_the_mistake() {
         let mut conn = database();
         let found = corrected("open Clard code", "open Claude code");
-        let added = add_corrected(&mut conn, found, "report-1", Sync::default()).unwrap();
+        let added = add_corrected(&mut conn, found, true, "report-1", Sync::default()).unwrap();
         assert_eq!(added.len(), 1);
         let group = &added[0];
         assert_eq!(
@@ -1359,9 +1379,11 @@ pub(crate) mod tests {
         add(&mut conn, "Picto", None, global()).unwrap();
         let found = corrected("Pikto works", "Picto works");
         assert!(!found.is_empty());
-        assert!(add_corrected(&mut conn, found, "report-1", Sync::default())
-            .unwrap()
-            .is_empty());
+        assert!(
+            add_corrected(&mut conn, found, true, "report-1", Sync::default())
+                .unwrap()
+                .is_empty()
+        );
         let entries = list_entries(&conn).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(
@@ -1374,8 +1396,10 @@ pub(crate) mod tests {
     fn a_correction_with_no_new_words_adds_nothing() {
         let mut conn = database();
         let found = corrected("the code is open", "the code is open");
-        assert!(add_corrected(&mut conn, found, "report-1", Sync::default())
-            .unwrap()
-            .is_empty());
+        assert!(
+            add_corrected(&mut conn, found, true, "report-1", Sync::default())
+                .unwrap()
+                .is_empty()
+        );
     }
 }
