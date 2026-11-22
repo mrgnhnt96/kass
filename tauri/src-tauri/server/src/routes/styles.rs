@@ -200,7 +200,7 @@ fn assignment(fields: &Map<String, Value>) -> Result<Assignment, Problems> {
         }
     };
     match (style_id, corrections) {
-        (Some(style_id), Some(corrections)) if problems.0.is_empty() => Ok(Assignment {
+        (Some(style_id), Some(corrections)) if problems.is_empty() => Ok(Assignment {
             style_id,
             app_name,
             corrections,

@@ -247,7 +247,7 @@ fn new_group(fields: &Map<String, Value>) -> Result<NewGroup, Problems> {
         invalid_flag("phrase", &mut problems);
     }
     match (written, places) {
-        (Some(written), Some(places)) if problems.0.is_empty() => {
+        (Some(written), Some(places)) if problems.is_empty() => {
             let mut new = NewGroup::new(written, spoken.flatten(), places);
             new.match_sound = match_sound.flatten().unwrap_or(true);
             new.phrase = phrase.flatten().unwrap_or(false);

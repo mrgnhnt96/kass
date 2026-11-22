@@ -14,8 +14,8 @@ use axum::{Json, Router};
 use serde_json::{json, Map, Value};
 
 use super::request::{body, detail, Problems};
+use crate::captures::lax_bool;
 use crate::captures::store::Apps;
-use crate::captures::{self, lax_bool};
 use crate::events::query_pairs;
 use crate::usage::stats::{self, Period};
 use crate::{settings, AppState};
@@ -30,17 +30,17 @@ pub fn router() -> Router<AppState> {
 /// The stats query, checked as FastAPI checks it: the last value of each
 /// parameter counts. Returns the period asked for, still to be checked, and
 /// which apps' captures count.
-fn stats_query(query: &str) -> Result<(String, Apps), captures::Problems> {
+fn stats_query(query: &str) -> Result<(String, Apps), Problems> {
     let params: HashMap<String, String> = query_pairs(query, true).into_iter().collect();
     let unknown_app = match params.get("unknown_app") {
         None => false,
         Some(word) => match lax_bool(word) {
             Some(flag) => flag,
             None => {
-                let mut problems = captures::Problems::default();
+                let mut problems = Problems::default();
                 let msg = "Input should be a valid boolean, unable to interpret input";
                 let loc = [json!("query"), json!("unknown_app")];
-                problems.add("bool_parsing", &loc, msg, &json!(word));
+                problems.add_at("bool_parsing", &loc, msg, &json!(word));
                 return Err(problems);
             }
         },
@@ -59,13 +59,7 @@ fn stats_query(query: &str) -> Result<(String, Apps), captures::Problems> {
 async fn capture_stats(State(state): State<AppState>, RawQuery(query): RawQuery) -> Response {
     let (period, apps) = match stats_query(query.as_deref().unwrap_or("")) {
         Ok(query) => query,
-        Err(problems) => {
-            return (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(json!({ "detail": problems.0 })),
-            )
-                .into_response()
-        }
+        Err(problems) => return problems.response(),
     };
     let Some(period) = Period::parse(&period) else {
         let message = format!("period must be one of {}", Period::NAMES.join(", "));
@@ -193,7 +187,7 @@ fn take(
     let outcome = literal(fields, "outcome", &["delivered", "failed"], &mut problems);
     let latency_ms = latency(fields, &mut problems);
     match (mode, outcome, latency_ms) {
-        (Some(mode), Some(outcome), Some(latency_ms)) if problems.0.is_empty() => {
+        (Some(mode), Some(outcome), Some(latency_ms)) if problems.is_empty() => {
             Ok((mode, outcome, latency_ms))
         }
         _ => Err(problems),

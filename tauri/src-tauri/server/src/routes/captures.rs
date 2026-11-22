@@ -29,6 +29,7 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
 use super::capture_jobs;
+use super::request::{body, detail};
 use crate::captures::store::{self, Apps, NewReport, Refused, Report};
 use crate::captures::{
     self, int_text, iso, lax_bool, literal, optional_string, resolve_storage_path, string, Capture,
@@ -151,10 +152,6 @@ async fn readiness(State(state): State<AppState>) -> Response {
 
 // -- answers ------------------------------------------------------------------
 
-pub(super) fn detail(status: StatusCode, message: &str) -> Response {
-    (status, Json(json!({ "detail": message }))).into_response()
-}
-
 pub(super) fn capture_not_found() -> Response {
     detail(StatusCode::NOT_FOUND, "Capture not found")
 }
@@ -162,14 +159,6 @@ pub(super) fn capture_not_found() -> Response {
 fn failed(error: crate::db::DbError) -> Response {
     eprintln!("[server] captures: {error}");
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
-}
-
-pub(super) fn invalid(problems: Problems) -> Response {
-    (
-        StatusCode::UNPROCESSABLE_ENTITY,
-        Json(json!({ "detail": problems.0 })),
-    )
-        .into_response()
 }
 
 /// A report as `CaptureFeedbackResponse` returns it.
@@ -226,7 +215,7 @@ fn list_query(query: &str) -> Result<(i64, i64, Apps), Problems> {
             if parsed.is_none() {
                 let msg = "Input should be a valid boolean, unable to interpret input";
                 let loc = [json!("query"), json!("unknown_app")];
-                problems.add("bool_parsing", &loc, msg, &json!(word));
+                problems.add_at("bool_parsing", &loc, msg, &json!(word));
             }
             parsed
         }
@@ -247,7 +236,7 @@ fn list_query(query: &str) -> Result<(i64, i64, Apps), Problems> {
 async fn list(State(state): State<AppState>, RawQuery(query): RawQuery) -> Response {
     let (limit, offset, apps) = match list_query(query.as_deref().unwrap_or("")) {
         Ok(query) => query,
-        Err(problems) => return invalid(problems),
+        Err(problems) => return problems.response(),
     };
     if !(1..=200).contains(&limit) {
         return detail(StatusCode::BAD_REQUEST, "limit must be between 1 and 200");
@@ -416,33 +405,6 @@ async fn events(
 
 // -- reports ------------------------------------------------------------------
 
-/// A request body as FastAPI reads one: a JSON object, or a 422.
-pub(super) fn body(bytes: &Bytes) -> Result<Map<String, Value>, Problems> {
-    let mut problems = Problems::default();
-    if bytes.is_empty() {
-        problems.add("missing", &[json!("body")], "Field required", &Value::Null);
-        return Err(problems);
-    }
-    match serde_json::from_slice::<Value>(bytes) {
-        Ok(Value::Object(fields)) => Ok(fields),
-        Ok(other) => {
-            let msg = "Input should be a valid dictionary or object to extract fields from";
-            problems.add("model_attributes_type", &[json!("body")], msg, &other);
-            Err(problems)
-        }
-        Err(error) => {
-            problems.add_ctx(
-                "json_invalid",
-                &[json!("body"), json!(error.column())],
-                "JSON decode error",
-                &json!({}),
-                json!({ "error": error.to_string() }),
-            );
-            Err(problems)
-        }
-    }
-}
-
 /// A report request (`CaptureFeedbackCreate`).
 struct ReportRequest {
     target: String,
@@ -472,7 +434,7 @@ fn at_most(max: usize) -> impl Fn(&Value, &[Value], &mut Problems) -> Option<Str
             return Some(text);
         }
         let msg = format!("String should have at most {max} characters");
-        problems.add_ctx(
+        problems.add_ctx_at(
             "string_too_long",
             loc,
             msg,
@@ -492,7 +454,7 @@ fn report_request(fields: Map<String, Value>) -> Result<ReportRequest, Problems>
             (None, Some(default)) => Some(default),
             (None, None) => {
                 let loc = [json!("body"), json!(name)];
-                problems.add("missing", &loc, "Field required", &whole);
+                problems.add_at("missing", &loc, "Field required", &whole);
                 None
             }
         }
@@ -567,7 +529,7 @@ async fn report(
 ) -> Response {
     let request = match body(&bytes).and_then(report_request) {
         Ok(request) => request,
-        Err(problems) => return invalid(problems),
+        Err(problems) => return problems.response(),
     };
     let capture = match find(&state, capture_id.clone()).await {
         Ok(Some(capture)) => capture,

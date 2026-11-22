@@ -17,6 +17,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
+use super::request::detail;
 use crate::events::Kind;
 use crate::sync::{import, mirror};
 use crate::{learned, model_improvement, worker, AppState};
@@ -35,10 +36,6 @@ pub fn router() -> Router<AppState> {
         )
         .route("/sync/status", get(status))
         .route("/sync/wake", post(wake))
-}
-
-fn detail(status: StatusCode, message: &str) -> Response {
-    (status, Json(json!({ "detail": message }))).into_response()
 }
 
 fn failed(error: impl std::fmt::Display) -> Response {
