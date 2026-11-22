@@ -18,11 +18,13 @@ When an unconfirmed window would delete nothing, the status call or the sweep co
 
 ## Sweep
 
-The Rust server's `captures::retention` (`tauri/src-tauri/server/src/captures/retention.rs`) sweeps a minute after the server starts, then hourly, and right away when the user saves a window (`PUT /settings/captures`). A stand-in for a shared Kass doesn't run the hourly sweep: the shared Kass keeps the history. It deletes captures created before the window, in batches of 200. The newest capture (the current take) is never deleted, nor one being refined or retranscribed (`captures::in_use`). A dictation in progress has no row until it finishes, so it is never a candidate.
+The Rust server's `captures::retention` (`tauri/src-tauri/server/src/captures/retention.rs`) sweeps a minute after the server starts, then hourly, and right away when the user saves a window (`PUT /settings/captures`). It deletes captures created before the window, in batches of 200. The newest capture (the current take) is never deleted, nor one being refined or retranscribed (`captures::in_use`). A dictation in progress has no row until it finishes, so it is never a candidate.
 
 Each batch is one transaction: fold everything the batch taught (below), then delete its rows, then commit. A crash before the commit rolls back both, so nothing is lost; a folded capture is deleted in the same commit, so it is never folded twice (and the stats table's primary key would refuse a second row anyway). Audio files are removed after the commit. A crash between the commit and the unlink leaves files with no capture; each sweep deletes files in the captures folder whose name is not a capture id and that are older than the window, which never touches a dictation still being written.
 
 An unconfirmed window and Keep forever (0) both skip the sweep entirely.
+
+A stand-in for a shared Kass sweeps too, but only captures it has already sent: neither the capture nor a correction of it still waits in `sync_changes`. It applies the window and confirmation the shared Kass set, copied with the settings, and never confirms one itself. It folds nothing, since the shared Kass folds its copies under the same window and the names it keeps are copied back, and it records no deletes, which would delete the shared Kass's copies too.
 
 ## Audit: what reads captures, and how it survives
 
