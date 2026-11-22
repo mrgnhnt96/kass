@@ -21,7 +21,7 @@ use kass_text::re;
 use kass_text::refinement::{self, Flags, Punctuation};
 use kass_text::sentence_tail;
 use kass_text::spelling;
-use kass_text::spoken_corrections::retracted_by;
+use kass_text::spoken_corrections::{correction_cue, retracted_by};
 use kass_text::spoken_punctuation::period_after_closers;
 use kass_text::voice_commands::{commands_alone, mark_commands};
 use kass_text::voice_edits::{self, Declined, Planned};
@@ -56,15 +56,6 @@ const STYLE_PEEK_AFTER_S: f64 = 1.0;
 const STYLE_PEEK_PAUSE_S: f64 = 0.2;
 /// The look happens by then, pause or not.
 const STYLE_PEEK_BY_S: f64 = 2.5;
-
-/// A phrase that may correct earlier words ("no wait").
-fn correction_cue(text: &str) -> bool {
-    re!(
-        r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b",
-        py::I
-    )
-    .is_match(text)
-}
 
 // -- text helpers -------------------------------------------------------------
 
@@ -1435,7 +1426,7 @@ impl Session {
         }
         st.reviews = reviews;
         st.cleanup_closed = rejected || py::rstrip(&refined).ends_with('.');
-        if rejected && st.inputs.flags.self_correction && correction_cue(&prompt) {
+        if rejected && st.inputs.flags.self_correction && correction_cue().is_match(&prompt) {
             st.needs_final = true;
         }
         let finished = if !rejected && !st.overlap {

@@ -118,35 +118,7 @@ impl Snapshot {
 
 // -- pydantic's checks --------------------------------------------------------
 
-/// What a request got wrong, as FastAPI's 422 lists it.
-#[derive(Debug, Default)]
-pub(crate) struct Problems(pub Vec<Value>);
-
-impl Problems {
-    pub fn add(&mut self, kind: &str, loc: &[Value], msg: impl Into<String>, input: &Value) {
-        self.0
-            .push(json!({ "type": kind, "loc": loc, "msg": msg.into(), "input": input }));
-    }
-
-    /// One with the `ctx` pydantic gives it (the pattern, the limit, the
-    /// values expected).
-    pub fn add_ctx(
-        &mut self,
-        kind: &str,
-        loc: &[Value],
-        msg: impl Into<String>,
-        input: &Value,
-        ctx: Value,
-    ) {
-        self.0.push(
-            json!({ "type": kind, "loc": loc, "msg": msg.into(), "input": input, "ctx": ctx }),
-        );
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
+pub(crate) use crate::routes::request::Problems;
 
 type Parse<T> = fn(&Value, &[Value], &mut Problems) -> Option<T>;
 
@@ -169,7 +141,7 @@ fn field<T>(
         (Some(value), _) => parse(value, &at(loc, name), problems),
         (None, Some(default)) => Some(default),
         (None, None) => {
-            problems.add("missing", &at(loc, name), "Field required", object);
+            problems.add_at("missing", &at(loc, name), "Field required", object);
             None
         }
     }
@@ -179,7 +151,7 @@ pub(crate) fn string(value: &Value, loc: &[Value], problems: &mut Problems) -> O
     match value {
         Value::String(text) => Some(text.clone()),
         other => {
-            problems.add("string_type", loc, "Input should be a valid string", other);
+            problems.add_at("string_type", loc, "Input should be a valid string", other);
             None
         }
     }
@@ -211,7 +183,7 @@ pub(crate) fn boolean(value: &Value, loc: &[Value], problems: &mut Problems) -> 
         } else {
             "Input should be a valid boolean"
         };
-        problems.add("bool_parsing", loc, msg, value);
+        problems.add_at("bool_parsing", loc, msg, value);
     }
     parsed
 }
@@ -231,13 +203,13 @@ pub(crate) fn integer(value: &Value, loc: &[Value], problems: &mut Problems) -> 
             Some(f) if f.fract() == 0.0 && f.abs() < 9.2e18 => Some(f as i64),
             _ => {
                 let msg = "Input should be a valid integer, got a number with a fractional part";
-                problems.add("int_from_float", loc, msg, value);
+                problems.add_at("int_from_float", loc, msg, value);
                 None
             }
         },
         Value::String(text) => int_text(text, loc, problems),
         other => {
-            problems.add("int_type", loc, "Input should be a valid integer", other);
+            problems.add_at("int_type", loc, "Input should be a valid integer", other);
             None
         }
     }
@@ -247,7 +219,7 @@ pub(crate) fn int_text(text: &str, loc: &[Value], problems: &mut Problems) -> Op
     let parsed = text.trim().parse::<i64>().ok();
     if parsed.is_none() {
         let msg = "Input should be a valid integer, unable to parse string as an integer";
-        problems.add("int_parsing", loc, msg, &json!(text));
+        problems.add_at("int_parsing", loc, msg, &json!(text));
     }
     parsed
 }
@@ -261,7 +233,7 @@ fn optional_integer(value: &Value, loc: &[Value], problems: &mut Problems) -> Op
 
 fn strings(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<Vec<String>> {
     let Value::Array(items) = value else {
-        problems.add("list_type", loc, "Input should be a valid list", value);
+        problems.add_at("list_type", loc, "Input should be a valid list", value);
         return None;
     };
     let mut out = Vec::new();
@@ -304,7 +276,7 @@ fn time(
             if zoned {
                 return Some((None, true));
             }
-            problems.add(
+            problems.add_at(
                 "datetime_from_date_parsing",
                 loc,
                 "Input should be a valid datetime",
@@ -313,7 +285,7 @@ fn time(
             None
         }
         other => {
-            problems.add(
+            problems.add_at(
                 "datetime_type",
                 loc,
                 "Input should be a valid datetime",
@@ -331,7 +303,7 @@ fn punctuation(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<
     }
     let pattern = "^(standard|casual|learned)$";
     let msg = format!("String should match pattern '{pattern}'");
-    problems.add_ctx(
+    problems.add_ctx_at(
         "string_pattern_mismatch",
         loc,
         msg,
@@ -344,7 +316,7 @@ fn punctuation(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<
 fn flags(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<Flags> {
     if !value.is_object() {
         let msg = "Input should be a valid dictionary or instance of RefinementFlagsModel";
-        problems.add("model_type", loc, msg, value);
+        problems.add_at("model_type", loc, msg, value);
         return None;
     }
     let smart_cleanup = field(value, loc, "smart_cleanup", Some(true), boolean, problems);
@@ -414,7 +386,7 @@ pub(crate) fn literal(allowed: &[&str], value: &Value, loc: &[Value], problems: 
         None => String::new(),
     };
     let msg = format!("Input should be {expected}");
-    problems.add_ctx(
+    problems.add_ctx_at(
         "literal_error",
         loc,
         msg,
@@ -426,7 +398,7 @@ pub(crate) fn literal(allowed: &[&str], value: &Value, loc: &[Value], problems: 
 fn review(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<Review> {
     if !value.is_object() {
         let msg = "Input should be a valid dictionary or instance of RefinementReviewModel";
-        problems.add("model_type", loc, msg, value);
+        problems.add_at("model_type", loc, msg, value);
         return None;
     }
     let outcome = field(value, loc, "outcome", None, outcome, problems);
@@ -456,7 +428,7 @@ fn optional_review(
 pub(crate) fn snapshot(value: &Value, loc: &[Value], problems: &mut Problems) -> Option<Snapshot> {
     if !value.is_object() {
         let msg = "Input should be a valid dictionary or instance of CaptureResponse";
-        problems.add("model_type", loc, msg, value);
+        problems.add_at("model_type", loc, msg, value);
         return None;
     }
     let text =

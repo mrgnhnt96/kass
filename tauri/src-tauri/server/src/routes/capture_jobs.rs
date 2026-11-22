@@ -23,7 +23,8 @@ use kass_text::refinement::{self, Flags};
 use kass_text::voice_commands::{commands_alone, mark_commands};
 use serde_json::{json, Map, Value};
 
-use super::captures::{body, capture_not_found, detail, invalid};
+use super::captures::capture_not_found;
+use super::request::{body, detail};
 use crate::captures::store::{self, NewCapture, Refined, Retranscribed};
 use crate::captures::{self, in_use, optional_string, resolve_storage_path, Capture, Problems};
 use crate::cleanup_inputs::{self, CleanupInputs};
@@ -208,13 +209,13 @@ async fn read_upload(
     }
     if upload.audio.is_none() {
         let mut problems = Problems::default();
-        problems.add(
+        problems.add_at(
             "missing",
             &[json!("body"), json!("file")],
             "Field required",
             &Value::Null,
         );
-        return Err(Box::new(invalid(problems)));
+        return Err(Box::new(problems.response()));
     }
     Ok(upload)
 }
@@ -485,7 +486,7 @@ fn one_of(
         return Some(chosen);
     }
     let pattern = format!("^({})$", allowed.join("|").replace('.', "\\."));
-    problems.add_ctx(
+    problems.add_ctx_at(
         "string_pattern_mismatch",
         &loc,
         format!("String should match pattern '{pattern}'"),
@@ -506,7 +507,7 @@ fn refine_request(bytes: &Bytes) -> Result<(Option<Flags>, Option<String>), Prob
         &mut problems,
     );
     let model_size = one_of(&fields, "model_size", &LLM_SIZES, &mut problems);
-    if !problems.0.is_empty() {
+    if !problems.is_empty() {
         return Err(problems);
     }
     let flags = flags
@@ -567,7 +568,7 @@ pub(super) async fn refine(
 ) -> Response {
     let (flags, model_size) = match refine_request(&bytes) {
         Ok(request) => request,
-        Err(problems) => return invalid(problems),
+        Err(problems) => return problems.response(),
     };
     let _held = in_use::hold(&state.in_use, &capture_id);
     answer(refine_capture(&state, &capture_id, flags, model_size).await)
@@ -673,7 +674,7 @@ fn retranscribe_request(bytes: &Bytes) -> Result<(Option<String>, Option<String>
     let mut problems = Problems::default();
     let model = one_of(&fields, "model", &STT_MODELS, &mut problems);
     let language = one_of(&fields, "language", &LANGUAGES, &mut problems);
-    if !problems.0.is_empty() {
+    if !problems.is_empty() {
         return Err(problems);
     }
     Ok((model, language))
@@ -688,7 +689,7 @@ pub(super) async fn retranscribe(
 ) -> Response {
     let (model, language) = match retranscribe_request(&bytes) {
         Ok(request) => request,
-        Err(problems) => return invalid(problems),
+        Err(problems) => return problems.response(),
     };
     let _held = in_use::hold(&state.in_use, &capture_id);
     answer(retranscribe_capture(&state, &capture_id, model, language).await)

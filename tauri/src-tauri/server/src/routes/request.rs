@@ -11,16 +11,14 @@ pub(crate) fn detail(status: StatusCode, message: &str) -> Response {
     (status, Json(json!({ "detail": message }))).into_response()
 }
 
-/// What a request body got wrong, as FastAPI's 422 lists it.
-#[derive(Default)]
+/// What a request got wrong, as FastAPI's 422 lists it.
+#[derive(Debug, Default)]
 pub(crate) struct Problems(pub(crate) Vec<Value>);
 
 impl Problems {
+    /// A problem with the body field at `loc`.
     pub(crate) fn add(&mut self, kind: &str, loc: &[Value], msg: impl Into<String>, input: &Value) {
-        let mut at = vec![json!("body")];
-        at.extend_from_slice(loc);
-        self.0
-            .push(json!({ "type": kind, "loc": at, "msg": msg.into(), "input": input }));
+        self.add_at(kind, &in_body(loc), msg, input);
     }
 
     /// A problem with pydantic's `ctx`, the limit or choices it broke.
@@ -32,10 +30,38 @@ impl Problems {
         input: &Value,
         ctx: Value,
     ) {
-        self.add(kind, loc, msg, input);
-        if let Some(Value::Object(problem)) = self.0.last_mut() {
-            problem.insert("ctx".into(), ctx);
-        }
+        self.add_ctx_at(kind, &in_body(loc), msg, input, ctx);
+    }
+
+    /// A problem at a whole `loc`, which names where it is first
+    /// (`"body"`, `"query"`).
+    pub(crate) fn add_at(
+        &mut self,
+        kind: &str,
+        loc: &[Value],
+        msg: impl Into<String>,
+        input: &Value,
+    ) {
+        self.0
+            .push(json!({ "type": kind, "loc": loc, "msg": msg.into(), "input": input }));
+    }
+
+    /// [`Problems::add_at`] with pydantic's `ctx`.
+    pub(crate) fn add_ctx_at(
+        &mut self,
+        kind: &str,
+        loc: &[Value],
+        msg: impl Into<String>,
+        input: &Value,
+        ctx: Value,
+    ) {
+        self.0.push(
+            json!({ "type": kind, "loc": loc, "msg": msg.into(), "input": input, "ctx": ctx }),
+        );
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     pub(crate) fn response(self) -> Response {
@@ -55,6 +81,13 @@ impl Problems {
     }
 }
 
+fn in_body(loc: &[Value]) -> Vec<Value> {
+    let mut at = vec![json!("body")];
+    at.extend_from_slice(loc);
+    at
+}
+
+/// A request body as FastAPI reads one: a JSON object, or a 422.
 pub(crate) fn body(bytes: &Bytes) -> Result<Map<String, Value>, Problems> {
     let mut problems = Problems::default();
     if bytes.is_empty() {
@@ -73,14 +106,13 @@ pub(crate) fn body(bytes: &Bytes) -> Result<Map<String, Value>, Problems> {
             Err(problems)
         }
         Err(error) => {
-            let mut problems = Problems::default();
-            problems.0.push(json!({
-                "type": "json_invalid",
-                "loc": ["body", error.column()],
-                "msg": "JSON decode error",
-                "input": {},
-                "ctx": { "error": error.to_string() },
-            }));
+            problems.add_ctx(
+                "json_invalid",
+                &[json!(error.column())],
+                "JSON decode error",
+                &json!({}),
+                json!({ "error": error.to_string() }),
+            );
             Err(problems)
         }
     }
