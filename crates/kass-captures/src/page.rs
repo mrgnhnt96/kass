@@ -6,6 +6,7 @@ use crate::format::{matches_search, went_into_kass};
 use crate::host::{CapturesHost, Route};
 use crate::phrases::{DictionaryWord, PhraseDraft, new_phrase, spelling_entry};
 use crate::player::PlayerView;
+use crate::spelling::Places;
 use crate::teach::{Submission, Teach, add_round};
 use gpui_kit::component::input::{Escape, InputEvent, InputState, TextareaState};
 use gpui_kit::component::select::{SelectEvent, SelectState};
@@ -14,7 +15,8 @@ use gpui_kit::*;
 use kass_api::types::{
     CaptureAppFilter, CaptureAppsResponse, CaptureFeedbackCreate, CaptureFeedbackResponse,
     CaptureResponse, CaptureSettings, CaptureSource, CorrectionLearningStatus, DictionaryEntry,
-    FeedbackTarget, MovedCorrections, UsagePeriod, UsageStatsResponse, WritingStylesResponse,
+    DictionaryPlaceInput, FeedbackTarget, MovedCorrections, UsagePeriod, UsageStatsResponse,
+    WritingStylesResponse,
 };
 use kass_api::{ApiClient, CaptureEvent, Mac, SseCancel};
 use kass_i18n::tr;
@@ -84,6 +86,8 @@ pub(crate) struct Detail {
     pub heard_open: bool,
     pub help_open: bool,
     pub copied: bool,
+    /// What is selected in the edit box, so the page redraws as it changes.
+    selection: std::ops::Range<usize>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -508,6 +512,16 @@ impl CapturesPage {
                 let value = state.read(cx).value().to_string();
                 page.notes_event(event, value, window, cx);
             }),
+            // Selecting a word offers it to the dictionary.
+            cx.observe(&editor, |page, editor, cx| {
+                let range = editor.read(cx).selected_range();
+                if let Some(detail) = &mut page.detail
+                    && detail.selection != range
+                {
+                    detail.selection = range;
+                    cx.notify();
+                }
+            }),
         ];
         let has_audio = !capture.audio_path.is_empty() && !capture.audio_deleted;
         let player = has_audio.then(|| {
@@ -552,6 +566,7 @@ impl CapturesPage {
             heard_open: false,
             help_open: false,
             copied: false,
+            selection: 0..0,
             _subscriptions: subscriptions,
         }
     }
@@ -1036,7 +1051,12 @@ impl CapturesPage {
         }
     }
 
-    fn submit(&mut self, submission: Submission, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn submit(
+        &mut self,
+        submission: Submission,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(detail) = &mut self.detail else {
             return;
         };
@@ -1211,10 +1231,12 @@ impl CapturesPage {
                 .auto_grow(2, 6)
                 .default_value(draft.written.clone())
         });
+        let places = Places::new(self);
         let page = cx.entity().downgrade();
         open_dialog(window, cx, move |_, cx| {
             let t = kass_ui::theme(cx).clone();
-            let (said, written, page) = (said.clone(), written.clone(), page.clone());
+            let (said, written, page, places) =
+                (said.clone(), written.clone(), page.clone(), places.clone());
             let label = |text: String| {
                 div()
                     .text_size(kass_ui::metrics::TEXT_XS)
@@ -1253,6 +1275,7 @@ impl CapturesPage {
                                 .text_size(kass_ui::metrics::TEXT_BASE),
                         ),
                 )
+                .child(places.render("phrase-places", cx))
                 .child(label(tr!("captures-phrase-saves-correction")))
                 .child(
                     dialog_footer()
@@ -1271,12 +1294,16 @@ impl CapturesPage {
                                     move |_, window, cx| {
                                         let spoken = said.read(cx).value().trim().to_string();
                                         let text = written.read(cx).value().to_string();
-                                        if spoken.is_empty() || text.trim().is_empty() {
+                                        if spoken.is_empty()
+                                            || text.trim().is_empty()
+                                            || places.is_empty()
+                                        {
                                             return;
                                         }
+                                        let chosen = places.chosen();
                                         close_dialog(window, cx);
                                         page.update(cx, |page, cx| {
-                                            page.add_phrase(spoken, text, window, cx)
+                                            page.add_phrase(spoken, text, chosen, window, cx)
                                         })
                                         .ok();
                                     }
@@ -1291,6 +1318,7 @@ impl CapturesPage {
         &mut self,
         spoken: String,
         written: String,
+        places: Vec<DictionaryPlaceInput>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1298,7 +1326,7 @@ impl CapturesPage {
             return;
         }
         self.adding_entry = true;
-        let body = new_phrase(&spoken, &written, Vec::new());
+        let body = new_phrase(&spoken, &written, places);
         cx.notify();
         self.call(
             window,

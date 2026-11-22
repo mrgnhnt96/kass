@@ -10,4 +10,5 @@ mod widgets;
 
 pub use dictation::{AimsHere, OnTake, PhraseDictation, PhraseTake};
 pub use page::DictionaryPage;
+pub use places::{OnToggle, Selected, places_menu};
 pub use widgets::{chord_keys, with_keys};

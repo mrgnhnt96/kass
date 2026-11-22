@@ -106,6 +106,51 @@ pub fn respell_selection(text: &str, start: usize, end: usize, written: &str) ->
     )
 }
 
+/// A word or phrase selected in the text being corrected, and where.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Picked {
+    /// The selection as a dictionary phrase.
+    pub phrase: String,
+    /// The text it was selected in.
+    pub text: String,
+    /// The selection's byte offsets in `text`.
+    pub start: usize,
+    pub end: usize,
+}
+
+/// The selection `start..end` of `text` as a word to add, when it is a word
+/// or short phrase.
+pub fn pick(text: &str, start: usize, end: usize) -> Option<Picked> {
+    if start >= end
+        || end > text.len()
+        || !text.is_char_boundary(start)
+        || !text.is_char_boundary(end)
+    {
+        return None;
+    }
+    let phrase = selection_phrase(&text[start..end]);
+    (!phrase.is_empty()).then(|| Picked {
+        phrase,
+        text: text.to_string(),
+        start,
+        end,
+    })
+}
+
+/// The fix to save once `written` is in the dictionary for `picked`: `current`
+/// with the pick spelled `written`, or as it is when spelled as picked. None
+/// when the text changed since it was picked, so the offsets no longer hold.
+pub fn respelled_fix(current: &str, picked: &Picked, written: &str) -> Option<String> {
+    if current != picked.text {
+        return None;
+    }
+    Some(if written.trim() == picked.phrase {
+        current.to_string()
+    } else {
+        respell_selection(current, picked.start, picked.end, written)
+    })
+}
+
 /// A phrase to make from a correction: the words Kass heard, and the text the user wants there.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PhraseDraft {
@@ -305,6 +350,39 @@ mod tests {
         assert_eq!(
             respell_selection(text, 4, 10, "Saggar"),
             "Ask Saggar, then go."
+        );
+    }
+
+    #[test]
+    fn a_pick_is_a_word_or_short_phrase() {
+        let text = "Ask Sagar, then go.";
+        let picked = pick(text, 4, 10).unwrap();
+        assert_eq!(picked.phrase, "Sagar");
+        assert_eq!((picked.start, picked.end), (4, 10));
+        assert_eq!(pick(text, 4, 4), None, "nothing selected");
+        assert_eq!(pick(text, 9, 11), None, "only punctuation");
+        assert_eq!(pick(text, 0, 99), None, "past the end");
+        assert_eq!(pick("café au lait", 0, 4), None, "inside a character");
+        let long = "one two three four five six seven eight nine";
+        assert_eq!(pick(long, 0, long.len()), None, "a sentence");
+    }
+
+    #[test]
+    fn the_fix_respells_the_pick_while_the_text_is_unchanged() {
+        let picked = pick("Ask Sagar, then go.", 4, 10).unwrap();
+        assert_eq!(
+            respelled_fix("Ask Sagar, then go.", &picked, "Saggar").as_deref(),
+            Some("Ask Saggar, then go.")
+        );
+        assert_eq!(
+            respelled_fix("Ask Sagar, then go.", &picked, " Sagar ").as_deref(),
+            Some("Ask Sagar, then go."),
+            "spelled as picked keeps the text"
+        );
+        assert_eq!(
+            respelled_fix("Ask Sagar now.", &picked, "Saggar"),
+            None,
+            "the text moved on"
         );
     }
 
