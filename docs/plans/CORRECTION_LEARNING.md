@@ -4,8 +4,8 @@ The broader training/evaluation/deployment loop is implemented in
 [MODEL_IMPROVEMENT.md](MODEL_IMPROVEMENT.md). This document describes only its
 lightweight vocabulary-rule component.
 
-The Rust server runs this local CPU-only job (`tauri/src-tauri/server/src/learning.rs`,
-rules in `tauri/src-tauri/text/src/correction_rules.rs`). It checks kass.db for
+The Rust server runs this local CPU-only job (`app/server/src/learning.rs`,
+rules in `app/text/src/correction_rules.rs`). It checks kass.db for
 new, changed or withdrawn reports every 15 seconds and learns from them once the
 models are idle, saves `correction-learning.json`, and has the model worker
 reload it: dictations apply the rules from memory there. Captures → Learning from
@@ -121,7 +121,7 @@ previous active state and log the failure.
   any, else the prior safe rules
 - `DELETE /captures/{id}/feedback/{report_id}`: withdraw one report (beta)
 
-Validation: `cargo test -p kass-text -p kass-server` in `tauri/src-tauri`, and
+Validation: `cargo test -p kass-text -p kass-server` in `app`, and
 `backend/venv/bin/python -m pytest backend/tests/test_correction_learning.py
 backend/tests/test_capture_feedback.py backend/tests/test_personal_examples.py
 backend/tests/test_model_improvement.py` (run as one command).

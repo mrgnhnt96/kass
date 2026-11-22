@@ -12,13 +12,13 @@ pub type Result<T = ()> = std::result::Result<T, String>;
 
 pub const BACKEND: &str = "backend";
 pub const VENV: &str = "backend/venv";
-pub const APP_DIR: &str = "tauri/src-tauri";
+pub const APP_DIR: &str = "app";
 /// The Cargo workspace of Kass's own crates (the UI, the API client, xtask).
 pub const CRATES: &str = "crates";
 /// Both Rust workspaces: the app's and the crates'.
 pub const RUST_WORKSPACES: [&str; 2] = [APP_DIR, CRATES];
-pub const SERVER_DIR: &str = "tauri/src-tauri/binaries/kass-server";
-pub const BUILT_APP: &str = "tauri/src-tauri/target/release/bundle/macos/Kass.app";
+pub const SERVER_DIR: &str = "app/binaries/kass-server";
+pub const BUILT_APP: &str = "app/target/release/bundle/macos/Kass.app";
 /// The port the Python model worker listens on; the app serves 17493 itself
 /// and passes model requests on to it.
 pub const WORKER_PORT: u16 = 17494;
@@ -145,7 +145,7 @@ pub fn home() -> PathBuf {
     env::var_os("HOME").map(PathBuf::from).unwrap_or_default()
 }
 
-/// The app's bundle identifier (tauri.conf.json).
+/// The app's bundle identifier (CFBundleIdentifier, and KASS_BUNDLE_ID in the app).
 pub const BUNDLE_ID: &str = "com.mrgnhnt.kass";
 
 /// The folder the app keeps kass.db and its other data in. A debug build uses

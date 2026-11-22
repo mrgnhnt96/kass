@@ -39,7 +39,7 @@ Habits per kind ("in Slack you never greet") are counted for the chips only. Put
 
 ## Generating the other side
 
-The server's teach sessions (`tauri/src-tauri/server/src/teach`) ask the cleanup model (the user's size, no thinking) to continue the conversation in character. The prompt names the persona, the kind and this turn's trick, and asks for exactly two labelled lines, `MESSAGE:` and `TELL:`. `TELL` is either one fact or `question -> answer` pairs separated by `|`. A reply that can't be parsed falls back to the next hand-written opener of the same kind, as a new topic in the same conversation. Generation runs under its own prompt cache key (`teach`), so it never evicts a style's cleanup cache. It takes 1–3 s on 4B, shown as "… is typing".
+The server's teach sessions (`app/server/src/teach`) ask the cleanup model (the user's size, no thinking) to continue the conversation in character. The prompt names the persona, the kind and this turn's trick, and asks for exactly two labelled lines, `MESSAGE:` and `TELL:`. `TELL` is either one fact or `question -> answer` pairs separated by `|`. A reply that can't be parsed falls back to the next hand-written opener of the same kind, as a new topic in the same conversation. Generation runs under its own prompt cache key (`teach`), so it never evicts a style's cleanup cache. It takes 1–3 s on 4B, shown as "… is typing".
 
 ## Writing style page
 
@@ -54,6 +54,6 @@ The server's teach sessions (`tauri/src-tauri/server/src/teach`) ask the cleanup
 
 ## Tests
 
-- `tauri/src-tauri/server/src/teach` unit tests and `tests/teach.rs`: kinds for a style's apps; parsing `MESSAGE`/`TELL` and the fallback; replies linked to Kass-window captures since the turn; typed replies; reply chips; finish saving examples that `calibration_examples` and habits read; the teaching style override and its expiry.
+- `app/server/src/teach` unit tests and `tests/teach.rs`: kinds for a style's apps; parsing `MESSAGE`/`TELL` and the fallback; replies linked to Kass-window captures since the turn; typed replies; reply chips; finish saving examples that `calibration_examples` and habits read; the teaching style override and its expiry.
 - `test_writing_style.py`: the description in the prompt; flags always on.
 - `app/tests`: chip overflow and kind grouping helpers.

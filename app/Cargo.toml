@@ -1,0 +1,78 @@
+[package]
+name = "kass"
+version = "0.10.0-beta.9"
+description = "Local dictation for macOS"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace]
+members = ["server", "text"]
+
+[dependencies]
+# The app loop, windows and menus; see src/host.
+gpui-kit = { version = "0.7", default-features = false }
+raw-window-handle = "0.6"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+notify-rust = "4"
+# The updater: the same latest.json, minisign signature and public key the
+# Tauri-built app used.
+minisign-verify = "0.2"
+flate2 = "1"
+tar = "0.4"
+semver = "1"
+base64 = "0.22"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["blocking", "json", "stream", "multipart"] }
+hound = "3.5"
+cpal = "0.15"
+scopeguard = "1.2.0"
+# Native dictation: WebSocket client for /captures/stream and a realtime-safe
+# ring buffer between the CoreAudio callback and the streaming thread.
+tokio-tungstenite = "0.30"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+futures-channel = "0.3"
+block2 = "0.6"
+rtrb = "0.4"
+# AppKit / Accessibility / CoreGraphics FFI for focus capture, clipboard,
+# synthetic paste and the dictate pill panel.
+objc = "0.2"
+core-foundation-sys = "0.8"
+# Kass's HTTP API on port 17493, in front of the Python model worker.
+kass-server = { path = "server" }
+# The screens ported to GPUI: Kass's theme and controls, the API client and
+# the translations (crates/).
+kass-ui = { path = "../crates/kass-ui" }
+kass-api = { path = "../crates/kass-api" }
+kass-i18n = { path = "../crates/kass-i18n" }
+kass-writing-style = { path = "../crates/kass-writing-style" }
+kass-captures = { path = "../crates/kass-captures" }
+kass-dictionary = { path = "../crates/kass-dictionary" }
+kass-insights = { path = "../crates/kass-insights" }
+kass-models = { path = "../crates/kass-models" }
+kass-palette = { path = "../crates/kass-palette" }
+kass-pill = { path = "../crates/kass-pill" }
+kass-onboarding = { path = "../crates/kass-onboarding" }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Observe-only global keyboard tap with left/right modifier fidelity,
+# which is the hard requirement the chord engine needs. keytap is our own
+# crate (jamiepine/keytap), published to crates.io, that replaces the
+# abandoned Narsil/rdev we previously pinned via git — same capability
+# surface, clean shutdown via Drop, no `set_is_main_thread(false)`
+# dance required (the Sonoma-crashing layout-translation path simply
+# isn't called).
+keytap = "0.4"
+
+[lints.rust]
+# objc 0.2's msg_send!/class! test a `cargo-clippy` feature, which newer Rust
+# reports at every use (189 warnings a build). Declaring it keeps the build quiet.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }

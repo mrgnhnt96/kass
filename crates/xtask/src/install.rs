@@ -34,7 +34,7 @@ Options:
 const APP: &str = "/Applications/Kass.app";
 const SERVICES: [&str; 4] = ["Microphone", "Accessibility", "ListenEvent", "PostEvent"];
 const PYTHON_STAMP: &str = "backend/venv/.kass-install-stamp";
-const SERVER_STAMP: &str = "tauri/src-tauri/binaries/.kass-server-stamp";
+const SERVER_STAMP: &str = "app/binaries/.kass-server-stamp";
 
 fn step(text: &str) {
     let s = style();

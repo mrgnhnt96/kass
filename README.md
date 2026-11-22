@@ -72,7 +72,7 @@ To ship a feature in a public release without showing it yet, gate it with `upda
 
 | Path       | What                                                   |
 | ---------- | ------------------------------------------------------ |
-| `tauri/`   | The desktop app, its windows and dictation (Rust)      |
+| `app/`     | The desktop app, its windows and dictation (Rust)      |
 | `crates/`  | The app's screens and shared Rust libraries            |
 | `backend/` | Python model worker: Whisper, Qwen3 cleanup, training  |
 | `site/`    | Website, docs and changelog                            |

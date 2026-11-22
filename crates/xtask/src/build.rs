@@ -4,14 +4,12 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::bundle;
 use crate::sign;
 use crate::util::{
     APP_DIR, BACKEND, BUILT_APP, Result, SERVER_DIR, TempDir, all_output, cmd, ensure_venv, home,
     is_executable, no_more, on_path, output, path_with, root, run, succeeds, venv_bin,
 };
-
-/// The Tauri CLI only packs and signs the bundle; the app no longer uses Tauri.
-const TAURI_CLI: &str = "2.9.6";
 
 /// Cargo's own bin folder, where rustup and cargo install put tools; a fresh
 /// shell may not have it on PATH yet.
@@ -79,7 +77,7 @@ pub fn server(args: Vec<String>) -> Result {
 /// so updates keep its privacy grants. The server must be built already.
 ///
 /// With APPLE_API_KEY set (release.yml) every signature gets a secure
-/// timestamp for notarization; with TAURI_SIGNING_PRIVATE_KEY set the bundler
+/// timestamp and the app is notarized; with KASS_UPDATER_KEY set the build
 /// also packs a signed .app.tar.gz for the background updater.
 pub fn app(args: Vec<String>) -> Result {
     no_more(&args)?;
@@ -87,7 +85,7 @@ pub fn app(args: Vec<String>) -> Result {
 
     // The server folder is copied into the app as-is, so sign its code first:
     // every library, then the executable with the app's hardened-runtime
-    // entitlements. The bundler then seals the folder into the app signature.
+    // entitlements. The app's signature then seals the folder.
     let server = Path::new(SERVER_DIR);
     if !is_executable(&server.join("kass-server")) {
         return Err(format!(
@@ -139,46 +137,24 @@ pub fn app(args: Vec<String>) -> Result {
             "--options",
             "runtime",
             "--entitlements",
-            "tauri/src-tauri/Entitlements.plist",
+            bundle::ENTITLEMENTS,
         ],
     )
     .args(["--sign", &identity])
     .arg(server.join("kass-server")))?;
 
-    let tmp = TempDir::new("bundle-config")?;
-    let config = tmp.0.join("signing.json");
-    let updater = env::var_os("TAURI_SIGNING_PRIVATE_KEY").is_some_and(|key| !key.is_empty());
-    fs::write(
-        &config,
-        format!(
-            r#"{{"bundle": {{"createUpdaterArtifacts": {updater}, "macOS": {{"signingIdentity": "{}"}}}}}}"#,
-            identity.replace('\\', "\\\\").replace('"', "\\\"")
-        ),
-    )
-    .map_err(|error| format!("Couldn't write the bundle config: {error}"))?;
-
-    let path = cargo_path();
-    let installed = all_output(cmd("cargo", ["tauri", "--version"]).env("PATH", &path));
-    if installed.trim() != format!("tauri-cli {TAURI_CLI}") {
-        run(cmd(
-            "cargo",
-            ["install", "tauri-cli", "--version", TAURI_CLI, "--locked"],
-        )
-        .env("PATH", &path))?;
-    }
     run(cmd("cargo", ["build", "--release"])
         .current_dir(APP_DIR)
-        .env("PATH", &path))?;
-    run(
-        cmd("cargo", ["tauri", "bundle", "--bundles", "app", "--config"])
-            .arg(&config)
-            .current_dir(APP_DIR)
-            .env("PATH", &path),
-    )?;
+        .env("PATH", cargo_path()))?;
+    bundle::make(&identity, timestamp)?;
     run(&mut cmd(
         "codesign",
         ["--verify", "--deep", "--strict", BUILT_APP],
-    ))
+    ))?;
+    if bundle::updater_key_set() {
+        bundle::updater_archive()?;
+    }
+    Ok(())
 }
 
 /// Every Mach-O file under the folder.
@@ -215,7 +191,7 @@ fn is_mach_o(path: &Path) -> bool {
 }
 
 /// cargo xtask dmg [app] [out.dmg]: packs the app into a DMG with the branded
-/// window (background from tauri/assets/dmg, the app on the left and
+/// window (background from app/assets/dmg, the app on the left and
 /// Applications on the right; the layout is scripts/dmg-settings.py).
 pub fn dmg(args: Vec<String>) -> Result {
     let app = PathBuf::from(args.first().map_or(BUILT_APP, String::as_str));
@@ -267,13 +243,13 @@ pub fn dmg(args: Vec<String>) -> Result {
     Ok(())
 }
 
-/// cargo xtask dmg-background: renders tauri/assets/dmg/background.html to
+/// cargo xtask dmg-background: renders app/assets/dmg/background.html to
 /// background.tiff at 1x and 2x, so it's sharp on Retina screens. Commit the
 /// TIFF; releases use the committed file. Needs Chrome or Chromium (CHROME
 /// picks one) and site/node_modules for the font.
 pub fn dmg_background(args: Vec<String>) -> Result {
     no_more(&args)?;
-    let dir = "tauri/assets/dmg";
+    let dir = "app/assets/dmg";
     let font = "site/node_modules/@fontsource-variable/bricolage-grotesque";
     if !Path::new(font).is_dir() {
         return Err(format!("Missing {font}. Run: cd site && npm ci"));
@@ -353,7 +329,7 @@ fn find_chrome() -> Option<PathBuf> {
 }
 
 /// cargo xtask update-icons: regenerates every Kass icon from the Icon
-/// Composer source, tauri/assets/kass.icon.
+/// Composer source, app/assets/kass.icon.
 ///
 /// 1. Renders the Liquid Glass appearances with ictool.
 /// 2. Compiles kass.icon with actool into Assets.car and kass.icns.
@@ -369,10 +345,10 @@ pub fn icons(args: Vec<String>) -> Result {
     let xcode = output(&mut cmd("xcode-select", ["-p"]))?;
     let ictool =
         PathBuf::from(xcode).join("../Applications/Icon Composer.app/Contents/Executables/ictool");
-    let bundle = "tauri/assets/kass.icon";
-    let exports = "tauri/assets/kass_exports";
-    let icons = "tauri/src-tauri/icons";
-    let generated = "tauri/src-tauri/gen";
+    let bundle = "app/assets/kass.icon";
+    let exports = "app/assets/kass_exports";
+    let icons = "app/icons";
+    let generated = "app/gen";
     let source = format!("{exports}/kass-macOS-Default-1024x1024@1x.png");
     if !is_executable(&ictool) {
         return Err(format!(
@@ -437,7 +413,7 @@ pub fn icons(args: Vec<String>) -> Result {
         )?;
     }
 
-    // The same actool call as tauri/src-tauri/build.rs.
+    // The same actool call as app/build.rs.
     println!("Compiling kass.icon with actool...");
     mkdir(generated)?;
     for file in ["kass.icns", "Assets.car", "partial.plist"] {
@@ -485,7 +461,7 @@ pub fn icons(args: Vec<String>) -> Result {
     copy(&source, &format!("{bundle}/Assets/Kass.png"))?;
 
     println!("Writing app, site and README icons...");
-    copy(&source, "tauri/assets/kass-logo.png")?;
+    copy(&source, "app/assets/kass-logo.png")?;
     resize(512, "site/public/icon.png")?;
     resize(256, "site/src/assets/icon.png")?;
     // iOS masks the home-screen icon itself, so it must be a full-bleed square.

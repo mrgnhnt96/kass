@@ -73,7 +73,7 @@ class CaptureSettings(Base):
     onboarding_completed = Column(Boolean, nullable=False, default=False)
     # Delete each recording once its transcript is saved (the Rust server's history sweep).
     discard_audio = Column(Boolean, nullable=False, default=False)
-    # Usage reports (tauri/src-tauri/server/src/usage/report.rs): whether to send them, the
+    # Usage reports (app/server/src/usage/report.rs): whether to send them, the
     # random id they're sent under, and the last local day sent (ISO date).
     share_usage = Column(Boolean, nullable=False, default=True)
     usage_device_id = Column(String, nullable=True)

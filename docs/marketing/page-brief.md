@@ -27,22 +27,22 @@ Cut in this round: the Native/Streaming/On-device stat row (repeated Privacy and
 
 | Claim on the page | Evidence |
 | --- | --- |
-| Recording, transcription, cleanup and learning run on the Mac; audio and text never leave it | `tauri/src-tauri/src/dictation/`, `backend/services/`, `site/src/content/docs/docs/privacy.md`. True of public v0.9.0; see the shared-Mac note below |
-| Goes online for models and model details (Hugging Face), update checks (GitHub), practice sounds (openslr.org, zenodo.org) and daily usage counts | `tauri/src-tauri/server/src/voice_sounds.rs`, `tauri/src-tauri/server/src/usage/report.rs`, `docs/privacy` |
-| Anonymous usage counts, never your words, and you can turn them off | `tauri/src-tauri/server/src/usage/report.rs`, on by default; no text, audio or IP set |
+| Recording, transcription, cleanup and learning run on the Mac; audio and text never leave it | `app/src/dictation/`, `backend/services/`, `site/src/content/docs/docs/privacy.md`. True of public v0.9.0; see the shared-Mac note below |
+| Goes online for models and model details (Hugging Face), update checks (GitHub), practice sounds (openslr.org, zenodo.org) and daily usage counts | `app/server/src/voice_sounds.rs`, `app/server/src/usage/report.rs`, `docs/privacy` |
+| Anonymous usage counts, never your words, and you can turn them off | `app/server/src/usage/report.rs`, on by default; no text, audio or IP set |
 | This website's analytics: what Amplitude records and how to turn it off | `site/public/site-stats.js`, Amplitude Browser SDK 2.42.4 loaded from the project's CDN script, `site/astro.config.mjs` (`docs_search`), `site/src/pages/index.astro` (`download`). Opt-out checked in headless Chrome, 2026-11-06, with the real Amplitude SDK and its upload endpoint intercepted: nothing is sent after turning it off, including that click. Global Privacy Control checked with Amplitude stubbed |
 | Apple Silicon (M1 or later) | MLX is arm64-only; `.github/workflows/release.yml` builds arm64 only |
 | macOS 15 or later | `libmlx.dylib` in Kass 0.10.0-beta.6 has `minos 15.0` (`otool -l`, 2026-11-06). The release builds on `macos-15`, as v0.9.0 did, so pip picks the macOS 15 MLX wheel. The app's own `minimumSystemVersion` of 11.0 is out of date |
 | About 2.5 GB of disk space | `site/src/content/docs/docs/install.md`, default model sizes plus 500 MB headroom |
 | Free, open source, MIT, no account | `LICENSE`, public repository, no sign-in code |
-| Works in any app with a text field; restores the clipboard after pasting | `tauri/src-tauri/src/text_insert.rs`, `tauri/src-tauri/src/insert_chain.rs` |
+| Works in any app with a text field; restores the clipboard after pasting | `app/src/text_insert.rs`, `app/src/insert_chain.rs` |
 | Style changes from "use formal mode" at the start of a dictation | `backend/services/styles.py`, honoured only at the start |
 | Seven languages, plus auto-detect | `app/src/lib/constants/languages.ts` |
 | Captures screenshot | Real app with example data, `docs/assets/readme/captures.png`, commit 87e9b738 (2026-09-30), version 0.6.1, said so in the caption |
 | Dictation demo in the hero | Drawn illustration, labelled "Illustration" on the page |
 | Share image | Crop of the same screenshot, `site/public/og-kass-v1.png` |
 
-Shared-Mac note: the beta `network` feature can send takes to another Mac the user has set up (`tauri/src-tauri/src/dictation/server.rs`). It's opt-in and isn't in public v0.9.0, so "None of it leaves your Mac" holds today. Add the exception to the home page and `/docs/privacy/` before that feature reaches a public release (backlog B772).
+Shared-Mac note: the beta `network` feature can send takes to another Mac the user has set up (`app/src/dictation/server.rs`). It's opt-in and isn't in public v0.9.0, so "None of it leaves your Mac" holds today. Add the exception to the home page and `/docs/privacy/` before that feature reaches a public release (backlog B772).
 
 ## Waiting on a person
 

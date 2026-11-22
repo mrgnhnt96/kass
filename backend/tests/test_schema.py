@@ -1,7 +1,7 @@
-"""The models read the tables the app makes (tauri/src-tauri/server/src/db/schema.rs).
+"""The models read the tables the app makes (app/server/src/db/schema.rs).
 
 The app's Rust server creates and migrates kass.db; this worker only uses it.
-`tauri/src-tauri/server/tests/kass_db.rs` checks the Rust schema against the
+`app/server/tests/kass_db.rs` checks the Rust schema against the
 one recorded in `kass_db/history.json`, and this checks the models still make
 that same schema, so a model change without the matching Rust one fails here.
 """
@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from backend.database import session
 from backend.database.models import Base
 
-HISTORY = Path(__file__).resolve().parents[2] / "tauri/src-tauri/server/tests/kass_db/history.json"
+HISTORY = Path(__file__).resolve().parents[2] / "app/server/tests/kass_db/history.json"
 
 
 def schema(path: Path) -> list[dict]:
@@ -31,9 +31,9 @@ def test_the_models_make_the_schema_the_app_creates(tmp_path):
     Base.metadata.create_all(engine)
     engine.dispose()
     assert schema(path) == json.loads(HISTORY.read_text())["current"], (
-        "models.py changed the schema: make the same change in tauri/src-tauri/server/src/db/schema.rs"
+        "models.py changed the schema: make the same change in app/server/src/db/schema.rs"
         ' (a new install\'s table, and the ALTER for an existing kass.db), and in the "current" entries'
-        " of tauri/src-tauri/server/tests/kass_db/history.json, which both tests compare against"
+        " of app/server/tests/kass_db/history.json, which both tests compare against"
     )
 
 

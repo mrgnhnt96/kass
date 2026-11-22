@@ -3,7 +3,7 @@
 Cleanup shows the model only the most recent examples, so without these an
 example would stop counting once enough newer ones pushed it out. The Rust
 server summarizes them in an idle-time job and owns the file
-(tauri/src-tauri/server/src/correction_notes.rs and learned.rs); the worker
+(app/server/src/correction_notes.rs and learned.rs); the worker
 only reads the notes into the cleanup prompt, and rereads the file when the
 server says it changed (``/worker/learned/changed``).
 

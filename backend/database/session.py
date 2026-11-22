@@ -1,7 +1,7 @@
 """Engine creation, initialization, and session management.
 
 The app creates kass.db and brings an older one up to date before it starts
-this worker (tauri/src-tauri/server/src/db/schema.rs); in development,
+this worker (app/server/src/db/schema.rs); in development,
 ``cargo xtask db-init`` does. The worker only reads the reports and
 captures model improvement trains on; the Rust server writes everything.
 """

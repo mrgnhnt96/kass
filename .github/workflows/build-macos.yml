@@ -42,7 +42,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-            ./tauri/src-tauri -> target
+            ./app -> target
             ./crates -> target
 
       # Every version string has to agree; fail now rather than after the build.
@@ -50,7 +50,7 @@ jobs:
         id: version
         run: |
           cargo xtask set-version --check
-          echo "version=$(jq -r .version tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
+          echo "version=$(cargo xtask version)" >> "$GITHUB_OUTPUT"
 
       - name: Install Python dependencies
         run: cargo xtask setup-python
@@ -69,7 +69,7 @@ jobs:
         run: backend/venv/bin/python -m pytest backend/tests -q -k "not test_hf_progress_tracker"
 
       # rustfmt and clippy, then the tests, in both workspaces: the app's
-      # (tauri/src-tauri) and Kass's own crates (crates/).
+      # (app/) and Kass's own crates (crates/).
       - name: Rust checks
         run: cargo xtask check-rust
 
@@ -93,7 +93,7 @@ jobs:
         id: zip
         run: |
           name="Kass-${{ steps.version.outputs.version }}-${GITHUB_SHA::7}-macos-arm64"
-          ditto -c -k --keepParent tauri/src-tauri/target/release/bundle/macos/Kass.app "$name.zip"
+          ditto -c -k --keepParent app/target/release/bundle/macos/Kass.app "$name.zip"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7

@@ -35,7 +35,7 @@ RUFF = "backend/venv/bin/ruff"
 # Ruff skips the files pyproject.toml excludes only when told to, if they are named.
 RUFF_FLAGS = ["--force-exclude"]
 # The Rust workspaces, by the folder their files sit under, and their manifests.
-CARGO_WORKSPACES = {"tauri/src-tauri/": "tauri/src-tauri/Cargo.toml", "crates/": "crates/Cargo.toml"}
+CARGO_WORKSPACES = {"app/": "app/Cargo.toml", "crates/": "crates/Cargo.toml"}
 
 
 def git(*args: str) -> str | None:

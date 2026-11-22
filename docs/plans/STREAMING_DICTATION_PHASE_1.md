@@ -82,7 +82,7 @@ Do not conflate source tests, a frozen backend socket check, and an installed de
 
 The rebuilt PyInstaller server passed the same real WebSocket recording check with offline cached models: five transcript updates and one refinement before stop, expected final text, one capture, origin rejection, and recovery all passed. The measured final wait was approximately 0.81 seconds for this synthetic short recording. A separate connection closed immediately after sending finish; polling recovered exactly one additional persisted capture, demonstrating recovery without a duplicate upload.
 
-The updated macOS bundle was built at `tauri/src-tauri/target/release/bundle/macos/Kass.app`, signed with the available local development identity, and passed deep/strict code-signature verification. That initial validation did not replace the installed app. The user subsequently requested installation, and `/Applications/Kass.app` was replaced and relaunched with a healthy backend. An actual installed-app microphone/hotkey-to-paste session remains a separate hands-on check; synthetic WebKit capture and packaged server inference do not establish that entire interaction.
+The updated macOS bundle was built at `app/target/release/bundle/macos/Kass.app`, signed with the available local development identity, and passed deep/strict code-signature verification. That initial validation did not replace the installed app. The user subsequently requested installation, and `/Applications/Kass.app` was replaced and relaunched with a healthy backend. An actual installed-app microphone/hotkey-to-paste session remains a separate hands-on check; synthetic WebKit capture and packaged server inference do not establish that entire interaction.
 
 
 ## Startup and empty-result fixes

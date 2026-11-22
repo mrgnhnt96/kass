@@ -14,11 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @cache
 def pipeline_id():
-    manifest = next(
-        path
-        for path in (ROOT / "app" / "Cargo.toml", ROOT / "tauri" / "src-tauri" / "Cargo.toml")
-        if path.is_file()
-    )
+    manifest = ROOT / "app" / "Cargo.toml"
     command = ["cargo", "run", "--quiet", "--release", "--manifest-path", str(manifest)]
     command += ["-p", "kass-text", "--example", "pipeline_id"]
     return subprocess.run(command, check=True, capture_output=True, text=True).stdout.strip()

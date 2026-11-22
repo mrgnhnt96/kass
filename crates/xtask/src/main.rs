@@ -2,6 +2,7 @@
 //! (the alias is in .cargo/config.toml). macOS on Apple Silicon only.
 
 mod build;
+mod bundle;
 mod dev;
 mod install;
 mod python;
@@ -38,6 +39,7 @@ Build and release
   dmg [app] [out.dmg]       Pack the built app into Kass.dmg with the branded window
   install [--help]          Check requirements, build, and install or update /Applications/Kass.app
   release <version>         Cut a release; run through tb release cut v<version>, never by hand
+  version                   Print the app's version
   set-version <version>     Write the version into every file (--check [version] compares them)
   newest-version <v>...     Print the newest of the versions, ordered like the app's updater
   signing-identity          Print the code-signing identity builds use on this Mac
@@ -55,7 +57,7 @@ Database
   db-reset                  Delete the database and create it again
 
 Assets and tools
-  update-icons              Regenerate every icon from tauri/assets/kass.icon
+  update-icons              Regenerate every icon from app/assets/kass.icon
   dmg-background            Render the DMG window's background.tiff
   py <script> [args]        Run a repo Python script (model training, benchmarks, evals) with the venv's Python
 
@@ -79,10 +81,11 @@ fn dispatch(command: &str, args: Vec<String>) -> Result {
         "logs" => dev::logs(args),
         "build" => build::all(args),
         "build-server" => build::server(args),
-        "build-app" | "build-tauri" => build::app(args),
+        "build-app" => build::app(args),
         "dmg" => build::dmg(args),
         "install" => install::install(args),
         "release" => version::release(args),
+        "version" => version::print(args),
         "set-version" => version::set(args),
         "newest-version" => version::newest(args),
         "signing-identity" => sign::print(args),
