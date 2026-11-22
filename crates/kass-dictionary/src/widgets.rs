@@ -1,11 +1,11 @@
 //! Small pieces the Dictionary draws in several places.
 
-use crate::keys::{key_label, key_side};
 use crate::scopes::Scope;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use kass_i18n::parse_markup;
+use kass_ui::keys::{key_label, key_side};
 use kass_ui::{metrics, theme};
 
 pub fn icon(name: IconName, size: Pixels, color: Hsla) -> Svg {

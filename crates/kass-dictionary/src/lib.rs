@@ -2,7 +2,6 @@
 //! certain way, everywhere, in a writing style, or in one app.
 
 mod dictation;
-mod keys;
 mod page;
 mod places;
 pub mod scopes;
