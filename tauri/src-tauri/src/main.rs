@@ -42,7 +42,7 @@ use gpui_kit::{
     point, px, size, App, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
     WindowKind, WindowOptions,
 };
-use host::webview::{self, OnClose, Spec};
+use host::windows::{self, OnClose, Spec};
 use host::{AppHandle, Emitter, Manager, State};
 use objc2::runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel};
 use objc2::{msg_send, sel, MainThreadMarker};
@@ -164,10 +164,10 @@ fn onboarding_window_spec(cx: &App) -> Spec {
 /// quit), else starts over.
 fn open_onboarding(app: AppHandle, resume: bool) -> Result<(), String> {
     host::with_app(move |cx| {
-        if app.get_webview_window(ONBOARDING_WINDOW_LABEL).is_none() {
+        if app.get_window(ONBOARDING_WINDOW_LABEL).is_none() {
             onboarding::start_over(!resume);
         }
-        let window = match webview::open(cx, onboarding_window_spec(cx)) {
+        let window = match windows::open(cx, onboarding_window_spec(cx)) {
             Ok(window) => window,
             Err(e) => {
                 eprintln!("Failed to open onboarding: {e}");
@@ -176,7 +176,7 @@ fn open_onboarding(app: AppHandle, resume: bool) -> Result<(), String> {
         };
         let _ = window.show();
         let _ = window.set_focus();
-        if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        if let Some(main) = app.get_window(MAIN_WINDOW_LABEL) {
             let _ = main.hide();
         }
     });
@@ -186,7 +186,7 @@ fn open_onboarding(app: AppHandle, resume: bool) -> Result<(), String> {
 /// Close the onboarding window and bring the main window back, on `show`
 /// (a route to open) if given.
 fn finish_onboarding(app: AppHandle, show: Option<String>) {
-    if let Some(window) = app.get_webview_window(ONBOARDING_WINDOW_LABEL) {
+    if let Some(window) = app.get_window(ONBOARDING_WINDOW_LABEL) {
         // Not a close: that would come back through its close handler.
         let _ = window.destroy();
     }
@@ -208,7 +208,7 @@ fn release_onboarding(app: &AppHandle) {
 /// Show and focus the main window, on `show` if given, with the keys
 /// following its settings again.
 fn show_main_after_onboarding(app: &AppHandle, show: Option<String>) {
-    if let Some(main) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+    if let Some(main) = app.get_window(MAIN_WINDOW_LABEL) {
         let _ = main.show();
         let _ = main.set_focus();
     }
@@ -226,12 +226,12 @@ fn show_main_after_onboarding(app: &AppHandle, show: Option<String>) {
 
 /// Whether the onboarding window exists.
 fn onboarding_window_open(app: AppHandle) -> bool {
-    app.get_webview_window(ONBOARDING_WINDOW_LABEL).is_some()
+    app.get_window(ONBOARDING_WINDOW_LABEL).is_some()
 }
 
 /// Center the pill above the usable screen edge of the display the user is
 /// working on, leaving room for the Dock.
-pub(crate) fn position_dictate_window(window: &host::WebviewWindow) -> host::Result<()> {
+pub(crate) fn position_dictate_window(window: &host::AppWindow) -> host::Result<()> {
     // Located here, off the main thread: the Accessibility lookup can be slow.
     let target = [
         focus_capture::focused_window_center,
@@ -289,7 +289,7 @@ fn dictate_work_area(points: &[(f64, f64)]) -> Option<NSRect> {
 /// edge stays put, so the pill (drawn at the window's bottom) doesn't move:
 /// AppKit frames grow up from their origin, and one `setFrame:` changes the
 /// height without a frame drawn in between.
-fn set_dictate_chip_space(window: &host::WebviewWindow, show: bool) {
+fn set_dictate_chip_space(window: &host::AppWindow, show: bool) {
     let height = DICTATE_WINDOW_HEIGHT + if show { DICTATE_CHIP_SPACE } else { 0.0 };
     let _ = window.with_ns_window(move |ns_window| {
         let mut frame = ns_window.frame();
@@ -302,7 +302,7 @@ fn set_dictate_chip_space(window: &host::WebviewWindow, show: bool) {
 
 /// Called by the pill around the style chip's animation.
 pub(crate) fn dictate_chip_space(app: AppHandle, show: bool) {
-    if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
+    if let Some(window) = app.get_window(DICTATE_WINDOW_LABEL) {
         set_dictate_chip_space(&window, show);
     }
 }
@@ -406,7 +406,7 @@ fn prepare_pill(window: &NSWindow) {
 /// This replaces `window.show()`, which calls `makeKeyAndOrderFront:`.
 /// `orderFrontRegardless` works even though the app is inactive (it always is
 /// mid-dictation — the user is typing in some other app).
-pub fn force_order_front(window: &host::WebviewWindow) {
+pub fn force_order_front(window: &host::AppWindow) {
     let _ = window.with_ns_window(|ns_window| ns_window.orderFrontRegardless());
 }
 
@@ -414,7 +414,7 @@ pub fn force_order_front(window: &host::WebviewWindow) {
 /// been unreliable for transparent always-on-top windows on macOS: the
 /// window could linger as an invisible click target that steals focus to
 /// Kass when the user clicks where it used to be.
-pub(crate) fn park_dictate_window(window: &host::WebviewWindow) {
+pub(crate) fn park_dictate_window(window: &host::AppWindow) {
     // A chip cut off by the end of the take gives its room back.
     set_dictate_chip_space(window, false);
     let _ = window.set_ignore_cursor_events(true);
@@ -427,7 +427,7 @@ pub(crate) fn park_dictate_window(window: &host::WebviewWindow) {
 /// Build the pill if it doesn't exist yet. Idempotent.
 pub fn ensure_dictate_window() {
     host::with_app(|cx| {
-        if let Err(e) = webview::open(cx, dictate_window_spec()) {
+        if let Err(e) = windows::open(cx, dictate_window_spec()) {
             eprintln!("ensure_dictate_window: failed to build pill: {e}");
         }
     });
@@ -1319,7 +1319,7 @@ fn enable_hotkey(
     // The dictate pill must exist before the first chord fires so it hears
     // the take's first state. Build it here (idempotent: the existing window
     // is kept when one with this label already exists).
-    if app.get_webview_window(DICTATE_WINDOW_LABEL).is_none() {
+    if app.get_window(DICTATE_WINDOW_LABEL).is_none() {
         ensure_dictate_window();
     }
 
@@ -1643,15 +1643,15 @@ pub fn run() {
     application.on_reopen(|_| {
         let app = AppHandle;
         let any_visible = app
-            .webview_windows()
+            .windows()
             .values()
             .any(|window| window.is_visible().unwrap_or(false));
         if any_visible {
             return;
         }
         let window = app
-            .get_webview_window(ONBOARDING_WINDOW_LABEL)
-            .or_else(|| app.get_webview_window(MAIN_WINDOW_LABEL));
+            .get_window(ONBOARDING_WINDOW_LABEL)
+            .or_else(|| app.get_window(MAIN_WINDOW_LABEL));
         if let Some(window) = window {
             let _ = window.show();
             let _ = window.set_focus();
@@ -1677,7 +1677,7 @@ pub fn run() {
         })
         .detach();
 
-        match webview::open(cx, main_window_spec(cx)) {
+        match windows::open(cx, main_window_spec(cx)) {
             // A login launch stays out of the way until the Dock icon is
             // clicked.
             Ok(main) if !login_item::launched_at_login() => {
@@ -1689,7 +1689,7 @@ pub fn run() {
         }
         // Built hidden now, so it's ready before the first chord. It
         // creates no keyboard tap and asks for no permission.
-        if let Err(e) = webview::open(cx, dictate_window_spec()) {
+        if let Err(e) = windows::open(cx, dictate_window_spec()) {
             eprintln!("Failed to build the dictate pill: {e}");
         }
 

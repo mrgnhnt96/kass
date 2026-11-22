@@ -418,7 +418,7 @@ fn target_app(focus: &Mutex<Option<FocusSnapshot>>) -> Option<TargetApp> {
 /// the main and onboarding windows, else the main window.
 fn kass_window_label(app: &AppHandle) -> String {
     let windows: Vec<(String, bool)> = app
-        .webview_windows()
+        .windows()
         .into_iter()
         .map(|(label, window)| (label, window.is_focused().unwrap_or(false)))
         .collect();
@@ -481,7 +481,7 @@ async fn insert_in_app(app: &AppHandle, take_id: u64, text: String) -> Result<bo
 async fn type_in_main_window(text: String) -> bool {
     let (tx, rx) = tokio::sync::oneshot::channel();
     crate::host::with_app(move |cx| {
-        let _ = tx.send(crate::host::webview::type_text(
+        let _ = tx.send(crate::host::windows::type_text(
             MAIN_WINDOW_LABEL,
             &text,
             cx,
@@ -1315,7 +1315,7 @@ pub async fn command_run(app: AppHandle, instruction: String) -> Result<(), Stri
 /// Bring the HUD up bottom-center without taking key focus from the app
 /// being dictated into.
 pub fn show_hud(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) else {
+    let Some(window) = app.get_window(DICTATE_WINDOW_LABEL) else {
         return;
     };
     // Restore bottom-center placement after the hide path parks the pill

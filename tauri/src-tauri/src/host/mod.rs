@@ -7,7 +7,7 @@
 
 mod dispatch;
 pub mod menu;
-pub mod webview;
+pub mod windows;
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use serde::Serialize;
 
 pub use dispatch::{main_async, main_sync, with_app};
-pub use webview::WebviewWindow;
+pub use windows::AppWindow;
 
 /// The bundle identifier, which also names the app's data folders.
 pub const IDENTIFIER: &str = "com.mrgnhnt.kass";
@@ -141,12 +141,12 @@ pub trait Manager {
         }
     }
 
-    fn get_webview_window(&self, label: &str) -> Option<WebviewWindow> {
-        webview::get(label)
+    fn get_window(&self, label: &str) -> Option<AppWindow> {
+        windows::get(label)
     }
 
-    fn webview_windows(&self) -> HashMap<String, WebviewWindow> {
-        webview::all()
+    fn windows(&self) -> HashMap<String, AppWindow> {
+        windows::all()
             .into_iter()
             .map(|window| (window.label().to_string(), window))
             .collect()

@@ -1,8 +1,8 @@
 //! The app's GPUI windows, by label.
 //!
-//! The windows live on the main thread, in `WINDOWS`. A `WebviewWindow`
-//! (named for the Tauri type it replaced) is only a label, so it can go to
-//! any thread: what it does is posted to the main queue, in order.
+//! The windows live on the main thread, in `WINDOWS`. An `AppWindow`
+//! is only a label, so it can go to any thread: what it does is posted to
+//! the main queue, in order.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -34,22 +34,18 @@ fn labels() -> &'static Mutex<HashSet<String>> {
     LABELS.get_or_init(Default::default)
 }
 
-pub(crate) fn get(label: &str) -> Option<WebviewWindow> {
-    labels()
-        .lock()
-        .unwrap()
-        .contains(label)
-        .then(|| WebviewWindow {
-            label: label.to_string(),
-        })
+pub(crate) fn get(label: &str) -> Option<AppWindow> {
+    labels().lock().unwrap().contains(label).then(|| AppWindow {
+        label: label.to_string(),
+    })
 }
 
-pub(crate) fn all() -> Vec<WebviewWindow> {
+pub(crate) fn all() -> Vec<AppWindow> {
     labels()
         .lock()
         .unwrap()
         .iter()
-        .map(|label| WebviewWindow {
+        .map(|label| AppWindow {
             label: label.clone(),
         })
         .collect()
@@ -95,11 +91,11 @@ fn typed(text: &str) -> Keystroke {
 
 /// A window, by label (`main`, `onboarding`, `dictate`).
 #[derive(Clone, Debug)]
-pub struct WebviewWindow {
+pub struct AppWindow {
     label: String,
 }
 
-impl WebviewWindow {
+impl AppWindow {
     pub fn label(&self) -> &str {
         &self.label
     }
@@ -211,7 +207,7 @@ impl Render for Host {
 }
 
 /// Open the window `spec` describes, or return it when it's open already.
-pub fn open(cx: &mut App, spec: Spec) -> Result<WebviewWindow> {
+pub fn open(cx: &mut App, spec: Spec) -> Result<AppWindow> {
     if let Some(window) = get(spec.label) {
         return Ok(window);
     }
@@ -255,7 +251,7 @@ pub fn open(cx: &mut App, spec: Spec) -> Result<WebviewWindow> {
     if see_through {
         let _ = handle.update(cx, |_, window, cx| clear_root_background(window, cx));
     }
-    Ok(WebviewWindow {
+    Ok(AppWindow {
         label: label.to_string(),
     })
 }

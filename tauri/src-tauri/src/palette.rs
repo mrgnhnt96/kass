@@ -14,7 +14,7 @@ use kass_ui::{show_toast, Toast};
 use objc2::msg_send;
 use objc2_app_kit::NSWindow;
 
-use crate::host::webview::{self, OnClose, Spec};
+use crate::host::windows::{self, OnClose, Spec};
 use crate::host::{self, AppHandle};
 use crate::shell::{self, data};
 use crate::MAIN_WINDOW_LABEL;
@@ -26,18 +26,18 @@ const SEARCHED: u32 = 200;
 
 /// Open the palette over the main window, or close it when it's open.
 pub fn toggle(cx: &mut App) {
-    if let Some(window) = webview::get(LABEL) {
+    if let Some(window) = windows::get(LABEL) {
         close(&window);
         return;
     }
     // Only over the main window, while the user is in it.
-    if webview::with_window(MAIN_WINDOW_LABEL, |main| main.isKeyWindow()) != Some(true) {
+    if windows::with_window(MAIN_WINDOW_LABEL, |main| main.isKeyWindow()) != Some(true) {
         return;
     }
-    match webview::open(cx, spec()) {
+    match windows::open(cx, spec()) {
         Ok(window) => {
             let _ = window.with_ns_window(|palette| {
-                webview::with_window(MAIN_WINDOW_LABEL, |main| cover(main, palette));
+                windows::with_window(MAIN_WINDOW_LABEL, |main| cover(main, palette));
                 palette.makeKeyAndOrderFront(None);
             });
         }
@@ -86,9 +86,9 @@ fn cover(main: &NSWindow, palette: &NSWindow) {
     }
 }
 
-fn close(window: &webview::WebviewWindow) {
+fn close(window: &windows::AppWindow) {
     let _ = window.with_ns_window(|palette| {
-        webview::with_window(MAIN_WINDOW_LABEL, |main| unsafe {
+        windows::with_window(MAIN_WINDOW_LABEL, |main| unsafe {
             let _: () = msg_send![main, removeChildWindow: palette];
             main.makeKeyWindow();
         });
@@ -100,7 +100,7 @@ struct Host;
 
 impl PaletteHost for Host {
     fn close(&self, _: &mut App) {
-        if let Some(window) = webview::get(LABEL) {
+        if let Some(window) = windows::get(LABEL) {
             close(&window);
         }
     }
@@ -111,7 +111,7 @@ impl PaletteHost for Host {
 
     fn copy_capture(&self, text: String, cx: &mut App) {
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        webview::update_window(MAIN_WINDOW_LABEL, cx, |window, cx| {
+        windows::update_window(MAIN_WINDOW_LABEL, cx, |window, cx| {
             show_toast(
                 window,
                 cx,

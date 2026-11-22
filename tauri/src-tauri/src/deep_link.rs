@@ -36,7 +36,7 @@ pub fn route(url: &str) -> Option<String> {
 pub fn open(app: &AppHandle, url: &str) {
     let Some(route) = route(url) else { return };
     *app.state::<DeepLinkState>().pending.lock().unwrap() = Some(route);
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+    if let Some(window) = app.get_window(MAIN_WINDOW_LABEL) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();

@@ -31,7 +31,7 @@ impl PillHost for Panel {
     }
 
     fn hide(&self, _: &mut App) {
-        if let Some(window) = AppHandle.get_webview_window(DICTATE_WINDOW_LABEL) {
+        if let Some(window) = AppHandle.get_window(DICTATE_WINDOW_LABEL) {
             crate::park_dictate_window(&window);
         }
     }
