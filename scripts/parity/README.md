@@ -37,8 +37,12 @@ made.
   sample their text (temperature 0.2), so a few cases word their output
   differently from round to round; the baseline keeps each variant it saw. In
   those cases only, new wording of the cleaned text with everything else the
-  same is shown as `varies` and doesn't fail. Anything else that differs
-  fails, including new wording in a case that never varied.
+  same is shown as `varies` and doesn't fail. In any case, a different
+  `refinement_review` with everything else the same, the cleaned text
+  included, is shown as `varies` too: the review checks the sampled draft, so
+  it can flip (say, reject to none) while the text kept doesn't change.
+  Anything else that differs fails, including new wording in a case that
+  never varied.
 - dictation release-to-final p50 and p95 are at most 10% above the baseline's
   (`--slower-ok` changes the margin).
 

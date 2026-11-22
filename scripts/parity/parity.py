@@ -29,7 +29,9 @@ Never point it at the Kass you use: it deletes every capture after each case.
 dictation release-to-final p50 and p95 are no more than --slower-ok (default
 10%) above the baseline's. The cleanup and command models sample their text,
 so in a case whose wording varied between the baseline's rounds, new wording
-is shown as "varies" and allowed when everything else matches. Needs the
+is shown as "varies" and allowed when everything else matches. A review of the
+cleanup's draft that differs while everything else, the text kept included,
+matches is shown as "varies" in any case. Needs the
 `websockets` package (in backend/venv).
 """
 
@@ -74,6 +76,10 @@ DROPPED_KEYS = {
     "cache_mb_per_style",
 }
 MODEL_TEXT = {"transcript_refined", "refinement_review"}
+# The check of the cleanup's draft. The draft is sampled, so the review can
+# change while the text kept stays the same (a rejected draft falls back to a
+# transcript an accepted one matched).
+REVIEW = {"refinement_review"}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
@@ -539,13 +545,18 @@ def record(args) -> int:
     return 0
 
 
+def without(value, keys):
+    """The result without the fields named in `keys`, at any depth."""
+    if isinstance(value, dict):
+        return {key: without(item, keys) for key, item in value.items() if key not in keys}
+    if isinstance(value, list):
+        return [without(item, keys) for item in value]
+    return value
+
+
 def model_free(value):
     """The result without the text the cleanup and command models sample."""
-    if isinstance(value, dict):
-        return {key: model_free(item) for key, item in value.items() if key not in MODEL_TEXT}
-    if isinstance(value, list):
-        return [model_free(item) for item in value]
-    return value
+    return without(value, MODEL_TEXT)
 
 
 def dump(value) -> str:
@@ -562,12 +573,17 @@ def check(args) -> int:
                 print(f"MISSING  {case}")
                 failures += 1
             continue
-        verdict, shown = "ok", None
+        verdict, shown, why = "ok", None, set()
         for got in candidate["cases"][case]:
             if got in expected:
                 continue
+            if without(got, REVIEW) in [without(seen, REVIEW) for seen in expected]:
+                verdict, shown = "varies", got
+                why.add("cleanup review only")
+                continue
             if len(expected) > 1 and model_free(got) in [model_free(seen) for seen in expected]:
                 verdict, shown = "varies", got
+                why.add("model wording only")
                 continue
             verdict, shown = "DIFFERS", got
             failures += 1
@@ -576,7 +592,7 @@ def check(args) -> int:
         if len(expected) > 1:
             notes.append(f"{len(expected)} variants in the baseline")
         if verdict == "varies":
-            notes.append("model wording only")
+            notes.extend(sorted(why))
         print(f"{verdict:<8} {case}" + (f" ({'; '.join(notes)})" if notes else ""))
         if shown is not None:
             closest = max(expected, key=lambda seen: difflib.SequenceMatcher(None, dump(seen), dump(shown)).ratio())
