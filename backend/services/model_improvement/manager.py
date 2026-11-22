@@ -46,6 +46,8 @@ _runs = 0
 # Trained models dropped since the server last asked (``reports``).
 _reports = []
 IDLE_SECONDS = 120
+# What MLX prints when macOS stops a GPU job to keep the Mac responsive.
+GPU_PREEMPTED = "kIOGPUCommandBufferCallbackErrorImpactingInteractivity"
 
 
 @lru_cache(maxsize=1)
@@ -725,12 +727,21 @@ def prepare(groups, voice_resume, skip):
     }
 
 
+def _preempted(log):
+    """Whether the run in ``log`` died because macOS took the GPU back."""
+    with suppress(OSError), log.open("rb") as stream:
+        stream.seek(max(0, log.stat().st_size - 64 * 1024))
+        return GPU_PREEMPTED.encode() in stream.read()
+    return False
+
+
 def train(run, generation, voice_resume):
     """Train and evaluate the run :func:`prepare` planned, in a child process.
 
     Answers ``interrupted`` when a dictation stopped it, ``waiting_memory``
-    when the Mac is short of memory to start, else what to use next
-    (:func:`_judge`). Raises when the run fails.
+    when the Mac is short of memory to start, ``gpu_preempted`` when macOS
+    stopped it to keep the Mac responsive, else what to use next
+    (:func:`_judge`). Raises when the run fails otherwise.
     """
     global _process, _prepared
     initialize()
@@ -772,6 +783,9 @@ def train(run, generation, voice_resume):
         if generation != _generation:
             return {"interrupted": True}
         if exit_code:
+            if _preempted(directory / "worker.log"):
+                # The server waits longer before the next run (model_improvement.rs).
+                return {"error": "macOS stopped training to keep the Mac responsive", "gpu_preempted": True}
             raise RuntimeError(f"Model worker failed (exit {exit_code}); details: {directory / 'worker.log'}")
         # Detailed evaluation artifacts stay local for diagnosis and audit.
         result = json.loads((directory / "result.json").read_text())
