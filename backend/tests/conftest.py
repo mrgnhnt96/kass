@@ -18,3 +18,9 @@ def no_shipped_adapters(tmp_path_factory, monkeypatch):
     shared_adapters.manifest.cache_clear()
     yield
     shared_adapters.manifest.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_pipeline(monkeypatch):
+    """The worker runs under the server's cleanup pipeline, as the app starts it."""
+    monkeypatch.setenv("KASS_CLEANUP_PIPELINE", "test-pipeline")

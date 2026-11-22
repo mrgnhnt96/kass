@@ -2,6 +2,10 @@
 
 No database writes and no deployment authority. Only the parent can promote a
 complete result. Killing this process never changes the production model.
+
+The cleanup prompt, its example turns and the text rules are Kass's server's
+(Rust): this process sends it the transcripts and gets back what dictation's
+cleanup would do with them (``served_cases``, ``served_fixes``).
 """
 
 import argparse
@@ -12,6 +16,7 @@ import os
 import re
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 from .data import REGRESSION
@@ -56,17 +61,47 @@ def target(sample):
     return expected + (end.group() if end else ".")
 
 
-def token_dataset(samples, tokenizer):
+def _ask_server(plan, path, body):
+    # Straight to the loopback server, never through a configured proxy.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(
+        plan["cleanup_server"] + path,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with opener.open(request, timeout=300) as response:
+        return json.loads(response.read())
+
+
+def served_cases(plan, samples):
+    """Each sample's cleanup input as dictation prepares it, from the server:
+    ``{"text", "bypass", "system", "examples"}``, in order. A ``bypass`` is
+    the finished text when a spoken edit resolved it without the model."""
+    if not samples:
+        return []
+    cases = [{"text": s["raw"], "flags": s.get("flags")} for s in samples]
+    return _ask_server(plan, "/capture/learning/training/prompts", {"cases": cases})["cases"]
+
+
+def served_fixes(plan, texts, samples):
+    """``texts`` with the plan's learned corrections applied in each sample's
+    language, as dictation applies them after cleanup."""
+    if not texts:
+        return []
+    cases = [{"text": text, "language": s.get("language")} for text, s in zip(texts, samples, strict=True)]
+    return _ask_server(plan, "/capture/learning/training/fixed", {"rules": plan["rules"], "cases": cases})["texts"]
+
+
+def token_dataset(samples, tokenizer, cases):
+    """Token sequences to train on, from ``samples`` and their cleanup inputs
+    ``cases`` (``served_cases``). Samples a spoken edit resolves are left out."""
     from ...backends.qwen_llm_backend import _build_messages
-    from ..refinement import RefinementFlags, build_refinement_prompt, prepare_refinement, refinement_examples
 
     result = []
-    for sample in samples:
-        flags = RefinementFlags.from_dict(sample.get("flags"))
-        cleaned, bypass = prepare_refinement(sample["raw"], flags)
-        if bypass is not None:
+    for sample, case in zip(samples, cases, strict=True):
+        if case["bypass"] is not None:
             continue
-        messages = _build_messages(cleaned, build_refinement_prompt(flags), refinement_examples(flags))
+        messages = _build_messages(case["text"], case["system"], [tuple(turn) for turn in case["examples"]])
         prefix = tokenizer.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True, enable_thinking=False
         )
@@ -86,22 +121,23 @@ def train_adapter(plan, directory):
     from mlx_lm.tuner.trainer import TrainingArgs, train
     from mlx_lm.tuner.utils import linear_to_lora_layers
 
-    from ..refinement import REFINEMENT_EXAMPLES
-
     np.random.seed(17)
     mx.random.seed(17)
     model, tokenizer = load(plan["model_path"], tokenizer_config={"trust_remote_code": False})
-    training = token_dataset(
-        [s for s in plan["samples"] if s["target"] == "refined" and s["split"] == "train"], tokenizer
-    )
-    validation = token_dataset(
+
+    def dataset(samples, tokenizer):
+        return token_dataset(samples, tokenizer, served_cases(plan, samples))
+
+    training = dataset([s for s in plan["samples"] if s["target"] == "refined" and s["split"] == "train"], tokenizer)
+    validation = dataset(
         [s for s in plan["samples"] if s["target"] == "refined" and s["split"] == "validation"], tokenizer
     )
     if len(training) < plan.get("min_train", 12) or len(validation) < plan.get("min_validation", 3):
         raise ValueError(
             "Not enough model-eligible training/validation reports after tokenization and deterministic edits"
         )
-    rehearsal = token_dataset([{"raw": raw, "expected": expected} for raw, expected in REFINEMENT_EXAMPLES], tokenizer)
+    # The prompt's own example turns, so the adapter keeps the default cleanup.
+    rehearsal = dataset([{"raw": raw, "expected": expected} for raw, expected in plan["rehearsal"]], tokenizer)
     parameters = {"rank": 8, "dropout": 0.0, "scale": 16.0}
     model.freeze()
     linear_to_lora_layers(model, 4, parameters)
@@ -161,20 +197,18 @@ def train_adapter(plan, directory):
     mx.clear_cache()
 
 
-def generate_one(model, tokenizer, sample, compiled_rules, seed):
+def generate_one(model, tokenizer, case, seed):
+    """The model's cleanup of ``case`` (``served_cases``), before the learned
+    corrections, with its seconds and peak memory."""
     import mlx.core as mx
     from mlx_lm import generate
     from mlx_lm.sample_utils import make_sampler
 
     from ...backends.qwen_llm_backend import _build_messages
-    from ..correction_rules import apply_rules
-    from ..refinement import RefinementFlags, build_refinement_prompt, prepare_refinement, refinement_examples
 
-    flags = RefinementFlags.from_dict(sample.get("flags"))
-    cleaned, bypass = prepare_refinement(sample["raw"], flags)
     start = time.perf_counter()
-    if bypass is None:
-        messages = _build_messages(cleaned, build_refinement_prompt(flags), refinement_examples(flags))
+    if case["bypass"] is None:
+        messages = _build_messages(case["text"], case["system"], [tuple(turn) for turn in case["examples"]])
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
         )
@@ -183,8 +217,7 @@ def generate_one(model, tokenizer, sample, compiled_rules, seed):
             model, tokenizer, prompt=prompt, max_tokens=2048, sampler=make_sampler(temp=0.2, top_p=0.9), verbose=False
         ).strip()
     else:
-        output = bypass
-    output = apply_rules(output, compiled_rules, sample.get("language")) if len(output) <= 4000 else output
+        output = case["bypass"]
     return output, time.perf_counter() - start, mx.get_peak_memory()
 
 
@@ -227,8 +260,6 @@ def evaluate_adapter(plan, directory, candidate_adapter="trained", candidate_stt
     import mlx.core as mx
     from mlx_lm import load
 
-    from ..correction_rules import compile_rules
-
     phase(directory, "evaluating_audio")
     heldout = [s for s in plan["samples"] if s["target"] == "refined" and s["split"] == "test"]
     audio = transcribe_samples(plan, heldout, plan["stt_model"])
@@ -254,7 +285,6 @@ def evaluate_adapter(plan, directory, candidate_adapter="trained", candidate_stt
             }
             for i, (raw, expected) in enumerate(REGRESSION)
         ]
-    compiled = compile_rules(plan["rules"])
     rows = []
     cold_load = {}
     if candidate_adapter == "trained":
@@ -266,20 +296,23 @@ def evaluate_adapter(plan, directory, candidate_adapter="trained", candidate_stt
         for variant in order:
             phase(directory, f"evaluating_{variant}")
             adapter = plan.get("baseline_adapter") if variant == "baseline" else candidate_adapter
-            load_started = time.perf_counter()
-            model, tokenizer = load(
-                plan["model_path"], adapter_path=adapter, tokenizer_config={"trust_remote_code": False}
-            )
-            generate_one(model, tokenizer, cases[0], compiled, seed)
-            cold_load.setdefault(variant, []).append(time.perf_counter() - load_started)
-            mx.reset_peak_memory()
             variant_cases = [
                 dict(case, raw=candidate_audio[case["id"]][0])
                 if variant == "candidate" and case["kind"] == "audio"
                 else case
                 for case in cases
             ]
-            outputs[variant] = [generate_one(model, tokenizer, case, compiled, seed) for case in variant_cases]
+            prompts = served_cases(plan, variant_cases)
+            load_started = time.perf_counter()
+            model, tokenizer = load(
+                plan["model_path"], adapter_path=adapter, tokenizer_config={"trust_remote_code": False}
+            )
+            generate_one(model, tokenizer, prompts[0], seed)
+            cold_load.setdefault(variant, []).append(time.perf_counter() - load_started)
+            mx.reset_peak_memory()
+            generated = [generate_one(model, tokenizer, prompt, seed) for prompt in prompts]
+            fixed = served_fixes(plan, [output for output, _, _ in generated], variant_cases)
+            outputs[variant] = [(text, *rest) for text, (_, *rest) in zip(fixed, generated, strict=True)]
             del model, tokenizer
             gc.collect()
             mx.clear_cache()

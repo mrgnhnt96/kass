@@ -9,6 +9,11 @@
 //! this server saves (`use`). A trained model the worker stops using (it
 //! failed its checks or didn't load) comes back in its `reports`. Python:
 //! `backend/services/model_improvement/manager.py`.
+//!
+//! A cleanup adapter is stamped with the cleanup pipeline it was tested with
+//! ([`pipeline`]); the worker, told the pipeline at launch, drops one with
+//! another. The training process prepares its text through this server
+//! (`crate::training_cases`), the way dictation prepares it.
 
 use std::collections::HashSet;
 use std::fs;
@@ -105,9 +110,12 @@ pub fn path(state: &AppState) -> PathBuf {
 }
 
 fn folder(state: &AppState) -> PathBuf {
-    state
-        .db
-        .path()
+    folder_for(state.db.path())
+}
+
+/// The state's folder for `database`, `kass.db`.
+fn folder_for(database: &Path) -> PathBuf {
+    database
         .parent()
         .map(|dir| dir.join("model-improvement"))
         .unwrap_or_else(|| PathBuf::from("model-improvement"))
@@ -132,6 +140,61 @@ fn empty() -> Value {
         // continues from (docs/plans/VOICE_TRAINING.md).
         "voice_resume": null,
     })
+}
+
+/// The cleanup pipeline cleanup adapters are tested with: what the worker
+/// gets as `KASS_CLEANUP_PIPELINE`.
+pub fn pipeline() -> &'static str {
+    kass_text::pipeline::id()
+}
+
+/// Restamp a cleanup adapter the Python worker stamped with the pipeline
+/// this server ports. Whether it was.
+fn restamp_adapter(adapter: Option<&mut Value>) -> bool {
+    let Some(fields) = adapter.and_then(Value::as_object_mut) else {
+        return false;
+    };
+    let restamped = fields
+        .get("pipeline")
+        .and_then(Value::as_str)
+        .and_then(kass_text::pipeline::restamped);
+    restamped.is_some_and(|id| fields.insert("pipeline".into(), json!(id)).is_some())
+}
+
+/// Restamp the cleanup adapters, in use and kept for rollback, that the
+/// Python worker stamped with the pipeline this server ports. Whether any was.
+fn restamp(saved: &mut Value) -> bool {
+    let mut changed = restamp_adapter(saved.pointer_mut("/active/llm"));
+    if let Some(history) = saved["history"].as_array_mut() {
+        for entry in history {
+            changed |= restamp_adapter(entry.pointer_mut("/active/llm"));
+        }
+    }
+    changed
+}
+
+/// Keep the user's cleanup adapters across the move of the cleanup pipeline
+/// from the Python worker to this server: restamp them in the state next to
+/// `database`. Runs before the worker starts, which reads the state itself.
+/// A state it can't read or save is left as it is.
+pub fn restamp_legacy(database: &Path) {
+    let path = folder_for(database).join("state.json");
+    let _file = FILE.lock().unwrap_or_else(|e| e.into_inner());
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => return eprintln!("[model] couldn't read {}: {error}", path.display()),
+    };
+    let Ok(mut saved) = serde_json::from_str::<Value>(&text) else {
+        return;
+    };
+    if saved["version"] != json!(1) || !restamp(&mut saved) {
+        return;
+    }
+    match save(&path, &saved) {
+        Ok(()) => eprintln!("[model] restamped the cleanup adapters for the Rust cleanup pipeline"),
+        Err(error) => eprintln!("[model] couldn't save {}: {error}", path.display()),
+    }
 }
 
 /// The saved state, over the defaults; the defaults alone when the file is
@@ -431,7 +494,15 @@ async fn run(state: &AppState) -> Result<(), String> {
     skip.extend(strings(&saved["blocked"]));
     let baseline = saved["revision"].clone();
     let voice_resume = saved["voice_resume"].clone();
-    let body = json!({ "groups": saved["groups"], "voice_resume": voice_resume, "skip": skip });
+    let body = json!({
+        "groups": saved["groups"],
+        "voice_resume": voice_resume,
+        "skip": skip,
+        "pipeline": pipeline(),
+        // The training process prepares its text here (`training_cases`).
+        "cleanup_server": format!("http://127.0.0.1:{}", state.address.port()),
+        "rehearsal": kass_text::refinement::REFINEMENT_EXAMPLES,
+    });
     let plan = worker::model_prepare(&state.proxy, body).await?;
     refused(&plan)?;
     if plan["unsupported"] == true {
@@ -903,6 +974,46 @@ mod tests {
             let until = runs.hold_until.unwrap() - runs.last_attempt.unwrap();
             assert_eq!(until, Duration::from_secs(hours * 3600));
         }
+    }
+
+    #[test]
+    fn the_python_pipeline_ids_are_restamped_in_use_and_for_rollback() {
+        let legacy = kass_text::pipeline::LEGACY;
+        let mut saved = empty();
+        saved["active"] =
+            json!({ "llm": { "id": "a", "pipeline": legacy[1] }, "voice": { "id": "v" } });
+        saved["history"] = json!([
+            { "active": { "llm": { "id": "b", "pipeline": legacy[0] } }, "fingerprint": "f1" },
+            { "active": { "llm": { "id": "c", "pipeline": "an older one" } }, "fingerprint": "f2" },
+            { "active": {}, "fingerprint": "f3" },
+        ]);
+        assert!(restamp(&mut saved));
+        assert_eq!(saved["active"]["llm"]["pipeline"], pipeline());
+        assert_eq!(saved["active"]["voice"], json!({ "id": "v" }));
+        assert_eq!(saved["history"][0]["active"]["llm"]["pipeline"], pipeline());
+        assert_eq!(
+            saved["history"][1]["active"]["llm"]["pipeline"],
+            "an older one"
+        );
+        assert_eq!(saved["history"][2]["active"], json!({}));
+        assert!(!restamp(&mut saved));
+    }
+
+    #[test]
+    fn the_saved_state_is_restamped_before_the_worker_reads_it() {
+        let dir = std::env::temp_dir().join(format!("kass-restamp-{}", uuid::Uuid::new_v4()));
+        let database = dir.join("kass.db");
+        restamp_legacy(&database);
+        assert!(!dir.join("model-improvement").exists());
+        let path = dir.join("model-improvement").join("state.json");
+        let mut saved = json!({ "version": 1, "custom": true });
+        saved["active"] = json!({ "llm": { "pipeline": kass_text::pipeline::LEGACY[0] } });
+        save(&path, &saved).unwrap();
+        restamp_legacy(&database);
+        let restamped = load(&path);
+        assert_eq!(restamped["active"]["llm"]["pipeline"], pipeline());
+        assert_eq!(restamped["custom"], true);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

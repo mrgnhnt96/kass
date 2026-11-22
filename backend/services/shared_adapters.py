@@ -66,10 +66,10 @@ def manifest(name: str) -> dict | None:
 
 def cleanup_id(model_size: str) -> str | None:
     """The id of this build's shared cleanup adapter for ``model_size``, whether or not it's on."""
-    from .model_improvement.manager import pipeline_id
+    from .model_improvement.manager import pipeline_matches
 
     item = manifest(f"cleanup-{model_size}")
-    if not item or item.get("pipeline") != pipeline_id():
+    if not item or not pipeline_matches(item.get("pipeline")):
         return None
     return item["id"]
 

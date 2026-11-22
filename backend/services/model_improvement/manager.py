@@ -23,7 +23,6 @@ import uuid
 from contextlib import suppress
 from copy import deepcopy
 from datetime import UTC, datetime
-from functools import lru_cache
 from pathlib import Path
 
 from ... import config
@@ -50,36 +49,18 @@ IDLE_SECONDS = 120
 GPU_PREEMPTED = "kIOGPUCommandBufferCallbackErrorImpactingInteractivity"
 
 
-@lru_cache(maxsize=1)
 def pipeline_id():
-    # Hash bytecode without filenames/line tables, which change when a frozen
-    # executable extracts into a new temporary directory on each launch.
-    import types
+    """The cleanup pipeline dictation uses, as Kass's server (which runs it)
+    named it when it started this worker: ``KASS_CLEANUP_PIPELINE``
+    (kass_text::pipeline). None for a worker started by hand."""
+    return os.environ.get("KASS_CLEANUP_PIPELINE") or None
 
-    from .. import correction_rules, dictation_edits, refinement, spoken_corrections
 
-    def stable(value):
-        if isinstance(value, types.CodeType):
-            return [value.co_code.hex(), list(value.co_names), [stable(c) for c in value.co_consts]]
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            return value
-        if isinstance(value, (list, tuple)):
-            return [stable(item) for item in value]
-        return type(value).__name__
-
-    functions = [
-        stable(value.__code__)
-        for module in (refinement, dictation_edits, spoken_corrections, correction_rules)
-        for _, value in sorted(vars(module).items())
-        if isinstance(value, types.FunctionType) and value.__module__ == module.__name__
-    ]
-    prompts = [
-        refinement.build_refinement_prompt(refinement.RefinementFlags(a, b, c))
-        for a in (False, True)
-        for b in (False, True)
-        for c in (False, True)
-    ]
-    return digest([functions, prompts, refinement.REFINEMENT_EXAMPLES])
+def pipeline_matches(stamp):
+    """Whether a cleanup adapter stamped ``stamp`` was tested with the
+    pipeline dictation uses. Without a pipeline named, any stamp does."""
+    current = pipeline_id()
+    return current is None or stamp == current
 
 
 def _valid_adapter(item):
@@ -88,7 +69,7 @@ def _valid_adapter(item):
         # All deployments must remain inside our own immutable run directories.
         path.resolve().relative_to(_root.resolve())
         return (
-            item["pipeline"] == pipeline_id()
+            pipeline_matches(item["pipeline"])
             and (path / "adapter_config.json").is_file()
             and hashlib.sha256((path / "adapter_config.json").read_bytes()).hexdigest() == item["config_sha256"]
             and hashlib.sha256((path / "adapters.safetensors").read_bytes()).hexdigest() == item["sha256"]
@@ -355,10 +336,11 @@ def _cached(repo):
         return None
 
 
-def _prepare(groups, voice_resume, skip):
+def _prepare(groups, voice_resume, skip, cleanup):
     """The plan for a run from the reports in kass.db, its fingerprint, whether
     it has anything to train or evaluate, and what the server keeps: the
-    recording groups (``groups``, updated in place) and the counts."""
+    recording groups (``groups``, updated in place) and the counts.
+    ``cleanup`` is the server's cleanup pipeline (:func:`prepare`)."""
     from ...backends import WHISPER_HF_REPOS
     from ...backends.qwen_llm_backend import MLX_HF_REPOS
     from ..settings import get_capture_settings
@@ -414,7 +396,10 @@ def _prepare(groups, voice_resume, skip):
         "configured_stt": configured_stt,
         "speech_candidates": speech_candidates,
         "rules": rules,
-        "pipeline": pipeline_id(),
+        "pipeline": cleanup["pipeline"],
+        # The child prepares its cleanup text here (worker.served_cases).
+        "cleanup_server": cleanup["server"],
+        "rehearsal": cleanup["rehearsal"],
         "baseline_adapter": prior["path"] if prior else shared,
         "start_adapter": start,
         "shared": lineage,
@@ -422,7 +407,6 @@ def _prepare(groups, voice_resume, skip):
         "has_training_data": train_ready,
         "voice": None,
         "style_flags": style_flags,
-        # Prompts for learned punctuation read each style's habits from here.
         "data_dir": str(config.get_data_dir()),
     }
     fingerprint = digest(
@@ -431,7 +415,7 @@ def _prepare(groups, voice_resume, skip):
             "model": path,
             "stt": current_stt,
             "rules": rules,
-            "pipeline": pipeline_id(),
+            "pipeline": cleanup["pipeline"],
             "start": start,
         }
     )
@@ -584,7 +568,7 @@ def _judge(plan, directory, result, voice_resume):
     """Recompute the gates here, not in the child: the trained models to use
     next (the ones in use unless a candidate passed), the measurements, and
     the voice adapter the next run continues from."""
-    if plan["pipeline"] != pipeline_id() or digest(plan["rules"]) != digest(correction_learning._state["rules"]):
+    if not pipeline_matches(plan["pipeline"]) or digest(plan["rules"]) != digest(correction_learning._state["rules"]):
         raise ValueError("The refinement pipeline changed during evaluation")
     with _lock:
         active = deepcopy(_active)
@@ -690,23 +674,28 @@ class _Busy:
 _prepared = None
 
 
-def prepare(groups, voice_resume, skip):
+def prepare(groups, voice_resume, skip, pipeline=None, cleanup_server=None, rehearsal=None):
     """Plan a run for the server, from the reports in kass.db.
 
-    ``skip`` is the fingerprints already tried or rolled back. The answer
-    says whether it's ``ready`` to train, or which phase it ``waits`` in, and
-    names the ``run`` for :func:`train`. A dictation that starts meanwhile
-    ``interrupted`` it.
+    ``skip`` is the fingerprints already tried or rolled back. ``pipeline``
+    is the cleanup pipeline the server runs, ``cleanup_server`` where the
+    training process asks it for cleanup text, and ``rehearsal`` the
+    prompt's example turns. The answer says whether it's ``ready`` to train,
+    or which phase it ``waits`` in, and names the ``run`` for :func:`train`.
+    A dictation that starts meanwhile ``interrupted`` it.
     """
     global _prepared
     initialize()
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         return {"unsupported": True}
+    if not cleanup_server:
+        return {"error": "The server didn't say where to prepare cleanup text"}
+    cleanup = {"pipeline": pipeline or pipeline_id(), "server": cleanup_server, "rehearsal": rehearsal or []}
     with _lock:
         generation = _generation
     with _Busy():
         groups = deepcopy(groups)
-        plan, fingerprint, ready, kept = _prepare(groups, voice_resume, skip)
+        plan, fingerprint, ready, kept = _prepare(groups, voice_resume, skip, cleanup)
     run = uuid.uuid4().hex
     with _lock:
         _prepared = {"run": run, "plan": plan, "fingerprint": fingerprint} if ready else None

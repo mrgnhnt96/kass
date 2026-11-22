@@ -553,7 +553,12 @@ async fn start_server(
         .join("kass.db");
     tokio::task::spawn_blocking(move || {
         kass_server::db::prepare(&database)?;
-        kass_server::db::seed(&database)
+        kass_server::db::seed(&database)?;
+        // Before the worker reads the trained models in use (model_improvement),
+        // and with the pipeline id worked out off the async runtime.
+        kass_server::model_improvement::pipeline();
+        kass_server::model_improvement::restamp_legacy(&database);
+        Ok::<_, String>(())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -746,6 +751,11 @@ async fn start_worker(
     if let Some(ref dir) = effective_models_dir {
         sidecar = sidecar.env("KASS_MODELS_DIR", dir);
     }
+    // The worker drops a cleanup adapter tested with another cleanup pipeline.
+    sidecar = sidecar.env(
+        "KASS_CLEANUP_PIPELINE",
+        kass_server::model_improvement::pipeline(),
+    );
     if let Some(url) = state.shared_server.lock().unwrap().clone() {
         sidecar = sidecar.env("KASS_SHARED_SERVER", url);
     }

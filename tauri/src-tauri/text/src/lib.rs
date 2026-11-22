@@ -12,6 +12,7 @@ pub mod difflib;
 pub mod laughter;
 pub mod lexicon;
 pub mod phrase_seams;
+pub mod pipeline;
 pub mod py;
 pub mod refinement;
 pub mod sentence_tail;

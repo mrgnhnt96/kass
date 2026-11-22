@@ -1,17 +1,20 @@
 //! Learning from the user's reports: the learned corrections
 //! (`crate::learning`) and model improvement (`crate::model_improvement`),
-//! both kept by this server, and the voice-training sounds' download
-//! (`crate::voice_sounds`).
+//! both kept by this server, the voice-training sounds' download
+//! (`crate::voice_sounds`), and the cleanup text a model-improvement run
+//! trains on (`crate::training_cases`), for the worker's training process.
 
-use axum::extract::State;
-use axum::http::StatusCode;
+use std::net::{IpAddr, SocketAddr};
+
+use axum::extract::{ConnectInfo, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use serde_json::{json, Value};
 
 use super::request::detail;
-use crate::{learning, model_improvement, voice_sounds, worker, AppState};
+use crate::{learning, model_improvement, training_cases, voice_sounds, worker, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -21,6 +24,72 @@ pub fn router() -> Router<AppState> {
         .route("/capture/learning/activity", post(activity))
         .route("/capture/learning/cancel", post(cancel))
         .route("/capture/learning/voice/sounds", post(sounds))
+        .route("/capture/learning/training/prompts", post(training_prompts))
+        .route("/capture/learning/training/fixed", post(training_fixed))
+}
+
+/// Only the worker's training process, on this Mac and not in a browser,
+/// asks for training text: it carries the styles' descriptions.
+fn from_this_mac(headers: &HeaderMap, peer: Option<Extension<ConnectInfo<SocketAddr>>>) -> bool {
+    if headers.contains_key("origin") {
+        return false;
+    }
+    match peer.map(|Extension(ConnectInfo(peer))| peer.ip()) {
+        Some(IpAddr::V6(address)) => address
+            .to_ipv4_mapped()
+            .map_or(address.is_loopback(), |address| address.is_loopback()),
+        Some(IpAddr::V4(address)) => address.is_loopback(),
+        None => false,
+    }
+}
+
+fn cases(body: &Value) -> Vec<Value> {
+    body["cases"].as_array().cloned().unwrap_or_default()
+}
+
+/// `{"cases": [{"text", "flags"}]}` → `{"cases": [{"text", "bypass",
+/// "system", "examples"}]}`, in order.
+async fn training_prompts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
+    Json(body): Json<Value>,
+) -> Response {
+    if !from_this_mac(&headers, peer) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Some(dir) = state.db.path().parent().map(ToOwned::to_owned) else {
+        return detail(StatusCode::INTERNAL_SERVER_ERROR, "No data folder");
+    };
+    let cases = cases(&body);
+    match state
+        .db
+        .call(move |conn| training_cases::prompts(conn, &dir, &cases))
+        .await
+    {
+        Ok(cases) => Json(json!({ "cases": cases })).into_response(),
+        Err(error) => {
+            eprintln!("[learning] couldn't prepare training text: {error}");
+            detail(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+        }
+    }
+}
+
+/// `{"rules": [...], "cases": [{"text", "language"}]}` → `{"texts": [...]}`:
+/// each text with the run's learned fixes applied.
+async fn training_fixed(
+    headers: HeaderMap,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
+    Json(body): Json<Value>,
+) -> Response {
+    if !from_this_mac(&headers, peer) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let cases = cases(&body);
+    match tokio::task::spawn_blocking(move || training_cases::fixed(&body["rules"], &cases)).await {
+        Ok(texts) => Json(json!({ "texts": texts })).into_response(),
+        Err(error) => detail(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
+    }
 }
 
 fn failed(error: learning::Failed) -> Response {

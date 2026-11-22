@@ -57,12 +57,24 @@ class Prepare(BaseModel):
     groups: list[dict] = []
     voice_resume: str | None = None
     skip: list[str] = []
+    # The cleanup pipeline the server runs (kass_text::pipeline), where the
+    # training process asks it for cleanup text, and the prompt's example turns.
+    pipeline: str | None = None
+    cleanup_server: str | None = None
+    rehearsal: list[tuple[str, str]] = []
 
 
 @router.post("/model/prepare")
 def model_prepare(request: Prepare):
     try:
-        return manager.prepare(request.groups, request.voice_resume, request.skip)
+        return manager.prepare(
+            request.groups,
+            request.voice_resume,
+            request.skip,
+            pipeline=request.pipeline,
+            cleanup_server=request.cleanup_server,
+            rehearsal=request.rehearsal,
+        )
     except Exception as error:
         logger.exception("Model improvement failed; production model unchanged")
         return {"error": str(error)}
