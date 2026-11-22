@@ -25,6 +25,14 @@
 //!
 //! The newest capture, the current take, is never deleted, nor one being
 //! refined or retranscribed (`in_use`).
+//!
+//! A stand-in for a shared Kass (`sync`) keeps its captures only until the
+//! shared Kass has them: it applies the window the shared Kass set, which
+//! it copies with the settings, to captures already sent there, and deletes
+//! them without folding (the shared Kass folds its copies under the same
+//! window, and the names it keeps are copied back) and without recording
+//! the deletes, which would delete the shared Kass's copies too. A capture
+//! still waiting to be sent, or whose correction is, stays.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -53,8 +61,7 @@ const BATCH: usize = 200;
 /// Where a deleted capture's corrections keep its audio, in the data folder.
 pub const CORRECTION_AUDIO: &str = "correction-audio";
 
-/// Sweep a minute after start, then hourly, until the server stops. Not run
-/// while standing in for a shared Kass: that one keeps the history.
+/// Sweep a minute after start, then hourly, until the server stops.
 pub async fn watch(state: AppState) {
     tokio::time::sleep(FIRST_SWEEP).await;
     loop {
@@ -82,11 +89,21 @@ async fn sweep_db(
     sync: Sync,
     at: NaiveDateTime,
 ) -> Result<usize, DbError> {
+    let standing_in = sync.standing_in;
     let (days, confirmed, keep_audio) = db
         .call(move |conn| {
-            let keep_audio = !settings::get(conn)?.discard_audio;
+            let saved = settings::get(conn)?;
+            if standing_in {
+                // The shared Kass's choice, as copied; confirming it is
+                // that Kass's to do.
+                return Ok((
+                    saved.history_retention_days,
+                    saved.history_retention_confirmed,
+                    false,
+                ));
+            }
             let (days, confirmed, _) = settings::retention_status_at(conn, sync, at)?;
-            Ok((days, confirmed, keep_audio))
+            Ok((days, confirmed, !saved.discard_audio))
         })
         .await?;
     let Some(before) = settings::cutoff(days, at) else {
@@ -104,7 +121,7 @@ async fn sweep_db(
     loop {
         let (dir, in_use) = (data_dir.clone(), in_use.clone());
         let (count, audio) = db
-            .call(move |conn| fold_and_delete(conn, &dir, &in_use, before, keep_audio))
+            .call(move |conn| fold_and_delete(conn, &dir, &in_use, before, keep_audio, standing_in))
             .await?;
         if count == 0 {
             break;
@@ -151,23 +168,34 @@ fn integer(row: &Row, index: usize) -> rusqlite::Result<Option<i64>> {
     })
 }
 
+/// Captures a stand-in has sent to the shared Kass: neither the capture nor
+/// a correction of it waits in `sync_changes`.
+const SENT: &str = "AND NOT EXISTS (SELECT 1 FROM sync_changes \
+         WHERE kind = 'capture' AND ref_id = captures.id) \
+     AND NOT EXISTS (SELECT 1 FROM sync_changes JOIN capture_feedback \
+         ON capture_feedback.id = sync_changes.ref_id \
+         WHERE sync_changes.kind = 'feedback' AND capture_feedback.capture_id = captures.id)";
+
 /// Up to a batch of captures created before `before`, oldest first, but
-/// not the newest capture nor one in `busy`.
+/// not the newest capture nor one in `busy`; only ones already sent when
+/// `standing_in`.
 fn expired(
     conn: &Connection,
     before: NaiveDateTime,
     busy: &[String],
+    standing_in: bool,
 ) -> rusqlite::Result<Vec<Expired>> {
     let skipped = (0..busy.len())
         .map(|n| format!("?{}", n + 2))
         .collect::<Vec<_>>()
         .join(", ");
+    let sent = if standing_in { SENT } else { "" };
     let sql = format!(
         "SELECT id, audio_path, source, app_bundle_id, transcript_raw, transcript_refined, \
          duration_ms, teaches_style_id, created_at FROM captures \
          WHERE created_at < ?1 AND id IS NOT ( \
              SELECT id FROM captures ORDER BY created_at DESC, id DESC LIMIT 1) \
-         AND id NOT IN ({skipped}) ORDER BY created_at LIMIT {BATCH}"
+         AND id NOT IN ({skipped}) {sent} ORDER BY created_at LIMIT {BATCH}"
     );
     let values = std::iter::once(stored(before)).chain(busy.iter().cloned());
     let mut statement = conn.prepare(&sql)?;
@@ -190,21 +218,26 @@ fn expired(
 /// Fold and delete one batch in one transaction, keeping new holds out
 /// meanwhile. How many went, and the audio they leave to delete.
 /// Corrections outlive their capture, as they always have in kass.db: no
-/// connection checks foreign keys (`db::open`).
+/// connection checks foreign keys (`db::open`). A stand-in deletes only
+/// what it has sent and folds nothing; the deletes aren't recorded either
+/// way.
 fn fold_and_delete(
     conn: &mut Connection,
     data_dir: &Path,
     in_use: &InUse,
     before: NaiveDateTime,
     keep_audio: bool,
+    standing_in: bool,
 ) -> rusqlite::Result<(usize, Vec<String>)> {
     in_use.holding(|busy| {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let rows = expired(&tx, before, &busy)?;
+        let rows = expired(&tx, before, &busy, standing_in)?;
         if rows.is_empty() {
             return Ok((0, Vec::new()));
         }
-        fold(&tx, data_dir, &rows, keep_audio)?;
+        if !standing_in {
+            fold(&tx, data_dir, &rows, keep_audio)?;
+        }
         let ids = placeholders(rows.len());
         tx.execute(
             &format!("DELETE FROM captures WHERE id IN ({ids})"),
@@ -419,6 +452,7 @@ mod tests {
     const SLACK: &str = "com.tinyspeck.slackmacgap";
     const MAIL: &str = "com.apple.mail";
     const ON: Sync = Sync { standing_in: false };
+    const STAND_IN: Sync = Sync { standing_in: true };
 
     /// A data folder with a prepared kass.db, gone when dropped.
     struct Data {
@@ -538,6 +572,25 @@ mod tests {
 
         async fn sweep_at(&self, at: NaiveDateTime) -> usize {
             sweep_db(&self.db, &self.in_use, ON, at).await.unwrap()
+        }
+
+        async fn sweep_standing_in(&self) -> usize {
+            sweep_db(&self.db, &self.in_use, STAND_IN, self.at)
+                .await
+                .unwrap()
+        }
+
+        /// A change waiting to be sent to the shared Kass.
+        async fn pending(&self, kind: &'static str, id: &'static str) {
+            let at = stored(self.at);
+            self.sql(move |conn| {
+                conn.execute(
+                    "INSERT INTO sync_changes (kind, ref_id, deleted, changed_at) \
+                     VALUES (?1, ?2, 0, ?3)",
+                    params![kind, id, at],
+                )
+            })
+            .await;
         }
 
         async fn ids(&self) -> Vec<String> {
@@ -895,5 +948,66 @@ mod tests {
         data.add(capture("later", -40)).await;
         assert_eq!(data.sweep_at(data.at + Days::days(40)).await, 1);
         assert_eq!(data.ids().await, sorted(&["later"]));
+    }
+    #[tokio::test]
+    async fn a_stand_in_prunes_only_what_it_has_sent_and_records_nothing() {
+        let data = Data::new();
+        data.keep(30).await;
+        let sent_audio = data.add(capture("sent", 40)).await;
+        data.add(Capture {
+            said: Some("send the deck"),
+            meant: Some("Send the deck."),
+            ..capture("sent-fixed", 39)
+        })
+        .await;
+        data.add(capture("unsent", 38)).await;
+        data.pending("capture", "unsent").await;
+        data.add(Capture {
+            said: Some("call ana"),
+            meant: Some("Call Ana."),
+            ..capture("fix-unsent", 37)
+        })
+        .await;
+        data.pending("feedback", "report-fix-unsent").await;
+        data.add(capture("recent", 2)).await;
+
+        assert_eq!(data.sweep_standing_in().await, 2);
+
+        assert_eq!(
+            data.ids().await,
+            sorted(&["fix-unsent", "recent", "unsent"])
+        );
+        assert!(!sent_audio.exists());
+        // Only the two changes still waiting; the deletes aren't sent.
+        assert_eq!(data.count("sync_changes").await, 2);
+        // The shared Kass folds its own copies.
+        assert_eq!(data.count("retired_captures").await, 0);
+        assert_eq!(data.count("known_names").await, 0);
+        assert!(!data.dir.join(CORRECTION_AUDIO).exists());
+        // Corrections stay, as they do when the shared Kass deletes.
+        assert_eq!(data.count("capture_feedback").await, 2);
+
+        // Once sent, they go too.
+        data.sql(|conn| conn.execute("DELETE FROM sync_changes", []))
+            .await;
+        assert_eq!(data.sweep_standing_in().await, 2);
+        assert_eq!(data.ids().await, sorted(&["recent"]));
+        assert_eq!(data.count("sync_changes").await, 0);
+    }
+
+    #[tokio::test]
+    async fn a_stand_in_waits_for_the_shared_kass_to_confirm_the_window() {
+        let data = Data::new();
+        data.add(capture("old", 40)).await;
+        data.add(capture("new", 1)).await;
+
+        assert_eq!(data.sweep_standing_in().await, 0);
+
+        assert_eq!(data.ids().await, sorted(&["new", "old"]));
+        let confirmed = data
+            .sql(|conn| settings::get(conn).map(|s| s.history_retention_confirmed))
+            .await;
+        assert!(!confirmed);
+        assert_eq!(data.count("sync_changes").await, 0);
     }
 }

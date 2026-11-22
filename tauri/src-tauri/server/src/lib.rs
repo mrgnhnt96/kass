@@ -255,16 +255,20 @@ pub async fn start(config: Config) -> Result<Running, String> {
         state.clone(),
         config.app_version,
     )));
-    // A stand-in keeps no history of its own: the shared Kass does.
-    let retention = state
-        .stand_in
-        .is_none()
-        .then(|| Relay(tokio::spawn(captures::retention::watch(state.clone()))));
-    let mut relays: Vec<Relay> = [relay, learning, model_improvement, warmth, usage, notes]
-        .into_iter()
-        .chain(sync)
-        .chain(retention)
-        .collect();
+    // A stand-in prunes only what it has sent to the shared Kass.
+    let retention = Relay(tokio::spawn(captures::retention::watch(state.clone())));
+    let mut relays: Vec<Relay> = [
+        relay,
+        learning,
+        model_improvement,
+        warmth,
+        usage,
+        notes,
+        retention,
+    ]
+    .into_iter()
+    .chain(sync)
+    .collect();
     // Stopped from inside, the background tasks stop with it.
     let background: Vec<_> = relays.iter().map(|relay| relay.0.abort_handle()).collect();
     let on_stop = stopping.clone();
