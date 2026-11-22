@@ -24,17 +24,6 @@ pub fn tabular() -> FontFeatures {
     FontFeatures(Arc::new(vec![("tnum".into(), 1)]))
 }
 
-/// A small uppercase monospace heading.
-pub fn mono_label(text: impl AsRef<str>, cx: &App) -> Div {
-    let t = theme(cx);
-    div()
-        .font_family(t.mono_font.clone())
-        .text_size(metrics::TEXT_CAPTION)
-        .line_height(metrics::LINE_XS)
-        .text_color(t.muted_foreground)
-        .child(text.as_ref().to_uppercase())
-}
-
 /// An app's icon, or its initial on a muted tile when it isn't installed.
 pub fn app_tile(host: &dyn InsightsHost, bundle_id: &str, name: &str, cx: &App) -> AnyElement {
     let t = theme(cx);

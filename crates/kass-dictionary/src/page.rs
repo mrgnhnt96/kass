@@ -3,7 +3,6 @@
 //! phrases, and what it picks up from elsewhere.
 
 use crate::dictation::{PhraseDictation, PhraseTake};
-use crate::keys::default_chord;
 use crate::places::{OnToggle, Selected, places_menu, scope_label};
 use crate::scopes::{
     EntryAge, EntryKind, EntryNote, InheritedEntry, InheritedGroup, InheritedSource, MAX_ENTRIES,
@@ -56,6 +55,11 @@ fn bind_keys(cx: &mut App) {
 /// other spelling, and at startup that aborts the app.
 fn phrase_write_input() -> String {
     format!("{PHRASE_WRITE} > Input")
+}
+
+/// The push-to-talk chord when settings haven't loaded.
+fn default_chord() -> Vec<String> {
+    vec!["MetaRight".into(), "AltGr".into()]
 }
 
 /// The dictionary entries, styles and chord as last fetched.

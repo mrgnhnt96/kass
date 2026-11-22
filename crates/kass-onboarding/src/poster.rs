@@ -2,11 +2,11 @@
 //! with its own color, and text and buttons take theirs from [`Poster`].
 
 use crate::flow::INK;
-use crate::keys::{key_label, side_hint};
 use crate::motion::{self, Frame};
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use kass_ui::keys::{key_label, key_side};
 use kass_ui::metrics;
 use std::time::Instant;
 
@@ -300,7 +300,7 @@ pub fn keycaps(
                             .opacity(0.7 * (1. - t)),
                     )
                 })
-                .when_some(side_hint(key), |cap, side| {
+                .when_some(key_side(key), |cap, side| {
                     cap.child(
                         div()
                             .absolute()

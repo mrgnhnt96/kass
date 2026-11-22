@@ -4,7 +4,6 @@
 
 use crate::format::{CaptureTag, capture_tag, format_detail_stamp};
 use crate::host::Route;
-use crate::keys::{key_label, side_hint, sort_chord};
 use crate::page::{CapturesPage, Detail, Load};
 use crate::phrases::{
     FiredPhrase, dictionary_word, fired_phrases, mark_phrases, phrase_from_hunk, phrase_key, pick,
@@ -23,6 +22,7 @@ use kass_api::types::{
     CaptureResponse, CaptureSource, RefinementReview, ReviewOutcome, ReviewReason,
 };
 use kass_i18n::tr;
+use kass_ui::keys::{key_label, key_side, sort_chord};
 use kass_ui::{Button, KassTheme, metrics, theme};
 
 /// A voice edit: a command that rewrote text by voice.
@@ -297,7 +297,7 @@ impl CapturesPage {
                         .h(px(24.))
                         .min_w(px(24.))
                         .text_color(t.foreground);
-                    if let Some(side) = side_hint(&key) {
+                    if let Some(side) = key_side(&key) {
                         cap = cap.child(
                             div()
                                 .ml(px(2.))

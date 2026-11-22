@@ -7,7 +7,6 @@ mod detail;
 pub mod format;
 pub mod host;
 mod inspector;
-pub mod keys;
 mod list;
 mod page;
 pub mod phrases;
