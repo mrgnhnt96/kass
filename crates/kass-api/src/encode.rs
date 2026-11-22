@@ -13,7 +13,7 @@ pub(crate) fn component(text: &str) -> String {
 }
 
 /// Header values are ASCII, and Mac names often aren't ("Morgan’s MacBook").
-/// The same as `percent_encode` in tauri/src-tauri/src/this_mac.rs.
+/// The same as `percent_encode` in app/src/this_mac.rs.
 pub(crate) fn header(text: &str) -> String {
     encode(text, |b| {
         b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~')

@@ -23,7 +23,7 @@ These are observations of the working tree when this plan was written, including
 - `app/src/lib/hooks/useCaptureRecordingSession.ts` starts capture upload/transcription after recording completes, optionally refines, then delivers final text.
 - `backend/backends/__init__.py` defines an STT interface that accepts an audio path and returns a complete string. The MLX implementation in `backend/backends/mlx_backend.py` runs inference on the shared MLX worker.
 - `backend/services/captures.py` persists audio and completed transcripts. `backend/services/refinement.py` performs whole-transcript cleanup; deterministic spoken corrections and structural edits also exist.
-- `tauri/src-tauri/src/main.rs` implements `paste_final_text` using focus capture, clipboard staging/restoration, and synthetic paste. This is not yet a verified arbitrary-range editor.
+- `app/src/main.rs` implements `paste_final_text` using focus capture, clipboard staging/restoration, and synthetic paste. This is not yet a verified arbitrary-range editor.
 - `backend/services/model_improvement/` contains a local refinement-adapter training and speech-model evaluation workflow. Existing speech evaluation is not speech-recognition weight training.
 
 Related plans: [spoken corrections](SPOKEN_SELF_CORRECTIONS.md), [spoken text edits](DICTATION_TEXT_EDITS.md), [model improvement](MODEL_IMPROVEMENT.md), and [permissions and latency](DICTATION_PERMISSIONS_AND_LATENCY.md). Preserve their existing behavior unless a change is explicitly designed and covered by regressions.

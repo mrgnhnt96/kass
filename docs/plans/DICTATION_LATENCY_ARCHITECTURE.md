@@ -95,7 +95,7 @@ server. The webview no longer touches audio for dictation.
   default.
 - Log the time from key-down to the first non-zero sample, and the ratio of
   audio to wall-clock time per take.
-- Owner files: new `tauri/src-tauri/src/dictation/` module, `hotkey_monitor.rs`,
+- Owner files: new `app/src/dictation/` module, `hotkey_monitor.rs`,
   command registration in `main.rs`, `Cargo.toml`,
   `app/src/components/DictateWindow/DictateWindow.tsx`,
   `app/src/lib/hooks/useCaptureRecordingSession.ts`, the microphone picker in
@@ -141,7 +141,7 @@ server. The webview no longer touches audio for dictation.
   text through the accessibility APIs), insert the text directly. Verify
   that it landed, and fall back to the clipboard ⌘V path when it did not.
   Never double-insert.
-- Owner files: a new Rust module (`tauri/src-tauri/src/text_insert.rs`),
+- Owner files: a new Rust module (`app/src/text_insert.rs`),
   with the smallest possible hook into `paste_final_text` in `main.rs`.
 - Acceptance: unit-tested decision logic, plus a documented capability
   check. Real apps are checked by hand (TextEdit, a browser textarea,

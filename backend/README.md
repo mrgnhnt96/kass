@@ -1,6 +1,6 @@
 # Kass model worker
 
-The Python process that runs Kass's models: Whisper speech-to-text, Qwen3 cleanup and command generation, and training. It has no public API. The Rust server (`kass-server` in `tauri/src-tauri/server`) owns kass.db and every HTTP and WebSocket route, and calls this worker's `/worker` endpoints on a private port. The app starts it as a sidecar; for development run it with `python -m backend.main`.
+The Python process that runs Kass's models: Whisper speech-to-text, Qwen3 cleanup and command generation, and training. It has no public API. The Rust server (`kass-server` in `app/server`) owns kass.db and every HTTP and WebSocket route, and calls this worker's `/worker` endpoints on a private port. The app starts it as a sidecar; for development run it with `python -m backend.main`.
 
 ## Running
 
@@ -22,7 +22,7 @@ backend/
   main.py                 # Entry point (imports app, runs uvicorn)
   config.py               # Data directory paths and configuration
   models.py               # The /worker/health response
-  server.py               # Tauri sidecar launcher, parent-pid watchdog
+  server.py               # Worker launcher, parent-pid watchdog
 
   routes/                 # /worker endpoints the Rust server calls
   services/               # Model calls, the cleanup prompt and text rules, training

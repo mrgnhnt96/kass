@@ -191,7 +191,7 @@ fn is_mach_o(path: &Path) -> bool {
 }
 
 /// cargo xtask dmg [app] [out.dmg]: packs the app into a DMG with the branded
-/// window (background from tauri/assets/dmg, the app on the left and
+/// window (background from app/assets/dmg, the app on the left and
 /// Applications on the right; the layout is scripts/dmg-settings.py).
 pub fn dmg(args: Vec<String>) -> Result {
     let app = PathBuf::from(args.first().map_or(BUILT_APP, String::as_str));
@@ -243,13 +243,13 @@ pub fn dmg(args: Vec<String>) -> Result {
     Ok(())
 }
 
-/// cargo xtask dmg-background: renders tauri/assets/dmg/background.html to
+/// cargo xtask dmg-background: renders app/assets/dmg/background.html to
 /// background.tiff at 1x and 2x, so it's sharp on Retina screens. Commit the
 /// TIFF; releases use the committed file. Needs Chrome or Chromium (CHROME
 /// picks one) and site/node_modules for the font.
 pub fn dmg_background(args: Vec<String>) -> Result {
     no_more(&args)?;
-    let dir = "tauri/assets/dmg";
+    let dir = "app/assets/dmg";
     let font = "site/node_modules/@fontsource-variable/bricolage-grotesque";
     if !Path::new(font).is_dir() {
         return Err(format!("Missing {font}. Run: cd site && npm ci"));
@@ -329,7 +329,7 @@ fn find_chrome() -> Option<PathBuf> {
 }
 
 /// cargo xtask update-icons: regenerates every Kass icon from the Icon
-/// Composer source, tauri/assets/kass.icon.
+/// Composer source, app/assets/kass.icon.
 ///
 /// 1. Renders the Liquid Glass appearances with ictool.
 /// 2. Compiles kass.icon with actool into Assets.car and kass.icns.
@@ -345,10 +345,10 @@ pub fn icons(args: Vec<String>) -> Result {
     let xcode = output(&mut cmd("xcode-select", ["-p"]))?;
     let ictool =
         PathBuf::from(xcode).join("../Applications/Icon Composer.app/Contents/Executables/ictool");
-    let bundle = "tauri/assets/kass.icon";
-    let exports = "tauri/assets/kass_exports";
-    let icons = "tauri/src-tauri/icons";
-    let generated = "tauri/src-tauri/gen";
+    let bundle = "app/assets/kass.icon";
+    let exports = "app/assets/kass_exports";
+    let icons = "app/icons";
+    let generated = "app/gen";
     let source = format!("{exports}/kass-macOS-Default-1024x1024@1x.png");
     if !is_executable(&ictool) {
         return Err(format!(
@@ -413,7 +413,7 @@ pub fn icons(args: Vec<String>) -> Result {
         )?;
     }
 
-    // The same actool call as tauri/src-tauri/build.rs.
+    // The same actool call as app/build.rs.
     println!("Compiling kass.icon with actool...");
     mkdir(generated)?;
     for file in ["kass.icns", "Assets.car", "partial.plist"] {
@@ -461,7 +461,7 @@ pub fn icons(args: Vec<String>) -> Result {
     copy(&source, &format!("{bundle}/Assets/Kass.png"))?;
 
     println!("Writing app, site and README icons...");
-    copy(&source, "tauri/assets/kass-logo.png")?;
+    copy(&source, "app/assets/kass-logo.png")?;
     resize(512, "site/public/icon.png")?;
     resize(256, "site/src/assets/icon.png")?;
     // iOS masks the home-screen icon itself, so it must be a full-bleed square.

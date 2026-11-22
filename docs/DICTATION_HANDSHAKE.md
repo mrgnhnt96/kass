@@ -61,7 +61,7 @@ center.addObserver(forName: .init("com.mrgnhnt.kass.dictationDidEnd"), object: n
 
 ```sh
 swift scripts/handshake-responder.swift &        # add --delay-ms 300 to see the timeout
-cd tauri/src-tauri && cargo run --example handshake_roundtrip -- 30
+cd app && cargo run --example handshake_roundtrip -- 30
 ```
 
 On an M-series Mac, `dictationWillBegin` → `dictationReady` takes about 2 ms (1.2 to 2.2 ms over 30 rounds).
@@ -70,4 +70,4 @@ In Kass's log, look for `[handshake]` lines: the ready time per dictation, timeo
 
 ## Inside Kass
 
-`tauri/src-tauri/src/dictation_handshake/`. The hotkey dispatcher calls `before_focus` between `dictation::start` (microphone open) and `focus_capture::capture_focus`. The take's task calls `take_ended` once the dictation is settled. Replies are observed on the main run loop, where the distributed center delivers them. For an app that hasn't opted in, the check is a pid and bundle-path lookup plus a cached Info.plist answer: about 0.1 ms, or about 1 ms the first time Kass sees that app.
+`app/src/dictation_handshake/`. The hotkey dispatcher calls `before_focus` between `dictation::start` (microphone open) and `focus_capture::capture_focus`. The take's task calls `take_ended` once the dictation is settled. Replies are observed on the main run loop, where the distributed center delivers them. For an app that hasn't opted in, the check is a pid and bundle-path lookup plus a cached Info.plist answer: about 0.1 ms, or about 1 ms the first time Kass sees that app.

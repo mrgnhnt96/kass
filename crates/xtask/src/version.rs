@@ -104,8 +104,8 @@ pub fn newest(args: Vec<String>) -> Result {
     Ok(())
 }
 
-const CARGO_TOML: &str = "tauri/src-tauri/Cargo.toml";
-const CARGO_LOCK: &str = "tauri/src-tauri/Cargo.lock";
+const CARGO_TOML: &str = "app/Cargo.toml";
+const CARGO_LOCK: &str = "app/Cargo.lock";
 const PYPROJECT: &str = "backend/pyproject.toml";
 const INIT_PY: &str = "backend/__init__.py";
 /// Every file the version is written into, as release commits them.

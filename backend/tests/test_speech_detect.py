@@ -10,7 +10,7 @@ from backend.services import speech_detect
 from backend.services.speech_detect import SpeechDetector, has_speech
 
 RATE = 48000
-SOUNDS = Path(__file__).resolve().parents[2] / "tauri" / "src-tauri" / "sounds"
+SOUNDS = Path(__file__).resolve().parents[2] / "app" / "sounds"
 
 
 def room_noise(seconds, level=300, seed=0):

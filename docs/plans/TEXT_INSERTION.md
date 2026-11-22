@@ -1,6 +1,6 @@
 # Text insertion without the clipboard (work item 5)
 
-Code: `tauri/src-tauri/src/text_insert.rs`, hooked at the top of
+Code: `app/src/text_insert.rs`, hooked at the top of
 `paste_final_text` in `main.rs`.
 
 ## What happens now

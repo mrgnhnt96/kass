@@ -40,7 +40,7 @@ import logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stderr,  # Log to stderr so it's captured by Tauri
+    stream=sys.stderr,  # Log to stderr so the Rust server captures it
 )
 logger = logging.getLogger(__name__)
 

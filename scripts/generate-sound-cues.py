@@ -2,7 +2,7 @@
 """Generate the dictation sound cues bundled with the desktop app.
 
 Writes start.wav, stop.wav, error.wav and style.wav (16-bit mono, 44.1 kHz) into
-tauri/src-tauri/sounds/, where `sound_cues.rs` embeds them. Standard library
+app/sounds/, where `sound_cues.rs` embeds them. Standard library
 only; rerun after changing a cue and commit the WAVs:
 
     python3 scripts/generate-sound-cues.py [output-dir]
@@ -15,7 +15,7 @@ import wave
 from pathlib import Path
 
 RATE = 44100
-OUT_DIR = Path(__file__).resolve().parents[1] / "tauri" / "src-tauri" / "sounds"
+OUT_DIR = Path(__file__).resolve().parents[1] / "app" / "sounds"
 
 
 def tone(freqs, seconds, volume=0.35, harmonic=0.15):

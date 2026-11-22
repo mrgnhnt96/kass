@@ -1,7 +1,7 @@
 //! Which Mac sent a request, for a Kass shared over the network (beta
 //! `network`). Requests that can save a capture say which Mac sent them
 //! (backend/utils/macs.py); the app shell reads this Mac's id and name
-//! (tauri/src-tauri/src/this_mac.rs) and hands them to the client.
+//! (app/src/this_mac.rs) and hands them to the client.
 
 use serde::{Deserialize, Serialize};
 

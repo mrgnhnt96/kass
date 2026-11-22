@@ -4,7 +4,7 @@ client window, API consumer, and headless flow reads the same preferences.
 
 Capture/refine defaults live here: ``get_capture_settings`` lazily creates
 the row with defaults. The Rust server's ``PUT /settings/captures`` changes
-it (tauri/src-tauri/server/src/settings.rs).
+it (app/server/src/settings.rs).
 """
 
 from sqlalchemy.orm import Session

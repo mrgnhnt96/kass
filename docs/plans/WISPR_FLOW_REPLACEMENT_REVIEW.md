@@ -16,7 +16,7 @@ This is a source review and research comparison with current official Wispr docu
 - Clipboard restoration includes a change-count check to avoid overwriting something the user copied during insertion.
 - Local inference offers an offline alternative after models and dependencies are available. Verify cold-start airplane-mode behavior before making an unconditional offline guarantee.
 
-Sources: `docs/content/docs/overview/dictation.mdx`, `backend/database/models.py`, `backend/backends/mlx_backend.py`, `backend/services/captures.py`, `tauri/src-tauri/src/main.rs`.
+Sources: `docs/content/docs/overview/dictation.mdx`, `backend/database/models.py`, `backend/backends/mlx_backend.py`, `backend/services/captures.py`, `app/src/main.rs`.
 
 ## Findings and improvements
 

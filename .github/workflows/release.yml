@@ -43,7 +43,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-            ./tauri/src-tauri -> target
+            ./app -> target
             ./crates -> target
 
       # cargo xtask release wrote this version into every file before tagging.
@@ -97,18 +97,18 @@ jobs:
           KASS_UPDATER_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           cargo xtask build-app
-          app=tauri/src-tauri/target/release/bundle/macos/Kass.app
+          app=app/target/release/bundle/macos/Kass.app
           xcrun stapler validate "$app"
           spctl --assess --type execute --verbose=2 "$app"
           test -f "$app.tar.gz" && test -f "$app.tar.gz.sig"
 
       # The branded window: background, icon positions and size come from
-      # scripts/dmg-settings.py and tauri/assets/dmg.
+      # scripts/dmg-settings.py and app/assets/dmg.
       - name: Make DMG
         id: dmg
         run: |
           name="Kass-${GITHUB_REF_NAME#v}-macos-arm64"
-          cargo xtask dmg tauri/src-tauri/target/release/bundle/macos/Kass.app "$name.dmg"
+          cargo xtask dmg app/target/release/bundle/macos/Kass.app "$name.dmg"
           echo "file=$name.dmg" >> "$GITHUB_OUTPUT"
 
       # The DMG gets its own signature and notarization ticket, so the
@@ -151,11 +151,11 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           archive="Kass-$version-macos-arm64.app.tar.gz"
-          cp tauri/src-tauri/target/release/bundle/macos/Kass.app.tar.gz "$archive"
+          cp app/target/release/bundle/macos/Kass.app.tar.gz "$archive"
           python3 - "$version" "$archive" <<'PY'
           import json, sys, datetime
           version, archive = sys.argv[1], sys.argv[2]
-          signature = open('tauri/src-tauri/target/release/bundle/macos/Kass.app.tar.gz.sig').read().strip()
+          signature = open('app/target/release/bundle/macos/Kass.app.tar.gz.sig').read().strip()
           url = f'https://github.com/mrgnhnt96/kass/releases/download/v{version}/{archive}'
           json.dump({
               'version': version,

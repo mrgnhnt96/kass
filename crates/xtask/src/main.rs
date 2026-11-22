@@ -57,7 +57,7 @@ Database
   db-reset                  Delete the database and create it again
 
 Assets and tools
-  update-icons              Regenerate every icon from tauri/assets/kass.icon
+  update-icons              Regenerate every icon from app/assets/kass.icon
   dmg-background            Render the DMG window's background.tiff
   py <script> [args]        Run a repo Python script (model training, benchmarks, evals) with the venv's Python
 
@@ -81,7 +81,7 @@ fn dispatch(command: &str, args: Vec<String>) -> Result {
         "logs" => dev::logs(args),
         "build" => build::all(args),
         "build-server" => build::server(args),
-        "build-app" | "build-tauri" => build::app(args),
+        "build-app" => build::app(args),
         "dmg" => build::dmg(args),
         "install" => install::install(args),
         "release" => version::release(args),

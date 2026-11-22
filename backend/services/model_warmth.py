@@ -11,7 +11,7 @@ is measured, not guessed. Pages that are out are read back here, one byte
 each, on an ordinary thread: reading a page faults it back in, and the MLX
 thread keeps recognizing meanwhile.
 
-When to do it is the app's server's call (``tauri/src-tauri/server/src/warmth.rs``): it
+When to do it is the app's server's call (``app/server/src/warmth.rs``): it
 follows the user and asks through ``/worker/keep-resident``, as a dictation
 does when it starts.
 """

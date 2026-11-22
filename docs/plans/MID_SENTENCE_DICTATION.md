@@ -64,7 +64,7 @@ Still ambiguous: words that are both common and names ("Grace", "Mark", "Bill").
 
 ## 3. Insertion: fitting the join
 
-A pure function in a new `tauri/src-tauri/src/join.rs`: `fit(text, ctx) -> String`, used by every insertion method.
+A pure function in a new `app/src/join.rs`: `fit(text, ctx) -> String`, used by every insertion method.
 
 Leading edge:
 - `before` ends in a word character or closing punctuation, and `text` starts with a letter or digit: add one space.

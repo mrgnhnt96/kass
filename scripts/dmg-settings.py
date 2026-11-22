@@ -1,7 +1,7 @@
 # dmgbuild settings for Kass's DMG. cargo xtask dmg passes the app
 # and the repo root in with -D.
 #
-# The icon positions match tauri/assets/dmg/background.html, which draws
+# The icon positions match app/assets/dmg/background.html, which draws
 # the glow behind Kass and the wave between the two icons.
 import os.path
 
@@ -12,10 +12,10 @@ app_name = os.path.basename(app)
 format = "UDZO"
 files = [app]
 symlinks = {"Applications": "/Applications"}
-icon = os.path.join(root, "tauri/src-tauri/icons/icon.icns")
+icon = os.path.join(root, "app/icons/icon.icns")
 
 # Points, not pixels: the background TIFF holds a 2x image for Retina.
-background = os.path.join(root, "tauri/assets/dmg/background.tiff")
+background = os.path.join(root, "app/assets/dmg/background.tiff")
 # The height includes the title bar (32 pt on macOS 26), leaving 400 for
 # the background's design.
 window_rect = ((200, 120), (660, 432))

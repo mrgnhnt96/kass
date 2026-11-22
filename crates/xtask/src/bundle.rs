@@ -51,7 +51,7 @@ const RESOURCES: [(&str, &str); 4] = [
 
 /// The app's entitlements: the hardened runtime exceptions the bundled
 /// Python server needs, and the microphone.
-pub const ENTITLEMENTS: &str = "tauri/src-tauri/Entitlements.plist";
+pub const ENTITLEMENTS: &str = "app/Entitlements.plist";
 
 /// The updater's minisign key (the secret key file, or its base64) and its
 /// password. Set, the build also packs and signs Kass.app.tar.gz.

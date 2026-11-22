@@ -65,7 +65,7 @@ Every path that runs Whisper passes it: phrase recognition (`capture_stream.reco
 
 ## API
 
-The Rust server serves these from `kass.db` (`tauri/src-tauri/server/src/routes/dictionary.rs`). After each change it calls the worker's `POST /worker/dictionary/changed`, so dictation reloads its snapshot. For `resolved` it asks `POST /worker/dictionary/token-counts` for Whisper's term sizes, and estimates them when no model is loaded.
+The Rust server serves these from `kass.db` (`app/server/src/routes/dictionary.rs`). After each change it calls the worker's `POST /worker/dictionary/changed`, so dictation reloads its snapshot. For `resolved` it asks `POST /worker/dictionary/token-counts` for Whisper's term sizes, and estimates them when no model is loaded.
 
 - `GET /dictionary`: every entry, newest first, each with its `places` (`{scope, scope_id, app_name}`).
 - `POST /dictionary`: `{written, spoken?, places, match_sound?, phrase?}`. Entries come back with `match_sound`, `source` (`user` / `spoken_fix` / `correction`) and `phrase`. An entry stays a word or a phrase; `PATCH` doesn't change it, and refuses to clear a phrase's `spoken`.

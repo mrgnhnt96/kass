@@ -375,7 +375,7 @@ backend/
   main.py             # Entry point (imports app, runs uvicorn)
   config.py           # Data directory paths
   models.py           # Pydantic request/response schemas
-  server.py           # Tauri sidecar launcher, parent-pid watchdog
+  server.py           # Worker launcher, parent-pid watchdog
   routes/             # Thin HTTP handlers (validation, delegation, response formatting)
   services/           # Business logic, CRUD, orchestration
   backends/           # TTS/STT engine implementations
