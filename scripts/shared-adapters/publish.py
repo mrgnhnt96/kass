@@ -38,7 +38,7 @@ FILES = ("adapters.safetensors", "adapter_config.json")
 
 
 def check():
-    from backend.services.model_improvement.manager import pipeline_id
+    from cleanup_pipeline import pipeline_id
 
     stale = []
     for manifest in sorted(ASSETS.glob("cleanup-*/shared.json")):
@@ -53,7 +53,8 @@ def check():
 
 
 def publish_cleanup(size, evaluation, stock):
-    from backend.services.model_improvement.manager import pipeline_id
+    from cleanup_pipeline import pipeline_id
+
     from backend.services.refinement import RefinementFlags
 
     source = BUILD / f"cleanup-{size}"

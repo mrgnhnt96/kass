@@ -43,6 +43,27 @@ def read(split):
     return [json.loads(line) for line in (DATA / f"{split}.jsonl").read_text().splitlines()]
 
 
+def dataset(samples, tokenizer):
+    """Token sequences for ``samples``, prepared by the worker's Python copy
+    of dictation's cleanup (the app's server prepares them in Rust)."""
+    from backend.services.model_improvement.worker import token_dataset
+    from backend.services.refinement import (
+        RefinementFlags,
+        build_refinement_prompt,
+        prepare_refinement,
+        refinement_examples,
+    )
+
+    cases = []
+    for sample in samples:
+        flags = RefinementFlags.from_dict(sample.get("flags"))
+        text, bypass = prepare_refinement(sample["raw"], flags)
+        cases.append(
+            {"text": text, "bypass": bypass, "system": build_refinement_prompt(flags), "examples": refinement_examples(flags)}
+        )
+    return token_dataset(samples, tokenizer, cases)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", default="4B", choices=("0.6B", "1.7B", "4B"))
@@ -63,7 +84,6 @@ def main():
     from backend import config
     from backend.backends.base import local_model_path
     from backend.backends.qwen_llm_backend import MLX_HF_REPOS
-    from backend.services.model_improvement.worker import token_dataset
     from backend.services.refinement import REFINEMENT_EXAMPLES
 
     # No personal styles, notes or rules: an empty data directory.
@@ -73,9 +93,9 @@ def main():
     mx.random.seed(17)
     repo = MLX_HF_REPOS[args.size]
     model, tokenizer = load(local_model_path(repo, (".safetensors", ".bin", ".npz")))
-    training = token_dataset(read("train"), tokenizer)
-    validation = token_dataset(read("valid"), tokenizer)
-    rehearsal = token_dataset([{"raw": raw, "expected": expected} for raw, expected in REFINEMENT_EXAMPLES], tokenizer)
+    training = dataset(read("train"), tokenizer)
+    validation = dataset(read("valid"), tokenizer)
+    rehearsal = dataset([{"raw": raw, "expected": expected} for raw, expected in REFINEMENT_EXAMPLES], tokenizer)
     print(f"{len(training)} training pairs, {len(validation)} validation pairs (the rest resolved before the model)")
     model.freeze()
     linear_to_lora_layers(model, LAYERS, LORA)

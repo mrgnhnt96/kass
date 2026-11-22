@@ -16,6 +16,8 @@ from backend.database.models import Base, Capture, CaptureFeedback
 from backend.services.model_improvement import manager
 from backend.services.voice_training import bank, gate, lora, mixing
 
+CLEANUP = {"pipeline": "test-pipeline", "server": "http://127.0.0.1:1", "rehearsal": []}
+
 
 def write_wav(path, seconds=3.0, rate=48000):
     t = np.arange(int(seconds * rate)) / rate
@@ -601,12 +603,12 @@ def test_voice_trains_once_the_refinement_model_has_nothing_new(learning, monkey
     monkeypatch.setattr(manager, "_scan_bank", lambda db, settings: {"train": 500, "test": 80})
     monkeypatch.setattr(manager, "_voice_plan", lambda *args: {"bank_digest": "bank", "resume": None})
 
-    plan, refinement, ready, _ = manager._prepare([], None, [])
+    plan, refinement, ready, _ = manager._prepare([], None, [], CLEANUP)
     assert ready
     assert plan["train_ready"]
     assert plan["voice"] is None
 
-    plan, fingerprint, ready, _ = manager._prepare([], None, [refinement])
+    plan, fingerprint, ready, _ = manager._prepare([], None, [refinement], CLEANUP)
     assert ready
     assert plan["voice"]
     assert not plan["train_ready"]

@@ -433,7 +433,7 @@ def ready_to_train(monkeypatch, fingerprint):
     monkeypatch.setattr(manager.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(manager.platform, "machine", lambda: "arm64")
     plenty_of_memory(monkeypatch)
-    prepared = manager.prepare([], None, [])
+    prepared = manager.prepare([], None, [], cleanup_server="http://127.0.0.1:1")
     assert (prepared["ready"], prepared["fingerprint"], prepared["trains"]) == (True, fingerprint, True)
     return prepared
 
@@ -488,3 +488,112 @@ def test_real_child_is_killed_on_recording_and_never_judged(storage, monkeypatch
 def test_a_run_is_never_prepared_off_apple_silicon(storage, monkeypatch):
     monkeypatch.setattr(manager.platform, "machine", lambda: "x86_64")
     assert manager.prepare([], None, []) == {"unsupported": True}
+
+
+def test_an_adapter_tested_with_another_cleanup_pipeline_is_dropped_on_restart(storage, tmp_path, monkeypatch):
+    judged = manager._judge(plan(), candidate_directory(tmp_path), adapter_result(), None)
+    assert judged["active"]["llm"]["pipeline"] == "test-pipeline"
+    save_state(tmp_path, judged["active"])
+    monkeypatch.setenv("KASS_CLEANUP_PIPELINE", "a-newer-pipeline")
+    restart(monkeypatch)
+    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
+    [report] = manager.reports()
+    assert (report["kind"], report["block"]) == ("llm", False)
+
+
+def test_a_worker_started_by_hand_takes_any_cleanup_pipeline(monkeypatch):
+    monkeypatch.delenv("KASS_CLEANUP_PIPELINE")
+    assert manager.pipeline_id() is None
+    assert manager.pipeline_matches("anything")
+    monkeypatch.setenv("KASS_CLEANUP_PIPELINE", "rust")
+    assert manager.pipeline_matches("rust")
+    assert not manager.pipeline_matches("anything")
+
+
+def test_a_run_needs_the_server_to_prepare_its_cleanup_text(storage, monkeypatch):
+    monkeypatch.setattr(manager.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(manager.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(manager, "_prepare", lambda *_: pytest.fail("planned without a cleanup server"))
+    assert "error" in manager.prepare([], None, [])
+
+
+def test_the_training_process_prepares_cleanup_text_through_the_server():
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from backend.services.model_improvement import worker
+
+    asked = []
+
+    class Server(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            asked.append((self.path, body))
+            if self.path.endswith("/prompts"):
+                answer = {
+                    "cases": [
+                        {"text": case["text"].upper(), "bypass": None, "system": "S", "examples": [["a", "b"]]}
+                        for case in body["cases"]
+                    ]
+                }
+            else:
+                answer = {"texts": [case["text"] + "!" for case in body["cases"]]}
+            data = json.dumps(answer).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *_):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Server)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        plan = {"cleanup_server": f"http://127.0.0.1:{server.server_port}", "rules": [{"id": "r"}]}
+        samples = [{"raw": "hi there", "flags": {"self_correction": False}, "language": "fr"}]
+        assert worker.served_cases(plan, samples) == [
+            {"text": "HI THERE", "bypass": None, "system": "S", "examples": [["a", "b"]]}
+        ]
+        assert worker.served_fixes(plan, ["Hi there."], samples) == ["Hi there.!"]
+        assert worker.served_cases(plan, []) == []
+    finally:
+        server.shutdown()
+    assert asked == [
+        (
+            "/capture/learning/training/prompts",
+            {"cases": [{"text": "hi there", "flags": {"self_correction": False}}]},
+        ),
+        (
+            "/capture/learning/training/fixed",
+            {"rules": [{"id": "r"}], "cases": [{"text": "Hi there.", "language": "fr"}]},
+        ),
+    ]
+
+
+def test_training_skips_what_a_spoken_edit_resolved_and_uses_the_served_prompt():
+    from backend.services.model_improvement import worker
+
+    class Tokenizer:
+        eos_token_id = 0
+
+        def apply_chat_template(self, messages, **_):
+            self.messages = messages
+            return [1, 2]
+
+        def encode(self, text, **_):
+            return [3]
+
+    tokenizer = Tokenizer()
+    samples = [{"raw": "delete that", "expected": ""}, {"raw": "hello", "expected": "Hello."}]
+    cases = [
+        {"text": "", "bypass": "", "system": "S", "examples": []},
+        {"text": "hello", "bypass": None, "system": "S", "examples": [["um hi", "Hi."]]},
+    ]
+    assert worker.token_dataset(samples, tokenizer, cases) == [([1, 2, 3, 0], 2)]
+    assert tokenizer.messages == [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": "um hi"},
+        {"role": "assistant", "content": "Hi."},
+        {"role": "user", "content": "hello"},
+    ]

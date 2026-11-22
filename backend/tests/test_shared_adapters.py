@@ -16,6 +16,7 @@ from backend.services.refinement import RefinementFlags
 from backend.services.voice_training import lora
 
 DEFAULT = RefinementFlags().to_dict()
+CLEANUP = {"pipeline": "test-pipeline", "server": "http://127.0.0.1:1", "rehearsal": []}
 
 
 @pytest.fixture
@@ -191,7 +192,7 @@ def prepare(monkeypatch):
     )
     monkeypatch.setattr(styles, "load", lambda db: SimpleNamespace(styles=[]))
     monkeypatch.setattr(manager, "_scan_bank", lambda db, settings: None)
-    plan, _, _, _ = manager._prepare([], None, [])
+    plan, _, _, _ = manager._prepare([], None, [], CLEANUP)
     return plan["start_adapter"], plan["baseline_adapter"], plan["shared"]
 
 

@@ -23,6 +23,7 @@ pub mod stream;
 pub mod styles;
 pub mod sync;
 pub mod teach;
+pub mod training_cases;
 pub mod usage;
 mod voice_sounds;
 mod warmth;
@@ -64,6 +65,9 @@ pub struct Config {
 /// What every route handler can reach.
 #[derive(Clone)]
 pub struct AppState {
+    /// Where this server listens, with the real port: the worker's training
+    /// process calls back on it (`training_cases`).
+    pub address: SocketAddr,
     pub proxy: proxy::Proxy,
     pub db: db::Db,
     pub sync: dictionary::store::Sync,
@@ -172,6 +176,7 @@ pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> Ap
     let (asked, _) = watch::channel(false);
     let (_, served) = watch::channel(false);
     AppState {
+        address: SocketAddr::from(([127, 0, 0, 1], 0)),
         version: Arc::from("test"),
         stopping: Stopping {
             asked: Arc::new(asked),
@@ -197,9 +202,14 @@ pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> Ap
 /// current Tokio runtime.
 pub async fn start(config: Config) -> Result<Running, String> {
     let database = config.database.clone();
-    tokio::task::spawn_blocking(move || db::prepare(&database))
-        .await
-        .map_err(|e| e.to_string())??;
+    tokio::task::spawn_blocking(move || {
+        db::prepare(&database)?;
+        model_improvement::pipeline();
+        model_improvement::restamp_legacy(&database);
+        Ok::<_, String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     let shared_server = sync::shared_server(config.shared_server.as_deref());
     let (asked, _) = watch::channel(false);
     let (served_tx, served) = watch::channel(false);
@@ -207,7 +217,12 @@ pub async fn start(config: Config) -> Result<Running, String> {
         asked: Arc::new(asked),
         served,
     };
+    let listener = TcpListener::bind(config.listen)
+        .await
+        .map_err(|e| format!("Could not listen on {}: {e}", config.listen))?;
+    let address = listener.local_addr().map_err(|e| e.to_string())?;
     let state = AppState {
+        address,
         version: config.app_version.as_str().into(),
         stopping: stopping.clone(),
         proxy: proxy::Proxy::new(config.worker),
@@ -232,10 +247,6 @@ pub async fn start(config: Config) -> Result<Running, String> {
         teach: Arc::default(),
         model_improvement: Arc::default(),
     };
-    let listener = TcpListener::bind(config.listen)
-        .await
-        .map_err(|e| format!("Could not listen on {}: {e}", config.listen))?;
-    let address = listener.local_addr().map_err(|e| e.to_string())?;
     let (shutdown, stopped) = oneshot::channel::<()>();
     let relay = Relay(tokio::spawn(events::relay(
         state.events.clone(),

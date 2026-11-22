@@ -168,7 +168,7 @@ def main():
                 print(f"\n[{row['category']}] {row['raw']}\n  want: {row['expected']}\n  got:  {row['output']}")
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        from backend.services.model_improvement.manager import pipeline_id
+        from cleanup_pipeline import pipeline_id
 
         result = {"size": args.size, "adapter": args.adapter, "pipeline": pipeline_id(), "summary": summary}
         Path(args.out).write_text(json.dumps(result | {"rows": rows}, indent=2))
