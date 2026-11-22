@@ -104,13 +104,12 @@ pub fn newest(args: Vec<String>) -> Result {
     Ok(())
 }
 
-const CONF: &str = "tauri/src-tauri/tauri.conf.json";
 const CARGO_TOML: &str = "tauri/src-tauri/Cargo.toml";
 const CARGO_LOCK: &str = "tauri/src-tauri/Cargo.lock";
 const PYPROJECT: &str = "backend/pyproject.toml";
 const INIT_PY: &str = "backend/__init__.py";
 /// Every file the version is written into, as release commits them.
-pub const FILES: [&str; 5] = [CONF, CARGO_TOML, CARGO_LOCK, PYPROJECT, INIT_PY];
+pub const FILES: [&str; 4] = [CARGO_TOML, CARGO_LOCK, PYPROJECT, INIT_PY];
 
 /// How each file writes its version: the first line starting `prefix`,
 /// or with `after`, the first such line right after that line.
@@ -121,10 +120,6 @@ struct Spot {
 
 fn spot(file: &str) -> Spot {
     match file {
-        CONF => Spot {
-            prefix: "  \"version\": \"",
-            after: None,
-        },
         CARGO_LOCK => Spot {
             prefix: "version = \"",
             after: Some("name = \"kass\""),
@@ -184,6 +179,22 @@ fn write_version(file: &str, version: &Version) -> Result {
         out.push('\n');
     }
     fs::write(file, out).map_err(|error| format!("Couldn't write {file}: {error}"))
+}
+
+/// The app's version, from its Cargo.toml.
+pub fn app() -> Result<String> {
+    let version = read_version(CARGO_TOML)?;
+    if version.is_empty() {
+        return Err(format!("No version in {CARGO_TOML}"));
+    }
+    Ok(version)
+}
+
+/// cargo xtask version: prints the app's version.
+pub fn print(args: Vec<String>) -> Result {
+    no_more(&args)?;
+    println!("{}", app()?);
+    Ok(())
 }
 
 /// Prints each file's version and returns them.
@@ -357,7 +368,5 @@ mod tests {
     fn writes_only_the_version_line() {
         let lock = "[[package]]\nname = \"other\"\nversion = \"1.0.0\"\n\n[[package]]\nname = \"kass\"\nversion = \"0.1.0\"\n";
         assert_eq!(find_line(lock, &spot(CARGO_LOCK)), Some(6));
-        let conf = "{\n  \"app\": {\n    \"version\": \"x\"\n  },\n  \"version\": \"0.1.0\",\n}\n";
-        assert_eq!(find_line(conf, &spot(CONF)), Some(4));
     }
 }

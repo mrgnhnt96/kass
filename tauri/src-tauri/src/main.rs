@@ -1219,7 +1219,8 @@ async fn restart_server(
 /// field instead (`dictation::insert_in_app`).
 ///
 /// Value matches the reverse-DNS bundle id `focus_capture::capture_focus`
-/// writes into `FocusSnapshot::bundle_id`, and `identifier` in tauri.conf.json.
+/// writes into `FocusSnapshot::bundle_id`, and `BUNDLE_ID` in crates/xtask, which
+/// the bundle's Info.plist gets.
 const KASS_BUNDLE_ID: &str = "com.mrgnhnt.kass";
 
 /// Reports whether the process currently has macOS Accessibility trust.

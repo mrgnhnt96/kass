@@ -50,7 +50,7 @@ jobs:
         id: version
         run: |
           cargo xtask set-version --check
-          echo "version=$(jq -r .version tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
+          echo "version=$(cargo xtask version)" >> "$GITHUB_OUTPUT"
 
       - name: Install Python dependencies
         run: cargo xtask setup-python

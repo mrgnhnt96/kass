@@ -156,7 +156,7 @@ fn main() {
         }
     }
 
-    // Ensure all resource files exist so Tauri's bundler doesn't fail.
+    // Ensure all resource files exist so the bundle step (cargo xtask build-app) doesn't fail.
     // On non-macOS these are always stubs. On macOS, actool may not produce
     // Assets.car if the Xcode version doesn't support the .icon format.
     {

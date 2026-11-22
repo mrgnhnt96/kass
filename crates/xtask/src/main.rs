@@ -2,6 +2,7 @@
 //! (the alias is in .cargo/config.toml). macOS on Apple Silicon only.
 
 mod build;
+mod bundle;
 mod dev;
 mod install;
 mod python;
@@ -38,6 +39,7 @@ Build and release
   dmg [app] [out.dmg]       Pack the built app into Kass.dmg with the branded window
   install [--help]          Check requirements, build, and install or update /Applications/Kass.app
   release <version>         Cut a release; run through tb release cut v<version>, never by hand
+  version                   Print the app's version
   set-version <version>     Write the version into every file (--check [version] compares them)
   newest-version <v>...     Print the newest of the versions, ordered like the app's updater
   signing-identity          Print the code-signing identity builds use on this Mac
@@ -83,6 +85,7 @@ fn dispatch(command: &str, args: Vec<String>) -> Result {
         "dmg" => build::dmg(args),
         "install" => install::install(args),
         "release" => version::release(args),
+        "version" => version::print(args),
         "set-version" => version::set(args),
         "newest-version" => version::newest(args),
         "signing-identity" => sign::print(args),

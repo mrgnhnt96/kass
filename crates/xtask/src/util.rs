@@ -145,7 +145,7 @@ pub fn home() -> PathBuf {
     env::var_os("HOME").map(PathBuf::from).unwrap_or_default()
 }
 
-/// The app's bundle identifier (tauri.conf.json).
+/// The app's bundle identifier (CFBundleIdentifier, and KASS_BUNDLE_ID in the app).
 pub const BUNDLE_ID: &str = "com.mrgnhnt.kass";
 
 /// The folder the app keeps kass.db and its other data in. A debug build uses

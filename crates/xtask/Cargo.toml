@@ -7,4 +7,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64 = "0.22"
+flate2 = "1"
+minisign = "0.8"
 sha2 = "0.10"
+tar = "0.4"
+serde_json.workspace = true

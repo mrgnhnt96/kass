@@ -4,14 +4,12 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::bundle;
 use crate::sign;
 use crate::util::{
     APP_DIR, BACKEND, BUILT_APP, Result, SERVER_DIR, TempDir, all_output, cmd, ensure_venv, home,
     is_executable, no_more, on_path, output, path_with, root, run, succeeds, venv_bin,
 };
-
-/// The Tauri CLI only packs and signs the bundle; the app no longer uses Tauri.
-const TAURI_CLI: &str = "2.9.6";
 
 /// Cargo's own bin folder, where rustup and cargo install put tools; a fresh
 /// shell may not have it on PATH yet.
@@ -79,7 +77,7 @@ pub fn server(args: Vec<String>) -> Result {
 /// so updates keep its privacy grants. The server must be built already.
 ///
 /// With APPLE_API_KEY set (release.yml) every signature gets a secure
-/// timestamp for notarization; with TAURI_SIGNING_PRIVATE_KEY set the bundler
+/// timestamp and the app is notarized; with KASS_UPDATER_KEY set the build
 /// also packs a signed .app.tar.gz for the background updater.
 pub fn app(args: Vec<String>) -> Result {
     no_more(&args)?;
@@ -87,7 +85,7 @@ pub fn app(args: Vec<String>) -> Result {
 
     // The server folder is copied into the app as-is, so sign its code first:
     // every library, then the executable with the app's hardened-runtime
-    // entitlements. The bundler then seals the folder into the app signature.
+    // entitlements. The app's signature then seals the folder.
     let server = Path::new(SERVER_DIR);
     if !is_executable(&server.join("kass-server")) {
         return Err(format!(
@@ -139,46 +137,24 @@ pub fn app(args: Vec<String>) -> Result {
             "--options",
             "runtime",
             "--entitlements",
-            "tauri/src-tauri/Entitlements.plist",
+            bundle::ENTITLEMENTS,
         ],
     )
     .args(["--sign", &identity])
     .arg(server.join("kass-server")))?;
 
-    let tmp = TempDir::new("bundle-config")?;
-    let config = tmp.0.join("signing.json");
-    let updater = env::var_os("TAURI_SIGNING_PRIVATE_KEY").is_some_and(|key| !key.is_empty());
-    fs::write(
-        &config,
-        format!(
-            r#"{{"bundle": {{"createUpdaterArtifacts": {updater}, "macOS": {{"signingIdentity": "{}"}}}}}}"#,
-            identity.replace('\\', "\\\\").replace('"', "\\\"")
-        ),
-    )
-    .map_err(|error| format!("Couldn't write the bundle config: {error}"))?;
-
-    let path = cargo_path();
-    let installed = all_output(cmd("cargo", ["tauri", "--version"]).env("PATH", &path));
-    if installed.trim() != format!("tauri-cli {TAURI_CLI}") {
-        run(cmd(
-            "cargo",
-            ["install", "tauri-cli", "--version", TAURI_CLI, "--locked"],
-        )
-        .env("PATH", &path))?;
-    }
     run(cmd("cargo", ["build", "--release"])
         .current_dir(APP_DIR)
-        .env("PATH", &path))?;
-    run(
-        cmd("cargo", ["tauri", "bundle", "--bundles", "app", "--config"])
-            .arg(&config)
-            .current_dir(APP_DIR)
-            .env("PATH", &path),
-    )?;
+        .env("PATH", cargo_path()))?;
+    bundle::make(&identity, timestamp)?;
     run(&mut cmd(
         "codesign",
         ["--verify", "--deep", "--strict", BUILT_APP],
-    ))
+    ))?;
+    if bundle::updater_key_set() {
+        bundle::updater_archive()?;
+    }
+    Ok(())
 }
 
 /// Every Mach-O file under the folder.
