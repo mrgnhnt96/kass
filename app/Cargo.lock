@@ -3722,7 +3722,7 @@ dependencies = [
 
 [[package]]
 name = "kass"
-version = "0.10.0-beta.9"
+version = "0.10.0-beta.10"
 dependencies = [
  "base64 0.22.1",
  "block2 0.6.2",
@@ -3785,6 +3785,7 @@ dependencies = [
  "gpui-kit",
  "hound",
  "kass-api",
+ "kass-dictionary",
  "kass-i18n",
  "kass-ui",
  "regex",
