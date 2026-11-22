@@ -28,6 +28,10 @@ const CHECK_EVERY: Duration = Duration::from_secs(60);
 /// A run every six hours at most, unless reports change what it'd learn.
 const INTERVAL: Duration = Duration::from_secs(6 * 3600);
 
+/// After macOS stops a run to keep the Mac responsive, nothing starts the
+/// next one for a day: the Mac was busy, and an hour later it often still is.
+const GPU_PREEMPTED_WAIT: Duration = Duration::from_secs(24 * 3600);
+
 /// Earlier versions kept for rollback.
 const HISTORY: usize = 10;
 
@@ -54,6 +58,9 @@ struct Runs {
     folder: Option<PathBuf>,
     /// When a run last ended, or was cancelled; None before the first.
     last_attempt: Option<Instant>,
+    /// After a failed run, no run starts on its own before this, not even
+    /// for new reports or rules.
+    hold_until: Option<Instant>,
     /// A withdrawn report may be in the cleanup adapter's training data.
     retrain: bool,
     /// The learned corrections the schedule last looked at.
@@ -397,7 +404,7 @@ pub async fn start(state: &AppState) -> Result<Value, String> {
             if let Err(error) = saved {
                 eprintln!("[model] {error}");
             }
-            run_state.model_improvement.runs().last_attempt = Some(Instant::now());
+            run_state.model_improvement.runs().failed(INTERVAL);
         }
         run_state.model_improvement.end();
     });
@@ -483,6 +490,9 @@ async fn run(state: &AppState) -> Result<(), String> {
     let body =
         json!({ "run": run, "generation": plan["generation"], "voice_resume": voice_resume });
     let trained = worker::model_train(&state.proxy, body).await?;
+    if trained["gpu_preempted"] == true {
+        state.model_improvement.runs().failed(GPU_PREEMPTED_WAIT);
+    }
     refused(&trained)?;
     if trained["waiting_memory"] == true {
         // Not an attempt: it tries again at the next idle minute.
@@ -605,7 +615,8 @@ async fn rules(state: &AppState) -> Value {
 }
 
 /// Whether a run is due: a withdrawn report may be in the cleanup adapter,
-/// six hours went by, or the rules it was tested with changed.
+/// six hours went by, or the rules it was tested with changed. Not while a
+/// failed run's wait lasts.
 async fn due(state: &AppState) -> bool {
     let adapter = adapter_in_use(state).await;
     let rules = rules(state).await;
@@ -616,12 +627,24 @@ impl Runs {
     /// Whether a run is due, given whether a cleanup adapter is in use and
     /// the learned corrections' rules now. Takes the retrain request.
     fn due(&mut self, adapter: bool, rules: Value) -> bool {
+        // A failed run waits for all of them, and they're kept for after.
+        if self.hold_until.is_some_and(|until| Instant::now() < until) {
+            return false;
+        }
         // The server learns from a saved or withdrawn report soon, not in six
         // hours. The adapter was tested with the old rules, so new ones retest
         // it; seen only when asked, as Python's take_rules_changed was.
         (std::mem::take(&mut self.retrain) && adapter)
             || self.last_attempt.is_none_or(|at| at.elapsed() >= INTERVAL)
             || (self.rules_changed(rules) && adapter)
+    }
+
+    /// A run failed: the next waits `wait` from now, or longer when one was
+    /// already set.
+    fn failed(&mut self, wait: Duration) {
+        let now = Instant::now();
+        self.last_attempt = Some(now);
+        self.hold_until = self.hold_until.max(Some(now + wait));
     }
 
     /// Whether the rules changed since the schedule last asked.
@@ -848,6 +871,38 @@ mod tests {
             ..Runs::default()
         };
         assert!(runs.due(false, Value::Null));
+    }
+
+    #[test]
+    fn a_failed_run_holds_off_reports_and_rules_until_its_wait_ends() {
+        let mut runs = Runs {
+            retrain: true,
+            rules: Some(json!([])),
+            ..Runs::default()
+        };
+        runs.failed(GPU_PREEMPTED_WAIT);
+        // A plain failure meanwhile doesn't shorten the longer wait.
+        runs.failed(INTERVAL);
+        let changed = json!([{ "id": "r" }]);
+        assert!(!runs.due(true, changed.clone()));
+        // Neither is used up while it waits.
+        assert!(runs.retrain);
+        assert_eq!(runs.rules, Some(json!([])));
+        runs.hold_until = Instant::now().checked_sub(Duration::from_secs(1));
+        runs.last_attempt = Instant::now().checked_sub(Duration::from_secs(60));
+        runs.retrain = false;
+        // The rules that changed while it waited start a run once it ends.
+        assert!(runs.due(true, changed));
+    }
+
+    #[test]
+    fn macos_stopping_a_run_waits_a_day_and_a_plain_failure_six_hours() {
+        for (wait, hours) in [(GPU_PREEMPTED_WAIT, 24), (INTERVAL, 6)] {
+            let mut runs = Runs::default();
+            runs.failed(wait);
+            let until = runs.hold_until.unwrap() - runs.last_attempt.unwrap();
+            assert_eq!(until, Duration::from_secs(hours * 3600));
+        }
     }
 
     #[test]
