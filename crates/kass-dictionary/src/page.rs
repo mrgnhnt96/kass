@@ -2,18 +2,19 @@
 //! applies in the chosen scope: an add form, the scope's own words or
 //! phrases, and what it picks up from elsewhere.
 
-use crate::dictation::{PhraseDictation, PhraseTake};
+use crate::dictation::PhraseDictation;
 use crate::places::{OnToggle, Selected, places_menu, scope_label};
+use crate::say_box::{SayBox, SayFilled, SayHint};
 use crate::scopes::{
     EntryAge, EntryKind, EntryNote, InheritedEntry, InheritedGroup, InheritedSource, MAX_ENTRIES,
     MAX_LENGTH, MAX_PHRASE_LENGTH, Scope, ScopeOption, ScopeOptions, build_scope_options,
     entries_in, entry_age, entry_note, entry_place_keys, inherited_for_app, inherited_for_style,
     inherited_of_kind, looks_like_code, new_entry, new_phrase, place_input, places_from_keys,
-    same_places, spoken_phrase, toggle_place,
+    same_places, toggle_place,
 };
-use crate::widgets::{arrow, icon, mono_label, scope_icon, with_keys};
+use crate::widgets::{arrow, icon, mono_label, scope_icon};
 use gpui_kit::assets::IconName;
-use gpui_kit::component::input::{Escape, Input, InputEvent, InputState, Textarea, TextareaState};
+use gpui_kit::component::input::{Escape, InputEvent, InputState, Textarea, TextareaState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -25,10 +26,8 @@ use kass_i18n::tr;
 use kass_ui::{
     Button, ButtonSize, Toast, ToastKind, Toggle, metrics, show_toast, text_input, theme,
 };
-use std::cell::Cell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::time::Duration;
 
 actions!(kass_dictionary, [SubmitPhrase]);
 
@@ -57,27 +56,12 @@ fn phrase_write_input() -> String {
     format!("{PHRASE_WRITE} > Input")
 }
 
-/// The push-to-talk chord when settings haven't loaded.
-fn default_chord() -> Vec<String> {
-    vec!["MetaRight".into(), "AltGr".into()]
-}
-
 /// The dictionary entries, styles and chord as last fetched.
 struct Fetched {
     entries: Result<Vec<DictionaryEntry>, String>,
     styles: Option<WritingStylesResponse>,
     chord: Option<Vec<String>>,
     resolved: Option<(String, Result<ResolvedDictionaryResponse, String>)>,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Take {
-    #[default]
-    Idle,
-    Listening {
-        from_button: bool,
-    },
-    Cleaning,
 }
 
 enum EditText {
@@ -116,17 +100,12 @@ struct Edit {
 
 pub struct DictionaryPage {
     client: ApiClient,
-    dictation: Option<Rc<dyn PhraseDictation>>,
-    following: Option<Subscription>,
-    /// Whether a shortcut take should fill the phrase box instead of being typed.
-    aims_here: Rc<Cell<bool>>,
 
     loaded: bool,
     load_error: Option<String>,
     entries: Vec<DictionaryEntry>,
     styles: Option<WritingStylesResponse>,
     options: Rc<ScopeOptions>,
-    chord: Vec<String>,
     /// The chosen app's resolved dictionary, by bundle id.
     resolved: Option<(String, ResolvedDictionaryResponse)>,
     loading: Option<Task<()>>,
@@ -136,13 +115,10 @@ pub struct DictionaryPage {
 
     say: Entity<InputState>,
     write: Entity<InputState>,
-    phrase_say: Entity<InputState>,
+    phrase_say: Entity<SayBox>,
     phrase_write: Entity<TextareaState>,
     adding: bool,
     add_error: Option<String>,
-    take: Take,
-    heard: Option<String>,
-    filled: bool,
 
     edit: Option<Edit>,
     confirming: Option<String>,
@@ -164,7 +140,15 @@ impl DictionaryPage {
         };
         let say = line(tr!("dictionary-add-say-placeholder"), window, cx);
         let write = line(tr!("dictionary-add-write-placeholder"), window, cx);
-        let phrase_say = line(tr!("dictionary-phrases-say-placeholder"), window, cx);
+        let phrase_say = cx.new(|cx| {
+            SayBox::new(
+                tr!("dictionary-phrases-say-placeholder"),
+                String::new(),
+                window,
+                cx,
+            )
+        });
+        let phrase_say_input = phrase_say.read(cx).input().clone();
         let phrase_write = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(2, 6)
@@ -178,8 +162,12 @@ impl DictionaryPage {
             cx.subscribe_in(&write, window, |page, _, event, window, cx| {
                 page.word_input(event, window, cx)
             }),
-            cx.subscribe_in(&phrase_say, window, |page, _, event, window, cx| {
+            cx.subscribe_in(&phrase_say_input, window, |page, _, event, window, cx| {
                 page.phrase_input(event, true, window, cx)
+            }),
+            cx.subscribe(&phrase_say, |page, _, _: &SayFilled, cx| {
+                page.add_error = None;
+                cx.notify();
             }),
             cx.subscribe_in(&phrase_write, window, |page, _, event, window, cx| {
                 page.phrase_input(event, false, window, cx)
@@ -188,15 +176,11 @@ impl DictionaryPage {
 
         let mut page = Self {
             client,
-            dictation: None,
-            following: None,
-            aims_here: Rc::new(Cell::new(false)),
             loaded: false,
             load_error: None,
             entries: Vec::new(),
             styles: None,
             options: Rc::new(build_scope_options(None, &[])),
-            chord: default_chord(),
             resolved: None,
             loading: None,
             scope: Scope::Global,
@@ -207,9 +191,6 @@ impl DictionaryPage {
             phrase_write,
             adding: false,
             add_error: None,
-            take: Take::Idle,
-            heard: None,
-            filled: false,
             edit: None,
             confirming: None,
             deleting: HashSet::new(),
@@ -223,20 +204,12 @@ impl DictionaryPage {
     /// Lets the "When I say" box of a phrase be dictated: a mic beside it,
     /// and the dictation shortcut fills it while the page shows phrases.
     pub fn with_dictation(
-        mut self,
+        self,
         dictation: Rc<dyn PhraseDictation>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let aims = self.aims_here.clone();
-        let page = cx.weak_entity();
-        self.following = Some(dictation.follow(
-            Rc::new(move |_| aims.get()),
-            Rc::new(move |take, cx| {
-                page.update(cx, |page, cx| page.on_take(take, cx)).ok();
-            }),
-            cx,
-        ));
-        self.dictation = Some(dictation);
+        self.phrase_say
+            .update(cx, |say, cx| say.set_dictation(Some(dictation), cx));
         self
     }
 
@@ -295,7 +268,8 @@ impl DictionaryPage {
             self.styles = fetched.styles;
         }
         if let Some(chord) = fetched.chord {
-            self.chord = chord;
+            self.phrase_say
+                .update(cx, |say, cx| say.set_chord(chord, cx));
         }
         if let Some((bundle, Ok(resolved))) = fetched.resolved {
             self.resolved = Some((bundle, resolved));
@@ -394,8 +368,9 @@ impl DictionaryPage {
                 || focused(edit.spoken.read(cx).focus_handle(cx))
                 || focused(edit.written.focus_handle(cx));
         }
-        self.aims_here
-            .set(self.kind == EntryKind::Phrases && !elsewhere);
+        self.phrase_say
+            .read(cx)
+            .set_aims(self.kind == EntryKind::Phrases && !elsewhere);
     }
 
     // Adding
@@ -466,7 +441,7 @@ impl DictionaryPage {
     }
 
     fn phrase_ready(&self, cx: &App) -> Option<(String, String)> {
-        let spoken = self.phrase_say.read(cx).value().trim().to_string();
+        let spoken = self.phrase_say.read(cx).value(cx);
         let written = self.phrase_write.read(cx).value().trim().to_string();
         let ready = !spoken.is_empty()
             && !written.is_empty()
@@ -495,7 +470,7 @@ impl DictionaryPage {
                     Ok(entry) => {
                         page.added(entry, cx);
                         page.phrase_say
-                            .update(cx, |s, cx| s.set_value("", window, cx));
+                            .update(cx, |say, cx| say.set_value("", window, cx));
                         page.phrase_write
                             .update(cx, |s, cx| s.set_value("", window, cx));
                     }
@@ -511,57 +486,6 @@ impl DictionaryPage {
         self.entries.insert(0, entry);
         self.rebuild_options();
         self.refresh(cx);
-    }
-
-    // Saying a phrase
-
-    fn on_take(&mut self, take: PhraseTake, cx: &mut Context<Self>) {
-        self.take = match take {
-            PhraseTake::Listening { from_button } => Take::Listening { from_button },
-            PhraseTake::Cleaning => Take::Cleaning,
-            PhraseTake::Idle => Take::Idle,
-            PhraseTake::Heard(text) => {
-                let phrase = spoken_phrase(&text);
-                if !phrase.is_empty() {
-                    self.heard = Some(phrase);
-                }
-                Take::Idle
-            }
-        };
-        cx.notify();
-    }
-
-    /// Puts a heard phrase in the box, which flashes to show it was filled.
-    fn fill_heard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(phrase) = self.heard.take() else {
-            return;
-        };
-        self.phrase_say
-            .update(cx, |s, cx| s.set_value(phrase, window, cx));
-        self.add_error = None;
-        self.filled = true;
-        cx.spawn(async move |page, cx| {
-            cx.background_executor()
-                .timer(Duration::from_millis(900))
-                .await;
-            page.update(cx, |page, cx| {
-                page.filled = false;
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    fn toggle_mic(&mut self, cx: &mut Context<Self>) {
-        let Some(dictation) = self.dictation.clone() else {
-            return;
-        };
-        match self.take {
-            Take::Listening { from_button: true } => dictation.stop(cx),
-            Take::Idle => dictation.start(cx),
-            _ => {}
-        }
     }
 
     // Editing
@@ -774,7 +698,6 @@ impl DictionaryPage {
 
 impl Render for DictionaryPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.fill_heard(window, cx);
         self.update_aim(window, cx);
         let t = theme(cx).clone();
 
@@ -1211,7 +1134,7 @@ impl DictionaryPage {
                             .flex_col()
                             .gap_1p5()
                             .child(Self::field_label(tr!("dictionary-add-say"), cx))
-                            .child(self.render_phrase_say(cx)),
+                            .child(self.phrase_say.clone()),
                     )
                     .child(
                         div()
@@ -1247,7 +1170,9 @@ impl DictionaryPage {
                     ),
             )
             .child(
-                self.render_phrase_hint(cx)
+                self.phrase_say
+                    .read(cx)
+                    .hint(SayHint::Add, cx)
                     .mt_2()
                     .text_color(t.muted_foreground),
             )
@@ -1263,116 +1188,6 @@ impl DictionaryPage {
             .bg(t.card)
             .text_size(metrics::TEXT_BASE)
     }
-
-    fn render_phrase_say(&self, cx: &mut Context<Self>) -> Div {
-        let t = theme(cx).clone();
-        let listening = matches!(self.take, Take::Listening { .. });
-        let from_button = self.take == (Take::Listening { from_button: true });
-        let cleaning = self.take == Take::Cleaning;
-        let input: Input = text_input(&self.phrase_say, cx)
-            .h(px(32.))
-            .when(self.filled, |input| input.bg(t.accent.opacity(0.1)));
-        let field = div()
-            .relative()
-            .flex_1()
-            .min_w_0()
-            .when(cleaning, |f| f.opacity(0.6))
-            .child(input)
-            .when(listening, |f| f.child(listening_overlay(cx)));
-
-        div()
-            .flex()
-            .items_center()
-            .gap_1p5()
-            .child(field)
-            .when_some(self.dictation.as_ref(), |row, _| {
-                let button = Button::new("phrase-mic")
-                    .size(ButtonSize::Icon)
-                    .w(px(32.))
-                    .h(px(32.))
-                    .disabled(cleaning || (listening && !from_button))
-                    .on_click(cx.listener(|page, _, _, cx| page.toggle_mic(cx)));
-                let button = if from_button {
-                    button
-                        .icon(IconName::Square)
-                        .tooltip(tr!("dictionary-phrases-stop"))
-                } else {
-                    button
-                        .outline()
-                        .icon(IconName::Mic)
-                        .tooltip(tr!("dictionary-phrases-dictate"))
-                };
-                row.child(button)
-            })
-    }
-
-    fn render_phrase_hint(&self, cx: &App) -> Div {
-        let id = if self.dictation.is_none() {
-            "dictionary-phrases-hint-typed"
-        } else if self.take == (Take::Listening { from_button: false }) {
-            "dictionary-phrases-hint-release"
-        } else {
-            "dictionary-phrases-hint"
-        };
-        with_keys(&tr!(id), &self.chord, cx)
-            .min_h(px(26.))
-            .text_size(metrics::TEXT_XS)
-            .line_height(px(26.))
-    }
-}
-
-/// Bars that show the box is listening, over its text.
-fn listening_overlay(cx: &App) -> Div {
-    let t = theme(cx).clone();
-    let accent = t.accent;
-    let bars = [6., 14., 10., 16., 8.];
-    div()
-        .absolute()
-        .inset_0()
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .px(px(10.))
-        .rounded(metrics::RADIUS_MD)
-        .border_1()
-        .border_color(accent)
-        .bg(t.card)
-        .shadow(vec![BoxShadow {
-            color: accent.opacity(0.2),
-            offset: point(px(0.), px(0.)),
-            blur_radius: px(0.),
-            spread_radius: px(3.),
-            inset: false,
-        }])
-        .child(
-            div().flex().items_center().gap(px(2.)).h(px(16.)).children(
-                bars.into_iter()
-                    .enumerate()
-                    .map(move |(i, height): (usize, f32)| {
-                        div()
-                            .w(px(3.))
-                            .h(px(height))
-                            .rounded(px(1.5))
-                            .bg(accent)
-                            .with_animation(
-                                ("listening-bar", i),
-                                Animation::new(Duration::from_millis(900)).repeat(),
-                                move |bar, delta| {
-                                    let phase = (delta + i as f32 * 0.18).fract();
-                                    let scale = 0.45 + 0.55 * (phase * std::f32::consts::PI).sin();
-                                    bar.h(px(height * scale))
-                                },
-                            )
-                    }),
-            ),
-        )
-        .child(
-            div()
-                .font_family(t.mono_font.clone())
-                .text_size(metrics::TEXT_CAPTION)
-                .text_color(accent)
-                .child(tr!("dictionary-phrases-listening")),
-        )
 }
 
 // The list

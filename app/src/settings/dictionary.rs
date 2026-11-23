@@ -1,9 +1,10 @@
-//! Dictation for the Dictionary page's "When I say" box: its mic starts a
-//! take here, and a shortcut take aimed at the main window is claimed for
-//! the box before it would be typed, while the page shows phrases and no
-//! other field has focus. Either way the box gets the take's raw transcript,
-//! as heard: cleanup may have rewritten it, or swapped in a phrase already
-//! in the dictionary.
+//! Dictation for a phrase's "When I say" box (the Dictionary page's, and
+//! the Captures page's phrase dialog): its mic starts a take here, and a
+//! shortcut take aimed at the main window is claimed for the box before it
+//! would be typed, while the box's page shows it and no other field has
+//! focus. Either way the box gets the take's raw transcript, as heard:
+//! cleanup may have rewritten it, or swapped in a phrase already in the
+//! dictionary.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -179,9 +180,26 @@ struct StateEvent {
 }
 
 /// One per box: the mic's take is its own.
-#[derive(Default)]
 pub struct HostDictation {
     takes: Rc<RefCell<Takes>>,
+    /// The main window's page the box is on; it takes no shortcut take
+    /// while another shows.
+    path: &'static str,
+}
+
+impl HostDictation {
+    pub fn on(path: &'static str) -> Self {
+        Self {
+            takes: Rc::default(),
+            path,
+        }
+    }
+}
+
+impl Default for HostDictation {
+    fn default() -> Self {
+        Self::on(PATH)
+    }
 }
 
 impl PhraseDictation for HostDictation {
@@ -197,6 +215,7 @@ impl PhraseDictation for HostDictation {
 
     fn follow(&self, aims_here: AimsHere, on_take: OnTake, _: &mut App) -> Subscription {
         let takes = self.takes.clone();
+        let path = self.path;
         let id = FOLLOWERS.with_borrow_mut(|followers| {
             if !followers.listening {
                 followers.listening = true;
@@ -211,7 +230,7 @@ impl PhraseDictation for HostDictation {
                 id: followers.next,
                 takes,
                 // The page keeps its box's aim while it's hidden.
-                aims: Rc::new(move |cx| shell::showing(PATH, cx) && aims_here(cx)),
+                aims: Rc::new(move |cx| shell::showing(path, cx) && aims_here(cx)),
                 on_take,
             });
             followers.next

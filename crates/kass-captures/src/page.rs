@@ -5,7 +5,7 @@
 use crate::format::{matches_search, went_into_kass};
 use crate::host::{CapturesHost, Route};
 use crate::new_app::Naming;
-use crate::phrases::{DictionaryWord, PhraseDraft, new_phrase, spelling_entry};
+use crate::phrases::{DictionaryWord, FiredPhrase, PhraseDraft, new_phrase, spelling_entry};
 use crate::player::PlayerView;
 use crate::spelling::Places;
 use crate::teach::{Submission, Teach, add_round};
@@ -20,10 +20,11 @@ use kass_api::types::{
     WritingStyleHabit, WritingStylesResponse,
 };
 use kass_api::{ApiClient, CaptureEvent, Mac, SseCancel};
+use kass_dictionary::{SayBox, SayHint};
 use kass_i18n::tr;
 use kass_ui::{
     Button, Confirm, SelectOption, SelectOptions, Toast, ToastKind, close_dialog, dialog_footer,
-    dialog_header, open_confirm, open_dialog, select_state, show_toast, text_input,
+    dialog_header, open_confirm, open_dialog, select_state, show_toast,
 };
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -87,9 +88,19 @@ pub(crate) struct Detail {
     pub heard_open: bool,
     pub help_open: bool,
     pub copied: bool,
+    /// A phrase's popover, opened from the text it wrote.
+    pub phrase_open: Option<OpenPhrase>,
+    /// Which of the text's phrases the pointer is over.
+    pub phrase_hover: Option<usize>,
     /// What is selected in the edit box, so the page redraws as it changes.
     selection: std::ops::Range<usize>,
     _subscriptions: Vec<Subscription>,
+}
+
+/// A phrase that wrote into the transcript, shown where it was clicked.
+pub(crate) struct OpenPhrase {
+    pub phrase: FiredPhrase,
+    pub at: Point<Pixels>,
 }
 
 /// The style picker in the app header, for one app.
@@ -577,6 +588,8 @@ impl CapturesPage {
             heard_open: false,
             help_open: false,
             copied: false,
+            phrase_open: None,
+            phrase_hover: None,
             selection: 0..0,
             _subscriptions: subscriptions,
         }
@@ -1004,6 +1017,8 @@ impl CapturesPage {
         if detail.teach.draft.is_some() || detail.teach.saving {
             return;
         }
+        detail.phrase_open = None;
+        detail.phrase_hover = None;
         detail.teach.begin(&detail.reports);
         let text = detail.teach.current(&detail.reports);
         detail.editor.update(cx, |state, cx| {
@@ -1014,6 +1029,32 @@ impl CapturesPage {
             state.focus(window, cx);
         });
         cx.notify();
+    }
+
+    /// Opens what a phrase in the transcript wrote, at `at`.
+    pub(crate) fn open_phrase(
+        &mut self,
+        phrase: FiredPhrase,
+        at: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(detail) = &mut self.detail {
+            detail.phrase_open = Some(OpenPhrase { phrase, at });
+            cx.notify();
+        }
+    }
+
+    /// Closes the phrase popover; whether one was open.
+    pub(crate) fn close_phrase(&mut self, cx: &mut Context<Self>) -> bool {
+        let open = self
+            .detail
+            .as_mut()
+            .and_then(|detail| detail.phrase_open.take())
+            .is_some();
+        if open {
+            cx.notify();
+        }
+        open
     }
 
     pub(crate) fn cancel_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1267,14 +1308,31 @@ impl CapturesPage {
     }
 
     /// Asks what to say and write for a new phrase, then adds it and saves
-    /// the correction with it.
+    /// the correction with it. The phrase can be said again, from the mic
+    /// or the shortcut, to say it another way.
     pub(crate) fn make_phrase(
         &mut self,
         draft: PhraseDraft,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let said = cx.new(|cx| InputState::new(window, cx).default_value(draft.said.clone()));
+        let dictation = self.host.phrase_dictation();
+        let chord = self
+            .capture_settings
+            .as_ref()
+            .map(|settings| settings.chord_push_to_talk_keys.clone())
+            .unwrap_or_default();
+        let said = cx.new(|cx| {
+            let mut say = SayBox::new(
+                tr!("dictionary-phrases-say-placeholder"),
+                draft.said.clone(),
+                window,
+                cx,
+            )
+            .with_dictation(dictation, cx);
+            say.set_chord(chord, cx);
+            say
+        });
         let written = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(2, 6)
@@ -1282,10 +1340,21 @@ impl CapturesPage {
         });
         let places = Places::new(self);
         let page = cx.entity().downgrade();
-        open_dialog(window, cx, move |_, cx| {
+        let say_input = said.read(cx).input().clone();
+        open_dialog(window, cx, move |window, cx| {
             let t = kass_ui::theme(cx).clone();
             let (said, written, page, places) =
                 (said.clone(), written.clone(), page.clone(), places.clone());
+            // A shortcut take fills the box unless the text is being typed.
+            let writing = written.read(cx).focus_handle(cx).is_focused(window);
+            said.read(cx).set_aims(!writing);
+            let ready = {
+                let say = said.read(cx);
+                say.idle()
+                    && !say.value(cx).is_empty()
+                    && !written.read(cx).value().trim().is_empty()
+                    && !places.is_empty()
+            };
             let label = |text: String| {
                 div()
                     .text_size(kass_ui::metrics::TEXT_XS)
@@ -1306,15 +1375,20 @@ impl CapturesPage {
                         .flex()
                         .flex_col()
                         .gap(px(6.))
-                        .child(label(tr!("dictionary-phrases-say-placeholder")))
-                        .child(text_input(&said, cx)),
+                        .child(label(tr!("dictionary-add-say")))
+                        .child(said.clone())
+                        .child(
+                            said.read(cx)
+                                .hint(SayHint::Another, cx)
+                                .text_color(t.muted_foreground),
+                        ),
                 )
                 .child(
                     div()
                         .flex()
                         .flex_col()
                         .gap(px(6.))
-                        .child(label(tr!("dictionary-phrases-write-placeholder")))
+                        .child(label(tr!("dictionary-phrases-write")))
                         .child(
                             gpui_kit::component::input::Textarea::new(&written)
                                 .px(px(10.))
@@ -1337,13 +1411,15 @@ impl CapturesPage {
                         .child(
                             Button::new("phrase-add")
                                 .label(tr!("captures-phrase-submit"))
+                                .disabled(!ready)
                                 .on_click({
                                     let (said, written, page) =
                                         (said.clone(), written.clone(), page.clone());
                                     move |_, window, cx| {
-                                        let spoken = said.read(cx).value().trim().to_string();
+                                        let spoken = said.read(cx).value(cx);
                                         let text = written.read(cx).value().to_string();
-                                        if spoken.is_empty()
+                                        if !said.read(cx).idle()
+                                            || spoken.is_empty()
                                             || text.trim().is_empty()
                                             || places.is_empty()
                                         {
@@ -1361,6 +1437,7 @@ impl CapturesPage {
                 )
                 .into_any_element()
         });
+        say_input.update(cx, |state, cx| state.focus(window, cx));
     }
 
     fn add_phrase(
@@ -1439,6 +1516,11 @@ impl Render for CapturesPage {
                 cx.listener(|page, _: &DeleteCapture, window, cx| page.ask_delete(window, cx)),
             )
             .on_action(cx.listener(|page, _: &Escape, window, cx| page.cancel_edit(window, cx)))
+            .on_key_down(cx.listener(|page, event: &KeyDownEvent, _, cx| {
+                if event.keystroke.key == "escape" && page.close_phrase(cx) {
+                    cx.stop_propagation();
+                }
+            }))
             .size_full()
             .flex()
             .overflow_hidden()
