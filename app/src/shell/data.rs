@@ -23,6 +23,10 @@ const POLL: Duration = Duration::from_secs(5);
 /// answer. Macs on one network answer in milliseconds.
 const AWAY_CHECK: Duration = Duration::from_secs(3);
 const AWAY_TIMEOUT: Duration = Duration::from_millis(1500);
+/// Checks in a row that must go unanswered before it's called away: one
+/// late reply (a busy or paged-out Mac) isn't gone, and switching to this
+/// Mac's own, slower models for it costs more than waiting a few seconds.
+const AWAY_MISSES: u32 = 3;
 /// While it's away, how often to look for it under a changed network name.
 const RENAMED_SEARCH: Duration = Duration::from_secs(30);
 /// Microphones and learned examples change rarely: every this many polls.
@@ -292,12 +296,14 @@ async fn check_away(this: WeakEntity<ShellData>, cx: &mut AsyncApp) {
     // found away, so it's asked to load its models until it has.
     let mut woken = false;
     let mut searched: Option<Instant> = None;
+    let mut misses: u32 = 0;
     loop {
         let Ok((remote, api)) = this.read_with(cx, |this, _| (this.remote(), this.api.clone()))
         else {
             return;
         };
         let saved = prefs::get().remote_mac_id;
+        let remote_none = remote.is_none();
         let away = match remote {
             None => false,
             Some(remote) => {
@@ -343,9 +349,14 @@ async fn check_away(this: WeakEntity<ShellData>, cx: &mut AsyncApp) {
                         .spawn(async move { api.local_sync_wake().is_ok() })
                         .await;
                 }
-                !found
+                let (next, away) = count_miss(misses, found);
+                misses = next;
+                away
             }
         };
+        if remote_none {
+            misses = 0;
+        }
         if prefs::set_away(away) {
             eprintln!(
                 "[network] {}",
@@ -358,6 +369,17 @@ async fn check_away(this: WeakEntity<ShellData>, cx: &mut AsyncApp) {
         }
         cx.background_executor().timer(AWAY_CHECK).await;
     }
+}
+
+/// Counts a check: `misses` unanswered ones in a row so far, `found`
+/// whether this one was answered. Returns the new count and whether the
+/// other Mac is away. An answer clears the count and brings it back at once.
+fn count_miss(misses: u32, found: bool) -> (u32, bool) {
+    if found {
+        return (0, false);
+    }
+    let misses = misses.saturating_add(1).min(AWAY_MISSES);
+    (misses, misses >= AWAY_MISSES)
 }
 
 /// What the other Mac's address answering means.
@@ -440,6 +462,27 @@ mod tests {
     #[test]
     fn another_macs_kass_under_its_old_name_is_not_it() {
         assert_eq!(judge(id("m-2"), Some("m-1")), Answer::Away);
+    }
+
+    #[test]
+    fn one_or_two_misses_are_not_away() {
+        assert_eq!(count_miss(0, false), (1, false));
+        assert_eq!(count_miss(1, false), (2, false));
+    }
+
+    #[test]
+    fn the_third_miss_in_a_row_is_away_and_stays() {
+        assert_eq!(count_miss(2, false), (3, true));
+        assert_eq!(count_miss(3, false), (3, true));
+    }
+
+    #[test]
+    fn one_answer_clears_the_misses_and_brings_it_back() {
+        assert_eq!(count_miss(2, true), (0, false));
+        assert_eq!(count_miss(3, true), (0, false));
+        // Misses must be consecutive: an answer in between starts over.
+        let (m, _) = count_miss(2, true);
+        assert_eq!(count_miss(m, false), (1, false));
     }
 
     #[test]
