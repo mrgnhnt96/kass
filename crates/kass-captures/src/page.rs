@@ -952,6 +952,17 @@ impl CapturesPage {
     // Teaching a correction.
 
     pub(crate) fn begin_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.begin_edit_at(None, window, cx);
+    }
+
+    /// Start editing with the cursor at byte offset `at` of the shown text
+    /// (where the user clicked), or at the end when `None`.
+    pub(crate) fn begin_edit_at(
+        &mut self,
+        at: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(detail) = &mut self.detail else {
             return;
         };
@@ -962,6 +973,9 @@ impl CapturesPage {
         let text = detail.teach.current(&detail.reports);
         detail.editor.update(cx, |state, cx| {
             state.set_value(text, window, cx);
+            if let Some(at) = at {
+                state.set_selected_range(at..at, cx);
+            }
             state.focus(window, cx);
         });
         cx.notify();

@@ -513,12 +513,16 @@ impl CapturesPage {
             );
         }
 
+        // The text sits in the same box whether it is shown or being edited,
+        // down to the 1px border, so tapping in never moves a word.
         let surface = |d: Div| {
             d.mx(px(-6.))
                 .my(px(-4.))
                 .px(px(6.))
                 .py(px(4.))
                 .rounded(metrics::RADIUS_MD)
+                .border_1()
+                .border_color(gpui_kit::transparent_black())
                 .text_size(size)
                 .line_height(line)
                 .font_weight(FontWeight::MEDIUM)
@@ -528,13 +532,15 @@ impl CapturesPage {
             card = card.child(
                 surface(div())
                     .bg(t.foreground.opacity(0.04))
-                    .border_1()
                     .border_color(t.ring)
                     .child(
+                        // No frame of its own: the surface is the frame, and
+                        // the type matches the shown text exactly.
                         Textarea::new(&detail.editor)
+                            .appearance(false)
                             .text_size(size)
-                            .font_weight(FontWeight::MEDIUM)
-                            .bg(gpui_kit::transparent_black()),
+                            .line_height(line)
+                            .font_weight(FontWeight::MEDIUM),
                     ),
             );
             if let Some(add) = self.render_pick(cx) {
@@ -542,6 +548,7 @@ impl CapturesPage {
             }
             card = card.child(self.render_teach_actions(window, cx));
         } else {
+            let mut hit: Option<TextLayout> = None;
             let text = if let Some(saved) = saved {
                 let after = diff_words(&teach.original, &saved.expected_text).after;
                 let mut joined = String::new();
@@ -559,9 +566,9 @@ impl CapturesPage {
                         ));
                     }
                 }
-                StyledText::new(joined)
-                    .with_highlights(marks)
-                    .into_any_element()
+                let text = StyledText::new(joined).with_highlights(marks);
+                hit = Some(text.layout().clone());
+                text.into_any_element()
             } else if shown.is_empty() {
                 div()
                     .text_size(px(16.))
@@ -588,11 +595,13 @@ impl CapturesPage {
                         ));
                     }
                 }
-                StyledText::new(joined)
-                    .with_highlights(marks)
-                    .into_any_element()
+                let text = StyledText::new(joined).with_highlights(marks);
+                hit = Some(text.layout().clone());
+                text.into_any_element()
             } else {
-                StyledText::new(shown.clone()).into_any_element()
+                let text = StyledText::new(shown.clone());
+                hit = Some(text.layout().clone());
+                text.into_any_element()
             };
             card = card.child(
                 surface(div())
@@ -602,7 +611,15 @@ impl CapturesPage {
                     .tooltip(|window, cx| {
                         Tooltip::new(tr!("captures-teach-edit-hint")).build(window, cx)
                     })
-                    .on_click(cx.listener(|page, _, window, cx| page.begin_edit(window, cx)))
+                    .on_click(cx.listener(move |page, event: &ClickEvent, window, cx| {
+                        // Start editing with the cursor where the user clicked.
+                        let at = hit
+                            .as_ref()
+                            .map(|layout| match layout.index_for_position(event.position()) {
+                                Ok(i) | Err(i) => i,
+                            });
+                        page.begin_edit_at(at, window, cx);
+                    }))
                     .child(text),
             );
             if let Some(notice) = self.render_learned(cx) {
