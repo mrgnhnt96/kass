@@ -269,6 +269,20 @@ const KNOWN_GOOD: [&str; 16] = [
 /// The slowest the rules may make a worst-size dictation, in milliseconds.
 const LATENCY_MS: f64 = 5.0;
 
+/// How long, in milliseconds, rules take on a worst-size dictation in each
+/// language.
+type Timer = fn(&[Example], &[Rule], &[Option<&str>]) -> f64;
+
+/// Only an optimized build, the one that ships, times the rules. Unoptimized
+/// regex runs about 15 times slower (one rule takes ~2 ms of the 5), so a
+/// debug build's timing says nothing about a dictation and would flip learning
+/// (and every test through it) on how busy the machine is.
+const TIMER: Option<Timer> = if cfg!(debug_assertions) {
+    None
+} else {
+    Some(median_latency)
+};
+
 /// One report: the take as it was shown and as the user wanted it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Example {
@@ -612,6 +626,17 @@ impl Metrics {
 ///
 /// Python's `evaluate(..., every_report=True)`, the only way the job calls it.
 pub fn evaluate(examples: &[Example], active: &[Rule], blocked: &[String]) -> (Vec<Rule>, Metrics) {
+    evaluate_timed(examples, active, blocked, TIMER)
+}
+
+/// [`evaluate`], with the rules it would keep timed by `timer`; without one
+/// they aren't timed and pass.
+fn evaluate_timed(
+    examples: &[Example],
+    active: &[Rule],
+    blocked: &[String],
+    timer: Option<Timer>,
+) -> (Vec<Rule>, Metrics) {
     // The last report of each take and language, where that take first came.
     let mut order: Vec<(Option<&str>, &str)> = Vec::new();
     let mut unique: HashMap<(Option<&str>, &str), &Example> = HashMap::new();
@@ -705,7 +730,7 @@ pub fn evaluate(examples: &[Example], active: &[Rule], blocked: &[String]) -> (V
         accepted += 1;
     }
 
-    let latency = median_latency(&examples, &selected, &languages);
+    let latency = timer.map_or(0.0, |time| time(&examples, &selected, &languages));
     let passed = latency <= LATENCY_MS;
     let metrics = Metrics {
         examples: examples.len(),
@@ -856,6 +881,32 @@ mod tests {
             evaluate(&samples(["manual"; 3]), &selected, &[]).0,
             selected
         );
+    }
+
+    #[test]
+    fn rules_too_slow_for_a_dictation_are_not_learned() {
+        let examples = samples(["manual"; 3]);
+        let (learned, metrics) = evaluate_timed(&examples, &[], &[], Some(|_, _, _| 4.0));
+        assert_eq!(learned.len(), 1);
+        assert_eq!(metrics.median_rule_ms, 4.0);
+        assert!(metrics.latency_passed);
+
+        let (selected, metrics) = evaluate_timed(&examples, &[], &[], Some(|_, _, _| 6.0));
+        assert!(selected.is_empty());
+        assert_eq!(metrics.accepted, 0);
+        assert!(!metrics.latency_passed);
+        // Rules already learned stay; only additions wait for a faster set.
+        let (kept, _) = evaluate_timed(&examples, &learned, &[], Some(|_, _, _| 6.0));
+        assert_eq!(kept, learned);
+    }
+
+    #[test]
+    fn untimed_rules_pass_the_gate() {
+        assert_eq!(TIMER.is_none(), cfg!(debug_assertions));
+        let (learned, metrics) = evaluate_timed(&samples(["manual"; 3]), &[], &[], None);
+        assert_eq!(learned.len(), 1);
+        assert_eq!(metrics.median_rule_ms, 0.0);
+        assert!(metrics.latency_passed);
     }
 
     #[test]
