@@ -563,6 +563,7 @@ async fn start_server(
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?
         .join("kass.db");
+    let prepared = database.clone();
     tokio::task::spawn_blocking(move || {
         kass_server::db::prepare(&database)?;
         kass_server::db::seed(&database)?;
@@ -574,7 +575,17 @@ async fn start_server(
     })
     .await
     .map_err(|e| e.to_string())??;
+    let worker_was_running = state.child.lock().unwrap().is_some();
     start_worker(&app, &state, models_dir).await?;
+    // A stand-in for a shared Kass loads them once it dictates here
+    // (`sync::job`). A model that fails to load loads on first use instead.
+    let standing_in = state.shared_server.lock().unwrap().is_some();
+    if !worker_was_running && !standing_in {
+        let worker = (std::net::Ipv4Addr::LOCALHOST, WORKER_PORT).into();
+        if let Err(error) = kass_server::load_startup_models(prepared, worker).await {
+            eprintln!("[kass] Could not load the startup models: {error}");
+        }
+    }
     serve_api(&app, &state, share).await?;
     Ok(format!("http://127.0.0.1:{}", SERVER_PORT))
 }

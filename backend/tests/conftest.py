@@ -1,14 +1,6 @@
 import pytest
 
-from backend.services import dictionary, shared_adapters
-
-
-@pytest.fixture(autouse=True)
-def fresh_styles():
-    """The dictionary snapshot is process-wide; each test reads its own database."""
-    dictionary.invalidate()
-    yield
-    dictionary.invalidate()
+from backend.services import shared_adapters
 
 
 @pytest.fixture(autouse=True)

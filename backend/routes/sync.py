@@ -2,11 +2,13 @@
 
 The Rust server serves /sync/* and runs a stand-in's sync with the shared
 Kass. The worker only switches to the shared Kass's trained models once
-they're copied, and loads its models when the app falls back to a stand-in.
+they're copied.
 """
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+from .stream_models import CleanupPrompt
 
 router = APIRouter(prefix="/worker", tags=["worker"])
 
@@ -29,10 +31,24 @@ async def use_mirrored(request: Mirrored):
     return {"active": active}
 
 
+class Startup(BaseModel):
+    """What the app sends once the worker is up (app/server/src/startup.rs)."""
+
+    stt_model: str
+    llm_model: str
+    auto_refine: bool
+    language: str | None = None
+    # CaptureSettings.shared_adapters, until /worker/shared-adapters/switched.
+    shared_adapters: bool = True
+    # The default style's cleanup prompt first, then the other styles apps are in.
+    prompts: list[CleanupPrompt] = []
+
+
 @router.post("/models/startup")
-async def load_startup_models():
-    """Load the models a stand-in leaves unloaded: the app dictates on it."""
+async def load_startup_models(request: Startup):
+    """Load the saved models and warm the cleanup prompts dictation sends:
+    when the app starts the worker, and when a stand-in starts dictating."""
     from ..services.model_startup import load_startup_models as load
 
-    await load()
+    await load(request)
     return {}

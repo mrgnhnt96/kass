@@ -33,6 +33,7 @@ pub mod models;
 pub mod proxy;
 pub mod routes;
 pub mod settings;
+mod startup;
 pub mod stream;
 pub mod styles;
 pub mod sync;
@@ -216,6 +217,14 @@ pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> Ap
         teach: Arc::default(),
         model_improvement: Arc::default(),
     }
+}
+
+/// Have the worker at `worker` load the models dictation starts with and
+/// warm the cleanup prompts it will send, from the settings and styles in
+/// `database` (already prepared). The app calls it once it starts the
+/// worker, unless this Mac stands in for a shared Kass.
+pub async fn load_startup_models(database: PathBuf, worker: SocketAddr) -> Result<(), String> {
+    worker::load_startup_models(&proxy::Proxy::new(worker), &db::Db::new(database), None).await
 }
 
 /// Bind the port and serve in the background on the
