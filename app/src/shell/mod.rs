@@ -3,6 +3,7 @@
 //! downloads) draw over every screen.
 
 mod asks;
+mod away;
 mod captures;
 pub mod data;
 mod downloads;
@@ -495,6 +496,7 @@ impl Render for MainShell {
                             .overflow_hidden()
                             .flex()
                             .flex_col()
+                            .children(away::banner(&self.data, cx))
                             .child(content),
                     ),
             )
