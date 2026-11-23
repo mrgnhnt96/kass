@@ -153,11 +153,13 @@ async fn import_changes(State(state): State<AppState>, request: Request) -> Resp
     };
     let count = changes.len();
     let data_dir = data_dir(&state);
-    let applied = match state
+    let applied = state
         .db
         .call(move |conn| import::apply(conn, &data_dir, changes, &audio))
-        .await
-    {
+        .await;
+    // The settings may have changed, even by a batch that failed partway.
+    state.chosen_speech.forget();
+    let applied = match applied {
         Ok(applied) => applied,
         Err(error) => return failed(error),
     };

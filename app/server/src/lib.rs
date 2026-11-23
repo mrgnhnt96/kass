@@ -74,6 +74,10 @@ pub struct AppState {
     events: events::Events,
     /// Each app's dictionary, built once per change.
     pub dictionaries: Arc<dictionary::matching::Dictionaries>,
+    /// The speech model the settings choose, for `/health`.
+    pub chosen_speech: Arc<settings::ChosenSpeech>,
+    /// The styles' cleanup prompts as last built, for the styles page.
+    pub style_prompts: Arc<routes::styles::StylePrompts>,
     pub known_names: Arc<known_names::KnownNames>,
     /// Silero, shared by every dictation.
     pub voice: Option<Arc<stream::speech::VoiceModel>>,
@@ -187,6 +191,8 @@ pub(crate) fn test_state(worker: SocketAddr, database: std::path::PathBuf) -> Ap
         sync: dictionary::store::Sync { standing_in: false },
         events: events::Events::default(),
         dictionaries: Arc::default(),
+        chosen_speech: Arc::default(),
+        style_prompts: Arc::default(),
         known_names: Arc::default(),
         voice: None,
         streams: Arc::default(),
@@ -232,6 +238,8 @@ pub async fn start(config: Config) -> Result<Running, String> {
         },
         events: events::Events::default(),
         dictionaries: Arc::default(),
+        chosen_speech: Arc::default(),
+        style_prompts: Arc::default(),
         known_names: Arc::default(),
         voice: config.voice_model.as_deref().and_then(|path| {
             stream::speech::VoiceModel::load(path)

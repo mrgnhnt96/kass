@@ -7,6 +7,8 @@
 //! stays there, and the routes ask for it (`crate::worker`). Sweeping old
 //! captures is `captures::retention`.
 
+use std::sync::Mutex;
+
 use chrono::{Duration, NaiveDateTime};
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -389,6 +391,59 @@ pub fn get(conn: &mut Connection) -> rusqlite::Result<Settings> {
     Ok(settings)
 }
 
+// -- the chosen speech model, without the database ---------------------------
+
+/// The speech model the settings choose, kept so `/health` can say whether
+/// it is downloaded without waiting for the database. Read once, then kept
+/// until something changes it: a save through `PUT /settings/captures`
+/// ([`ChosenSpeech::saved`]) or a shared Kass's sync ([`ChosenSpeech::forget`]).
+#[derive(Default)]
+pub struct ChosenSpeech(Mutex<Chosen>);
+
+#[derive(Default)]
+struct Chosen {
+    /// Counts each forget, so a read that started before one isn't kept.
+    forgotten: u64,
+    model: Option<String>,
+}
+
+impl ChosenSpeech {
+    fn chosen(&self) -> std::sync::MutexGuard<'_, Chosen> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The model kept, or, when none is, the mark to read the settings
+    /// under and pass to [`ChosenSpeech::keep`].
+    pub fn get(&self) -> Result<String, u64> {
+        let chosen = self.chosen();
+        chosen.model.clone().ok_or(chosen.forgotten)
+    }
+
+    /// Keep `model`, read from the settings since [`ChosenSpeech::get`] gave
+    /// `mark`, unless it was forgotten meanwhile.
+    pub fn keep(&self, mark: u64, model: &str) {
+        let mut chosen = self.chosen();
+        if chosen.forgotten == mark {
+            chosen.model = Some(model.to_string());
+        }
+    }
+
+    /// The settings were just saved choosing `model`. Called where the save
+    /// commits, so saves are kept in the order they were made.
+    pub fn saved(&self, model: &str) {
+        let mut chosen = self.chosen();
+        chosen.forgotten += 1;
+        chosen.model = Some(model.to_string());
+    }
+
+    /// The settings may have changed: read them again next time.
+    pub fn forget(&self) {
+        let mut chosen = self.chosen();
+        chosen.forgotten += 1;
+        chosen.model = None;
+    }
+}
+
 // -- writing ------------------------------------------------------------------
 
 /// What a `PUT /settings/captures` sets. A null for a setting that can't be
@@ -635,6 +690,27 @@ pub fn record_take(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_chosen_speech_model_isnt_kept_from_a_read_older_than_a_change() {
+        let chosen = ChosenSpeech::default();
+        let mark = chosen.get().unwrap_err();
+        // Read before a sync replaced the settings: not kept.
+        chosen.forget();
+        chosen.keep(mark, "turbo");
+        let mark = chosen.get().unwrap_err();
+        chosen.keep(mark, "small");
+        assert_eq!(chosen.get(), Ok("small".to_string()));
+
+        // A save replaces it, and an older read can't put it back.
+        let mark = {
+            chosen.forget();
+            chosen.get().unwrap_err()
+        };
+        chosen.saved("tiny");
+        chosen.keep(mark, "small");
+        assert_eq!(chosen.get(), Ok("tiny".to_string()));
+    }
 
     fn transform(name: &str, instruction: &str) -> Transform {
         Transform {

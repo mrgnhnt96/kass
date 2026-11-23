@@ -486,3 +486,66 @@ async fn the_cache_size_is_the_largest_styles_prompt() {
     assert_eq!(status, 200);
     assert_eq!(listing["cache_mb_per_style"], Value::Null);
 }
+
+/// The prompts are built again only when what they're built from changes,
+/// and the worker counts them on every listing, since what it answers
+/// depends on whether the cleanup model is downloaded.
+#[tokio::test]
+async fn the_prompts_follow_their_styles_and_corrections() {
+    let kass = Kass::start(None).await;
+    kass.answer(json!([150_000_000]));
+    let list = || async {
+        let (status, listing) = kass.call("GET", "/writing-styles", None).await;
+        assert_eq!(status, 200);
+        assert_eq!(listing["cache_mb_per_style"], 150);
+        let asked = kass.asked();
+        assert_eq!(asked.len(), 1);
+        asked[0]["prompts"][0].clone()
+    };
+    let first = list().await;
+    assert_eq!(list().await, first);
+
+    // A style's description goes in its prompt.
+    let (status, _) = kass
+        .call(
+            "PATCH",
+            "/writing-styles/personal",
+            Some(json!({"description": "Short and plain, for friends."})),
+        )
+        .await;
+    assert_eq!(status, 200);
+    let described = list().await;
+    assert!(described["system"]
+        .as_str()
+        .unwrap()
+        .contains("Short and plain, for friends."));
+
+    // So does a correction, saved by whatever wrote it.
+    let conn = rusqlite::Connection::open(&kass.database).unwrap();
+    conn.execute_batch(
+        "INSERT INTO captures (id, audio_path, source, transcript_raw, audio_deleted, created_at)
+         VALUES ('c', 'a.wav', 'dictation', 'see you tmrw', 0, '2026-11-02 10:00:00.000000');
+         INSERT INTO capture_feedback (id, capture_id, target, expected_text, notes, snapshot,
+             source, created_at)
+         VALUES ('g', 'c', 'refined', 'See you tomorrow.', '',
+             '{\"transcript_raw\": \"see you tmrw\", \"transcript_refined\": \"see you tmrw\"}',
+             'manual', '2026-11-02 10:00:01.000000');",
+    )
+    .unwrap();
+    let corrected = list().await;
+    assert_ne!(corrected["system"], described["system"]);
+    assert!(corrected["system"]
+        .as_str()
+        .unwrap()
+        .contains("Short and plain, for friends."));
+    // After the built-in examples, the speaker's own.
+    let examples = corrected["examples"].as_array().unwrap();
+    assert_eq!(
+        examples.last(),
+        Some(&json!(["see you tmrw", "See you tomorrow."]))
+    );
+    assert!(!described["examples"]
+        .as_array()
+        .unwrap()
+        .contains(&json!(["see you tmrw", "See you tomorrow."])));
+}

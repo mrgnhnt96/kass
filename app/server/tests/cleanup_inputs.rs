@@ -847,3 +847,38 @@ fn a_state_python_would_refuse_gives_nothing() {
         assert_eq!(punctuation, Default::default());
     }
 }
+
+/// Building from reads taken once gives every style what loading it alone does.
+#[test]
+fn assembling_from_one_read_matches_loading_each_style() {
+    let kass = Kass::new();
+    kass.write(
+        "writing-style.json",
+        json!({"version": 2, "styles": {"chat": {"runs": 0, "examples": []}}}),
+    );
+    kass.write(
+        "correction-notes.json",
+        json!({"version": 2, "styles": {"chat": {"notes": ["Keep it short."], "considered_ids": []}}}),
+    );
+    kass.correct(
+        "s",
+        Some(SLACK),
+        "yeah so its broken",
+        "yeah it's broken",
+        AT,
+    );
+    kass.correct("p", None, "the build is green", "The build is green.", AT);
+    let styles = kass.styles();
+    let files = cleanup_inputs::LearnedFiles::read(&kass.dir);
+    let corrections = cleanup_inputs::CorrectionRows::read(&kass.conn)
+        .unwrap()
+        .examples(&styles);
+    for style in [None, Some("personal"), Some("chat"), Some("deleted")] {
+        let loaded = load(&kass.conn, &kass.dir, &styles, style, true).unwrap();
+        let assembled = cleanup_inputs::assemble(&files, &styles, style, true, &corrections);
+        assert_eq!(assembled.style, loaded.style, "{style:?}");
+        assert_eq!(assembled.description, loaded.description, "{style:?}");
+        assert_eq!(assembled.personal, loaded.personal, "{style:?}");
+        assert_eq!(assembled.notes, loaded.notes, "{style:?}");
+    }
+}

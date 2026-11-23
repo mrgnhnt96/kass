@@ -39,7 +39,7 @@ const STORED: &str = "%Y-%m-%d %H:%M:%S%.6f";
 /// Correction sources that teach a style (`CaptureFeedback.EXPLICIT_SOURCES`).
 const TEACHING_SOURCES: &str = "('manual', 'voice_fix')";
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize)]
 pub struct Style {
     pub id: String,
     pub name: String,

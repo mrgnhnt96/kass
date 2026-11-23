@@ -1,6 +1,7 @@
 //! Capture settings and history retention. Python: `backend/routes/settings.py`.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{Query, State};
@@ -47,9 +48,16 @@ async fn update_settings(State(state): State<AppState>, bytes: Bytes) -> Respons
     let swept = patch.history_retention_days.is_some();
     let switched = patch.shared_adapters.is_some();
     let sync = state.sync;
+    let chosen_speech = Arc::clone(&state.chosen_speech);
     let saved = match state
         .db
-        .call(move |conn| settings::update(conn, patch, sync))
+        .call(move |conn| {
+            let saved = settings::update(conn, patch, sync);
+            if let Ok(Ok(saved)) = &saved {
+                chosen_speech.saved(&saved.stt_model);
+            }
+            saved
+        })
         .await
     {
         Ok(Ok(saved)) => saved,
