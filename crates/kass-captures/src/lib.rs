@@ -8,6 +8,7 @@ pub mod format;
 pub mod host;
 mod inspector;
 mod list;
+mod new_app;
 mod page;
 pub mod phrases;
 pub mod player;

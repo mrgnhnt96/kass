@@ -6,6 +6,7 @@ use crate::format::{
     format_row_time, format_saved, snippet_parts,
 };
 use crate::host::Route;
+use crate::new_app::new_app_prompts;
 use crate::page::{CapturesPage, Load, SEARCH_CONTEXT};
 use crate::widgets::{app_tile, dot, icon, kbd, mono_label};
 use chrono::{Local, NaiveDate};
@@ -144,9 +145,17 @@ impl CapturesPage {
             );
         } else {
             let show_app = self.filter_app().is_none();
+            let prompts = self
+                .styles
+                .as_ref()
+                .map(|styles| new_app_prompts(&visible, styles))
+                .unwrap_or_default();
             let mut rows = div().flex().flex_col().gap(px(2.)).p(px(8.));
             for capture in &visible {
-                rows = rows.child(self.render_row(capture, show_app, cx));
+                let prompt = prompts
+                    .get(&capture.id)
+                    .map(|app| self.render_new_app_prompt(app, cx));
+                rows = rows.child(self.render_row(capture, show_app, prompt, cx));
             }
             body = body.child(rows);
         }
@@ -174,6 +183,7 @@ impl CapturesPage {
         &self,
         capture: &CaptureResponse,
         show_app: bool,
+        prompt: Option<AnyElement>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let t = theme(cx).clone();
@@ -300,16 +310,13 @@ impl CapturesPage {
         }
 
         let id = capture.id.clone();
-        div()
+        let row = div()
             .id(SharedString::from(format!("capture-{}", capture.id)))
             .flex()
             .flex_col()
             .gap(px(8.))
             .p(px(12.))
-            .rounded(metrics::RADIUS_LG)
             .cursor_pointer()
-            .when(active, |r| r.bg(t.muted))
-            .when(!active, |r| r.hover(|s| s.bg(t.muted.opacity(0.5))))
             .on_click(cx.listener(move |page, _, window, cx| {
                 page.select(Some(id.clone()), window, cx);
                 window.focus(&page.focus, cx);
@@ -322,7 +329,17 @@ impl CapturesPage {
                     .line_clamp(2)
                     .child(snippet),
             )
-            .child(meta)
+            .child(meta);
+        // The new-app prompt sits in the row's card, under what selects it.
+        div()
+            .id(SharedString::from(format!("capture-card-{}", capture.id)))
+            .flex()
+            .flex_col()
+            .rounded(metrics::RADIUS_LG)
+            .when(active, |r| r.bg(t.muted))
+            .when(!active, |r| r.hover(|s| s.bg(t.muted.opacity(0.5))))
+            .child(row)
+            .children(prompt)
     }
 
     /// The filtered app's card: its icon, name, dictation count and style.

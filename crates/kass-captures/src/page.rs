@@ -4,6 +4,7 @@
 
 use crate::format::{matches_search, went_into_kass};
 use crate::host::{CapturesHost, Route};
+use crate::new_app::Naming;
 use crate::phrases::{DictionaryWord, PhraseDraft, new_phrase, spelling_entry};
 use crate::player::PlayerView;
 use crate::spelling::Places;
@@ -135,6 +136,10 @@ pub struct CapturesPage {
     pub(crate) selected: Option<String>,
     pub(crate) detail: Option<Detail>,
     pub(crate) style_select: Option<StyleSelect>,
+    /// A new style being named for a new app, in place of its prompt.
+    pub(crate) naming: Option<Naming>,
+    /// An app's style is being changed.
+    pub(crate) moving: bool,
     pub(crate) list_scroll: ScrollHandle,
     pub(crate) adding_entry: bool,
     pub(crate) deleting: bool,
@@ -199,6 +204,8 @@ impl CapturesPage {
             selected: None,
             detail: None,
             style_select: None,
+            naming: None,
+            moving: false,
             list_scroll: ScrollHandle::new(),
             adding_entry: false,
             deleting: false,
@@ -631,7 +638,7 @@ impl CapturesPage {
     }
 
     /// Rebuilds the header's style picker when the app or its style changed.
-    fn sync_style_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn sync_style_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(app) = self.filter_app().cloned() else {
             self.style_select = None;
             return;
@@ -658,7 +665,7 @@ impl CapturesPage {
         let name = app.app_name.clone();
         let subscription = cx.subscribe_in(&state, window, move |page, _, event, window, cx| {
             if let SelectEvent::Confirm(Some(style)) = event {
-                page.assign_style(bundle.clone(), style.clone(), name.clone(), window, cx);
+                page.move_app(bundle.clone(), name.clone(), style.clone(), window, cx);
             }
         });
         self.style_select = Some(StyleSelect {
@@ -669,26 +676,41 @@ impl CapturesPage {
         });
     }
 
-    fn assign_style(
+    pub(crate) fn assign_style(
         &mut self,
         bundle: String,
         style: String,
         name: Option<String>,
+        corrections: MovedCorrections,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.moving = true;
+        cx.notify();
         self.call(
             window,
             cx,
-            move |client| {
-                client.assign_app_style(&bundle, &style, name.as_deref(), MovedCorrections::Bring)
-            },
-            |page, result, window, cx| match result {
-                Ok(styles) => {
-                    page.styles = Some(styles);
-                    page.refresh(false, window, cx);
+            move |client| client.assign_app_style(&bundle, &style, name.as_deref(), corrections),
+            |page, result, window, cx| {
+                page.moving = false;
+                match result {
+                    Ok(styles) => {
+                        page.styles = Some(styles);
+                        page.refresh(false, window, cx);
+                    }
+                    Err(error) => {
+                        // The header's picker shows the style asked for; put it back.
+                        page.style_select = None;
+                        page.sync_style_select(window, cx);
+                        Self::toast_error(
+                            tr!("writing-style-styles-assign-failed"),
+                            error,
+                            window,
+                            cx,
+                        )
+                    }
                 }
-                Err(error) => Self::toast_error(tr!("captures-feedback-failed"), error, window, cx),
+                cx.notify();
             },
         );
     }
