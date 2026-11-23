@@ -11,12 +11,11 @@ it ("Meghan") never respells another that sounds like it ("Megan"). Entries belo
 writing style, or to one app; a dictation merges its app's, its style's and
 the global ones, and the most specific wins.
 
-The Rust server owns the entries and edits them; the worker reads them for
-training (a fresh process each run) and model startup.
+The Rust server owns the entries, edits them and applies them to dictation;
+the worker keeps the matching it shares with spelling and voice training.
 """
 
 import re
-import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -380,75 +379,6 @@ def prompt(terms: Iterable[str]) -> str:
     """The terms as Whisper reads them: a plain list that ends a sentence."""
     terms = list(terms)
     return ", ".join(terms) + "." if terms else ""
-
-
-# -- the entries, read once per change --------------------------------------
-
-_lock = threading.Lock()
-_entries: tuple[Entry, ...] | None = None
-_by_app: dict[tuple[str, str, bool], Dictionary] = {}
-
-
-def _entry(row) -> Entry:
-    return Entry(
-        id=row.id,
-        scope=row.scope,
-        scope_id=row.scope_id or None,
-        app_name=row.app_name,
-        written=row.written,
-        spoken=row.spoken,
-        created_at=row.created_at,
-        group_id=row.group_id or row.id,
-        match_sound=row.match_sound is not False,
-        phrase=bool(row.phrase),
-    )
-
-
-def entries() -> tuple[Entry, ...]:
-    global _entries
-    with _lock:
-        if _entries is not None:
-            return _entries
-    from ..database import session as database_session
-    from ..database.models import DictionaryEntry
-
-    if database_session.SessionLocal is None:
-        return ()
-    with database_session.SessionLocal() as db:
-        loaded = tuple(_entry(row) for row in db.query(DictionaryEntry).all())
-    with _lock:
-        _entries = loaded
-    return loaded
-
-
-def invalidate() -> None:
-    global _entries
-    with _lock:
-        _entries = None
-        _by_app.clear()
-
-
-def resolved_for(bundle_id: str | None) -> list[tuple[Entry, bool]]:
-    from .styles import snapshot as styles_snapshot
-
-    return resolve(entries(), bundle_id, styles_snapshot().for_app(bundle_id).id)
-
-
-def for_app(bundle_id: str | None, style_id: str | None = None) -> Dictionary:
-    """The dictionary a dictation in ``bundle_id`` uses (None: an unknown app),
-    written in ``style_id`` when one was asked for, else the app's style."""
-    from .styles import snapshot as styles_snapshot
-
-    style_id = style_id or styles_snapshot().for_app(bundle_id).id
-    cache_key = (bundle_id or "", style_id)
-    with _lock:
-        cached = _by_app.get(cache_key)
-    if cached is not None:
-        return cached
-    built = build(resolve(entries(), bundle_id, style_id))
-    with _lock:
-        _by_app[cache_key] = built
-    return built
 
 
 # -- words fixed in a correction (voice training's bank) ---------------------------

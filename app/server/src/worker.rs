@@ -2,6 +2,7 @@
 //! `backend/routes/`), which only this server makes: the proxy never
 //! passes a `/worker` path on from outside.
 
+use std::path::Path;
 use std::time::Duration;
 
 use axum::body::Body;
@@ -327,10 +328,25 @@ pub async fn unload_model(proxy: &Proxy, name: &str) -> Result<bool, String> {
     Ok(answer["was_loaded"].as_bool().unwrap_or(false))
 }
 
-/// Load the models dictation starts with, as the worker does on start
-/// unless it stands in for a shared Kass: the app now dictates here.
-pub async fn load_startup_models(proxy: &Proxy) -> Result<(), String> {
-    post_within(proxy, "/worker/models/startup", json!({}), LOAD_TIMEOUT)
+/// Load the models dictation starts with and warm the prompts it sends
+/// (`startup::body`), from the settings and styles in `db`: when the app
+/// starts the worker, and when a stand-in starts dictating here.
+/// `teaching` is the style being taught (`teach`).
+pub async fn load_startup_models(
+    proxy: &Proxy,
+    db: &crate::db::Db,
+    teaching: Option<String>,
+) -> Result<(), String> {
+    let data_dir = db
+        .path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let body = db
+        .call(move |conn| crate::startup::body(conn, &data_dir, teaching))
+        .await
+        .map_err(|e| e.to_string())?;
+    post_within(proxy, "/worker/models/startup", body, LOAD_TIMEOUT)
         .await
         .map(|_| ())
 }

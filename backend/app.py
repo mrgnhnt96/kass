@@ -78,7 +78,7 @@ def create_app() -> FastAPI:
 
 
 async def _run_startup(application: FastAPI) -> None:
-    """Initialize storage and load configured models on lifespan entry."""
+    """Initialize storage on lifespan entry; the app asks for the models after."""
     import platform
     import sys
 
@@ -122,10 +122,7 @@ async def _run_startup(application: FastAPI) -> None:
 
     if sync.standing_in():
         logger.info("Standing in for the shared Kass at %s; models load if the app falls back", sync.shared_server())
-    else:
-        from .services.model_startup import load_startup_models
-
-        await load_startup_models()
+    # Otherwise the app asks for its models once this is up (/worker/models/startup).
     logger.info("Ready")
 
 

@@ -298,7 +298,12 @@ async fn a_capture_a_word_and_a_trained_model_cross_between_two_macs() {
     for _ in 0..2 {
         assert_eq!(stand_in.call("POST", "/sync/wake", None).await.0, 204);
     }
-    assert_eq!(stand_in.worker.calls("/worker/models/startup").len(), 1);
+    let startup = stand_in.worker.calls("/worker/models/startup");
+    assert_eq!(startup.len(), 1);
+    // With the saved models and the prompt dictation will send, so the
+    // worker doesn't read kass.db for them.
+    assert!(startup[0]["stt_model"].is_string());
+    assert!(startup[0]["prompts"][0]["system"].is_string());
     assert_eq!(shared.call("POST", "/sync/wake", None).await.0, 204);
     assert!(shared.worker.calls("/worker/models/startup").is_empty());
 

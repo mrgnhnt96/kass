@@ -8,12 +8,7 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from backend.database import session as database_session
-from backend.database.models import Base, DictionaryEntry
 from backend.services import dictionary, phrase_seams
 from backend.services.correction_rules import MAX_TEXT
 from backend.services.dictionary import Entry
@@ -294,20 +289,11 @@ def test_a_large_dictionary_stays_under_five_milliseconds():
     assert "Product7q" in found.apply("prodduct 7q")
 
 
-# -- storage and API -----------------------------------------------------------
+# -- the worker's route ---------------------------------------------------------
 
 
 @pytest.fixture
-def storage(monkeypatch):
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    make = sessionmaker(bind=engine)
-    monkeypatch.setattr(database_session, "SessionLocal", make)
-    return make
-
-
-@pytest.fixture
-def worker(storage):
+def worker():
     from backend.routes.dictionary import router
 
     app = FastAPI()
@@ -329,16 +315,6 @@ def test_the_worker_counts_terms_with_whisper_or_leaves_it_to_the_server(worker,
     counted = worker.post("/worker/dictionary/token-counts", json={"terms": ["Zed", "voice box"]}).json()
     assert counted == {"counts": [2, 3]}
     assert worker.post("/worker/dictionary/token-counts", json={"terms": []}).json() == {"counts": []}
-
-
-def test_dictation_reads_the_entries_the_server_saved(storage):
-    # An entry from before groups, as the app's migration leaves it (server/src/db.rs).
-    with storage() as db:
-        db.add(DictionaryEntry(id="old", scope="global", scope_id="", written="Kass", key="kass"))
-        db.commit()
-    [saved] = dictionary.entries()
-    assert (saved.group_id, saved.match_sound, saved.phrase) == ("old", True, False)
-    assert dictionary.for_app(ZED).apply("Ask Cass to fix it") == "Ask Kass to fix it"
 
 
 @pytest.mark.parametrize(

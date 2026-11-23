@@ -252,7 +252,9 @@ impl StandIn {
             progress.back_since = None;
         }
         eprintln!("[sync] the shared Kass is away; loading models to dictate on this Mac");
-        if let Err(error) = worker::load_startup_models(&state.proxy).await {
+        if let Err(error) =
+            worker::load_startup_models(&state.proxy, &state.db, state.teach.teaching_style()).await
+        {
             eprintln!("[sync] couldn't load the models to dictate on this Mac: {error}");
         }
     }

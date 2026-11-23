@@ -28,18 +28,12 @@ _broken: set[str] = set()
 
 
 def enabled() -> bool:
-    """Whether Kass uses its shared adapters (``CaptureSettings.shared_adapters``)."""
-    global _enabled
-    if _enabled is None:
-        from ..database import session as database_session
+    """Whether Kass uses its shared adapters (``CaptureSettings.shared_adapters``).
 
-        if database_session.SessionLocal is None:
-            return True
-        from .settings import get_capture_settings
-
-        with database_session.SessionLocal() as db:
-            _enabled = bool(getattr(get_capture_settings(db), "shared_adapters", True))
-    return _enabled
+    The app sends the setting at startup (``model_startup``) and on each change
+    (``switched``); until then they're on, as the setting starts.
+    """
+    return True if _enabled is None else _enabled
 
 
 def switched(value: bool) -> None:

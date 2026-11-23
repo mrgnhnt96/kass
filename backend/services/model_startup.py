@@ -1,4 +1,9 @@
-"""Load the configured dictation models before accepting requests."""
+"""Load the dictation models the app asks for when it starts the worker.
+
+The Rust server sends the saved settings and the cleanup prompts its
+dictations will send (``app/server/src/startup.rs``), so the worker warms the
+same prompt caches dictation uses and doesn't read kass.db for them.
+"""
 
 import asyncio
 import logging
@@ -7,8 +12,7 @@ import time
 import numpy as np
 
 from .. import config
-from ..database import session
-from . import llm, refinement, settings, speech_detect, styles, transcribe
+from . import llm, shared_adapters, speech_detect, transcribe
 from .mlx_thread import keep_weights_resident, run_on_mlx_thread
 
 logger = logging.getLogger(__name__)
@@ -18,24 +22,21 @@ WARM_RATE = 48000
 # Enough real speech to run Whisper's full decode, short enough to keep
 # startup quick.
 WARM_SECONDS = 5
+# A cleanup of "okay" is a few tokens.
+WARM_TOKENS = 16
 
 
-async def load_startup_models() -> None:
-    """Load installed capture models, leaving missing downloads to setup."""
-    with session.SessionLocal() as db:
-        saved = settings.get_capture_settings(db)
-        stt_size = saved.stt_model
-        llm_size = saved.llm_model
-        auto_refine = saved.auto_refine
-        language = None if saved.language in (None, "auto") else saved.language
-        snapshot = styles.snapshot()
-        flags = styles.flags_for(snapshot.default, saved)
-        # Styles with apps in them, most likely to be dictated in next.
-        others = [
-            styles.flags_for(style, saved)
-            for style in snapshot.styles
-            if not style.is_default and style.id in snapshot.apps.values()
-        ]
+async def load_startup_models(startup) -> None:
+    """Load installed capture models, leaving missing downloads to setup.
+
+    ``startup`` is the app's request (``routes.sync.Startup``): the saved
+    models, and the cleanup prompts, the default style's first.
+    """
+    # Before Whisper loads: turbo merges the shared voice adapter when it's on.
+    shared_adapters._enabled = startup.shared_adapters
+    stt_size = startup.stt_model
+    llm_size = startup.llm_model
+    language = None if startup.language in (None, "auto") else startup.language
 
     try:
         await run_on_mlx_thread(keep_weights_resident)
@@ -43,7 +44,7 @@ async def load_startup_models() -> None:
         logger.exception("Could not keep model weights resident")
 
     selected = [("Whisper", transcribe.get_whisper_model, stt_size)]
-    if auto_refine:
+    if startup.auto_refine:
         selected.append(("refinement", llm.get_llm_model, llm_size))
 
     for name, get_backend, size in selected:
@@ -63,10 +64,11 @@ async def load_startup_models() -> None:
     # The voice detector every dictation checks its audio with.
     await asyncio.to_thread(speech_detect.load)
     await warm_whisper(stt_size, language)
-    if auto_refine:
-        await warm_refinement(flags, llm_size)
+    if startup.auto_refine and startup.prompts:
+        first, *others = startup.prompts
+        await warm_refinement(first)
         global _style_warmup
-        _style_warmup = asyncio.create_task(warm_styles(others, llm_size))
+        _style_warmup = asyncio.create_task(warm_styles(others))
 
 
 async def warm_whisper(stt_size: str, language: str | None) -> None:
@@ -97,35 +99,49 @@ async def warm_whisper(stt_size: str, language: str | None) -> None:
         logger.exception("Could not warm Whisper")
 
 
-async def warm_refinement(flags, llm_size: str) -> None:
-    """Run one short cleanup so the first dictation reuses the cached prompt."""
+async def warm_refinement(prompt) -> None:
+    """Run one short cleanup so the first dictation reuses the cached prompt.
+
+    ``prompt`` is the default style's, as a dictation sends it
+    (``routes.stream_models.CleanupPrompt``).
+    """
+    from ..backends.qwen_llm_backend import prompt_cache_key
+    from ..routes.stream_models import Generate, _adapter, _generate
+
     backend = llm.get_llm_model()
     if not backend.is_loaded():
         return
     try:
         started = time.monotonic()
-        await refinement.refine_transcript("okay", flags, model_size=llm_size)
+        request = Generate(**prompt.model_dump(), id="startup", prompt="okay", max_tokens=WARM_TOKENS)
+        key = prompt_cache_key.set(prompt.cache_key)
+        try:
+            await _generate(backend, request, _adapter(backend, prompt.model_size, prompt.flags))
+        finally:
+            prompt_cache_key.reset(key)
         logger.info("Refinement prompt warmed in %.3fs", time.monotonic() - started)
     except Exception:
         logger.exception("Could not warm the refinement prompt")
 
 
-async def warm_styles(all_flags: list, llm_size: str) -> None:
+async def warm_styles(prompts: list) -> None:
     """Cache the other styles' prompts in the background, one at a time, while nothing is dictated.
 
     Each takes seconds on 4B the first time. A style whose app is dictated in
     before its turn is cached at that key-down instead.
     """
+    from ..routes.stream_models import cleanup_prefill
     from .model_improvement.manager import dictating
 
     backend = llm.get_llm_model()
-    for flags in all_flags:
+    for prompt in prompts:
         if not backend.is_loaded() or dictating():
             return
         try:
             started = time.monotonic()
-            await refinement.prefill_cleanup(flags, llm_size)
-            logger.info("Style %s prompt cached in %.3fs", flags.style, time.monotonic() - started)
+            await cleanup_prefill(prompt)
+            style = (prompt.flags or {}).get("style")
+            logger.info("Style %s prompt cached in %.3fs", style, time.monotonic() - started)
         except Exception:
             logger.exception("Could not cache a style's prompt")
             return
