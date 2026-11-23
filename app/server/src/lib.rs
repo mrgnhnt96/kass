@@ -4,6 +4,20 @@
 //! model worker only loads and runs the models, called from this server
 //! (`worker`, `stream::models`); nothing from outside reaches it.
 
+/// Every `eprintln!` in this crate goes to `log`: stderr, `logs/server.log`
+/// and the in-app Logs view. Defined before the modules so it is the one
+/// they see; `std::eprintln!` still prints to stderr only.
+macro_rules! eprintln {
+    () => {
+        $crate::log::write("kass-server", format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        $crate::log::write("kass-server", format_args!($($arg)*))
+    };
+}
+
+pub mod log;
+
 pub mod captures;
 pub mod cleanup_inputs;
 pub mod correction_notes;

@@ -1,3 +1,15 @@
+/// Every `eprintln!` in the app goes to `kass_server::log`: stderr,
+/// `logs/server.log` and Settings › Logs. Defined before the modules so it
+/// is the one they see; `std::eprintln!` still prints to stderr only.
+macro_rules! eprintln {
+    () => {
+        kass_server::log::write("kass-app", format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        kass_server::log::write("kass-app", format_args!($($arg)*))
+    };
+}
+
 mod accessibility;
 mod app_hide;
 mod app_icon;
@@ -874,7 +886,8 @@ async fn start_worker(
                     }
                     sidecar::CommandEvent::Stderr(line) => {
                         let line_str = String::from_utf8_lossy(&line).to_string();
-                        eprintln!("Server: {}", line_str);
+                        // The worker writes its own lines to server.log.
+                        std::eprintln!("Server: {}", line_str);
                         let _ = app.emit(
                             "server-log",
                             serde_json::json!({
@@ -971,7 +984,8 @@ async fn start_worker(
                 }
                 sidecar::CommandEvent::Stderr(line) => {
                     let line_str = String::from_utf8_lossy(&line);
-                    eprintln!("Server error: {}", line_str);
+                    // The worker writes its own lines to server.log.
+                    std::eprintln!("Server error: {}", line_str);
                     let _ = app_handle.emit(
                         "server-log",
                         serde_json::json!({
@@ -1619,6 +1633,10 @@ pub(crate) fn type_over_selection(
 pub fn run() {
     app_location::carry_over_old_bundle();
     identifier_move::move_from_old_identifier(KASS_BUNDLE_ID);
+    // Once the data folder is where it stays.
+    if let Ok(dir) = AppHandle.path().app_data_dir() {
+        kass_server::log::to_file(dir.join("logs"));
+    }
     prefs::adopt_old_page();
     let handle = AppHandle;
     handle.manage(updater::UpdaterState::default());

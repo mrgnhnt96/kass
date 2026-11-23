@@ -1,5 +1,6 @@
 //! The server's output, kept from launch for Settings › Logs: the last
-//! [`MAX_LINES`] lines of the `server-log` event, each with its time and level.
+//! [`MAX_LINES`] lines of the worker's `server-log` event and of the app's
+//! and API server's `eprintln!`, each with its time and level.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -64,6 +65,8 @@ pub fn init(cx: &mut App) {
             push(line);
         }
     });
+    // The app's and the API server's own lines (`kass_server::log`).
+    kass_server::log::forward(|line| push(line.to_owned()));
 }
 
 fn push(line: String) {
