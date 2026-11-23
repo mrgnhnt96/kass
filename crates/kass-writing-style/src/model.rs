@@ -50,10 +50,7 @@ pub fn apps_in<'a>(data: &'a WritingStylesResponse, style_id: &str) -> Vec<&'a S
 
 /// The style apps use when they aren't in one.
 pub fn default_style(data: &WritingStylesResponse) -> Option<&WritingStyle> {
-    data.styles
-        .iter()
-        .find(|style| style.is_default)
-        .or(data.styles.first())
+    data.default_style()
 }
 
 /// The style shown: the one asked for if it still exists, else the default.
@@ -242,29 +239,10 @@ pub fn initial(name: &str) -> String {
         .unwrap_or_default()
 }
 
-/// What moving an app to a style takes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MovePlan {
-    /// Already there and confirmed: nothing to do.
-    Stay,
-    /// Assign it, bringing any corrections along.
-    Assign,
-    /// It has corrections teaching another style: ask whether they come too.
-    Ask,
-}
+pub use kass_api::types::MovePlan;
 
 pub fn plan_move(app: &StyledApp, to: &str) -> MovePlan {
-    if app.style_id == to {
-        if app.confirmed {
-            MovePlan::Stay
-        } else {
-            MovePlan::Assign
-        }
-    } else if app.corrections > 0 {
-        MovePlan::Ask
-    } else {
-        MovePlan::Assign
-    }
+    app.plan_move(to)
 }
 
 /// The styles as they'll be once `bundle` is in `to`, shown before the server answers.
@@ -288,12 +266,7 @@ pub fn suggested_style<'a>(
     data: &'a WritingStylesResponse,
     app: &StyledApp,
 ) -> Option<&'a WritingStyle> {
-    let find = |id: &str| data.styles.iter().find(|style| style.id == id);
-    app.suggested_style_id
-        .as_deref()
-        .and_then(find)
-        .or_else(|| find(&app.style_id))
-        .or_else(|| default_style(data))
+    data.suggested_style(app)
 }
 
 /// `text` cut to `max` characters, or `None` when it already fits.

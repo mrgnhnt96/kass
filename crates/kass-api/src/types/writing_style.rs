@@ -98,6 +98,66 @@ pub struct WritingStylesResponse {
     pub cache_mb_per_style: Option<u64>,
 }
 
+impl WritingStylesResponse {
+    /// The style every app the user hasn't assigned uses.
+    pub fn default_style(&self) -> Option<&WritingStyle> {
+        self.styles
+            .iter()
+            .find(|style| style.is_default)
+            .or(self.styles.first())
+    }
+
+    pub fn style(&self, id: &str) -> Option<&WritingStyle> {
+        self.styles.iter().find(|style| style.id == id)
+    }
+
+    pub fn app(&self, bundle_id: &str) -> Option<&StyledApp> {
+        self.apps.iter().find(|app| app.bundle_id == bundle_id)
+    }
+
+    /// The style a new app is shown in until it's confirmed: what most apps
+    /// of its App Store category use, else its own, else the default.
+    pub fn suggested_style(&self, app: &StyledApp) -> Option<&WritingStyle> {
+        app.suggested_style_id
+            .as_deref()
+            .and_then(|id| self.style(id))
+            .or_else(|| self.style(&app.style_id))
+            .or_else(|| self.default_style())
+    }
+
+    /// Whether another style can be added.
+    pub fn has_room(&self) -> bool {
+        (self.styles.len() as u64) < self.max_styles
+    }
+}
+
+/// What moving an app to a style takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MovePlan {
+    /// Already there and confirmed: nothing to do.
+    Stay,
+    /// Assign it, bringing any corrections along.
+    Assign,
+    /// It has corrections teaching another style: ask whether they come too.
+    Ask,
+}
+
+impl StyledApp {
+    pub fn plan_move(&self, to: &str) -> MovePlan {
+        if self.style_id == to {
+            if self.confirmed {
+                MovePlan::Stay
+            } else {
+                MovePlan::Assign
+            }
+        } else if self.corrections > 0 {
+            MovePlan::Ask
+        } else {
+            MovePlan::Assign
+        }
+    }
+}
+
 /// `PATCH /writing-styles/{id}`: only the fields that are set are sent.
 /// `is_default: Some(true)` makes the style the default; false means nothing.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
