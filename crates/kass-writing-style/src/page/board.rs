@@ -6,7 +6,7 @@ use crate::model::{
     AppFilter, MovePlan, PREVIEW_APPS, app_label, apps_in, can_add_style, confirmed, default_style,
     filter_apps, moved, plan_move, suggested_style,
 };
-use crate::widgets::{MenuTrigger, app_tile, icon, menu_item, mono_label};
+use crate::widgets::{MenuTrigger, app_tile, default_badge, icon, menu_item, mono_label};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Escape, InputEvent, InputState};
 use gpui_kit::component::popover::Popover;
@@ -29,7 +29,7 @@ struct DraggedApp {
 }
 
 /// What follows the pointer while an app is dragged.
-struct DragPreview(String);
+struct DragPreview(DraggedApp);
 
 impl Render for DragPreview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -46,8 +46,15 @@ impl Render for DragPreview {
             .bg(t.card)
             .text_size(metrics::TEXT_XS)
             .text_color(t.foreground)
-            .child(app_tile(&self.0, px(20.), px(10.), px(5.), cx))
-            .child(self.0.clone())
+            .child(app_tile(
+                &self.0.bundle,
+                &self.0.label,
+                px(20.),
+                px(10.),
+                px(5.),
+                cx,
+            ))
+            .child(self.0.label.clone())
     }
 }
 
@@ -159,7 +166,14 @@ impl WritingStylePage {
                 .id(SharedString::from(format!("tile-{}", app.bundle_id)))
                 .relative()
                 .cursor_grab()
-                .child(app_tile(&label, px(32.), px(13.), metrics::RADIUS_LG, cx))
+                .child(app_tile(
+                    &app.bundle_id,
+                    &label,
+                    px(32.),
+                    px(13.),
+                    metrics::RADIUS_LG,
+                    cx,
+                ))
                 .when(!app.confirmed, |el| {
                     el.child(
                         div()
@@ -180,7 +194,7 @@ impl WritingStylePage {
                     }
                 })
                 .on_drag(dragged, |app, _, _, cx| {
-                    cx.new(|_| DragPreview(app.label.clone()))
+                    cx.new(|_| DragPreview(app.clone()))
                 })
         });
 
@@ -252,20 +266,7 @@ impl WritingStylePage {
                             .child(tr!("writing-style-styles-count", count = apps.len())),
                     )
                     .child(div().flex_1())
-                    .when(style.is_default, |el| {
-                        el.child(
-                            div()
-                                .flex_none()
-                                .px_2()
-                                .rounded_full()
-                                .border_1()
-                                .border_color(t.input)
-                                .text_size(px(10.5))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(t.muted_foreground)
-                                .child(tr!("writing-style-styles-default")),
-                        )
-                    }),
+                    .when(style.is_default, |el| el.child(default_badge(cx))),
             )
             .child(
                 div()
@@ -659,7 +660,14 @@ impl WritingStylePage {
                     .min_w_0()
                     .items_center()
                     .gap_2()
-                    .child(app_tile(&label, px(20.), px(10.), px(5.), cx))
+                    .child(app_tile(
+                        &app.bundle_id,
+                        &label,
+                        px(20.),
+                        px(10.),
+                        px(5.),
+                        cx,
+                    ))
                     .child(div().min_w_0().truncate().child(label.clone()))
                     .when(!app.confirmed, |el| {
                         el.child(

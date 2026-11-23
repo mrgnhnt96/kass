@@ -4,6 +4,7 @@
 
 mod board;
 mod learn;
+mod pinned;
 mod style;
 
 use crate::dictation::{StyleDictation, TakeState};
@@ -22,6 +23,9 @@ use kass_api::types::{
 use kass_i18n::tr;
 use kass_ui::{SelectOptions, Toast, ToastKind, show_toast, theme};
 use std::rc::Rc;
+
+/// The widest the page's column gets, padding included.
+const COLUMN: Pixels = px(760.);
 
 /// Whose Dictate button started the current take.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,6 +72,8 @@ pub struct WritingStylePage {
     teach: Option<WeakEntity<TeachView>>,
     loading: Option<Task<()>>,
     style_loading: Option<Task<()>>,
+    /// The page scrolls itself, to pin the chosen style's header.
+    scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -136,6 +142,7 @@ impl WritingStylePage {
             teach: None,
             loading: None,
             style_loading: None,
+            scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
         };
         page.refresh(cx);
@@ -426,39 +433,66 @@ impl Render for WritingStylePage {
             self.append_description(text, window, cx);
         }
         let t = theme(cx).clone();
+        // Each part is a child of the scroll view, so the view knows where
+        // the chosen style's settings start.
+        let column = || div().flex().flex_col().w_full().max_w(COLUMN).px(px(48.));
+        let scroll = div()
+            .id("writing-style")
+            .size_full()
+            .flex()
+            .flex_col()
+            .py(px(28.))
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll);
 
         let Some(data) = self.data.clone() else {
-            return div()
-                .id("writing-style")
-                .flex()
-                .items_center()
-                .justify_center()
-                .py(px(64.))
-                .gap_2()
-                .text_color(t.muted_foreground)
-                .child(spinner(
-                    "writing-style-loading",
-                    px(16.),
-                    t.muted_foreground,
-                ))
-                .when_some(self.load_error.clone(), |el, error| el.child(error))
+            return scroll
+                .child(
+                    column()
+                        .flex_row()
+                        .items_center()
+                        .justify_center()
+                        .py(px(64.))
+                        .gap_2()
+                        .text_color(t.muted_foreground)
+                        .child(spinner(
+                            "writing-style-loading",
+                            px(16.),
+                            t.muted_foreground,
+                        ))
+                        .when_some(self.load_error.clone(), |el, error| el.child(error)),
+                )
                 .into_any_element();
         };
 
+        let has_apps = !data.apps.is_empty();
+        let settings_at = if has_apps { 2 } else { 1 };
+        let style = self.style().cloned();
+        let pinned = style
+            .as_ref()
+            .filter(|_| self.settings_scrolled_past(settings_at))
+            .map(|style| self.render_pinned(&data, style, COLUMN, cx));
+
         div()
-            .id("writing-style")
-            .flex()
-            .flex_col()
-            .child(self.render_board(&data, window, cx))
-            .when(!data.apps.is_empty(), |el| {
-                el.child(self.render_app_list(&data, window, cx))
-            })
-            .when(self.style().is_some(), |el| {
-                el.child(self.render_style_settings(&data, window, cx))
-                    .child(self.render_calibration(&data, cx))
-                    .child(self.render_learns_from(cx))
-                    .child(self.render_recent(&data, cx))
-            })
+            .relative()
+            .size_full()
+            .child(
+                scroll
+                    .child(column().child(self.render_board(&data, window, cx)))
+                    .when(has_apps, |el| {
+                        el.child(column().child(self.render_app_list(&data, window, cx)))
+                    })
+                    .when(style.is_some(), |el| {
+                        el.child(
+                            column()
+                                .child(self.render_style_settings(&data, window, cx))
+                                .child(self.render_calibration(&data, cx))
+                                .child(self.render_learns_from(cx))
+                                .child(self.render_recent(&data, cx)),
+                        )
+                    }),
+            )
+            .children(pinned)
             .into_any_element()
     }
 }

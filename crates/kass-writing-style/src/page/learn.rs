@@ -4,7 +4,8 @@
 use super::style::destructive_outline;
 use super::{WritingStylePage, toast_error};
 use crate::model::{
-    Day, app_label, apps_in, day_of, habit_key, parse_time, recent_corrections, short_date,
+    Day, app_label, apps_in, day_of, habit_key, json_path, parse_time, recent_corrections,
+    short_date,
 };
 use crate::widgets::{app_tile, icon, mono_label, pill};
 use gpui_kit::assets::IconName;
@@ -322,6 +323,7 @@ impl WritingStylePage {
             let Ok(Ok(Some(path))) = picked.await else {
                 return;
             };
+            let path = json_path(path);
             let written = cx
                 .background_executor()
                 .spawn(async move {
@@ -591,6 +593,7 @@ impl WritingStylePage {
                     .clone()
                     .or_else(|| example.app_bundle_id.clone())
                     .unwrap_or_default();
+                let bundle_id = example.app_bundle_id.clone().unwrap_or_default();
                 let id = example.id.clone();
                 div()
                     .flex()
@@ -603,7 +606,7 @@ impl WritingStylePage {
                     })
                     .font_family(t.mono_font.clone())
                     .text_size(metrics::TEXT_XS)
-                    .child(app_tile(&app, px(20.), px(10.), px(5.), cx))
+                    .child(app_tile(&bundle_id, &app, px(20.), px(10.), px(5.), cx))
                     .child(
                         div()
                             .min_w_0()
