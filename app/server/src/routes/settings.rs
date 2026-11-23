@@ -33,7 +33,7 @@ fn failed(error: crate::db::DbError) -> Response {
 }
 
 async fn get_settings(State(state): State<AppState>) -> Response {
-    match state.db.call(settings::get).await {
+    match settings::load(&state.db).await {
         Ok(saved) => Json(saved).into_response(),
         Err(error) => failed(error),
     }

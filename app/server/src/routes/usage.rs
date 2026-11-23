@@ -68,7 +68,7 @@ async fn capture_stats(State(state): State<AppState>, RawQuery(query): RawQuery)
     let now = chrono::Local::now().naive_local();
     match state
         .db
-        .call(move |conn| stats::usage_stats(conn, period, &apps, now))
+        .read(move |conn| stats::usage_stats(conn, period, &apps, now))
         .await
     {
         Ok(stats) => Json(stats).into_response(),

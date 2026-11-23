@@ -381,6 +381,15 @@ fn read_or_create(conn: &Connection) -> rusqlite::Result<Settings> {
     Ok(read_row(conn)?.unwrap_or(settings))
 }
 
+/// The capture settings, read alongside other reads: `get` only when there
+/// are none yet, which `db::seed` makes at launch.
+pub async fn load(db: &crate::db::Db) -> Result<Settings, crate::db::DbError> {
+    match db.read(read_row).await? {
+        Some(saved) => Ok(saved),
+        None => db.call(get).await,
+    }
+}
+
 /// The capture settings, made with the defaults if there are none yet.
 pub fn get(conn: &mut Connection) -> rusqlite::Result<Settings> {
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
