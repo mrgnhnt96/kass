@@ -9,4 +9,5 @@ mod teach;
 mod widgets;
 
 pub use dictation::{OnTake, StyleDictation, TakeState, TakeTracker};
+pub use model::habit_key;
 pub use page::WritingStylePage;

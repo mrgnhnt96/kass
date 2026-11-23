@@ -10,10 +10,11 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use kass_api::types::{
     CaptureFeedbackResponse, CaptureFeedbackSource, CaptureResponse, CorrectionLearningStatus,
-    FeedbackTarget, LearningOutcome,
+    FeedbackTarget, LearningOutcome, WritingStyleHabit,
 };
 use kass_i18n::tr;
 use kass_ui::{Button, KassTheme, metrics, theme};
+use kass_writing_style::habit_key;
 
 fn section(title: String, t: &KassTheme) -> Div {
     div().flex().flex_col().gap(px(10.)).child(
@@ -45,6 +46,32 @@ fn row(label: String, value: String, t: &KassTheme) -> Div {
                 .text_color(t.foreground)
                 .child(value),
         )
+}
+
+/// Learned punctuation habits, one plain-language line each; `None` when
+/// there are none to list.
+fn habit_list(habits: &[WritingStyleHabit]) -> Option<Div> {
+    let lines: Vec<String> = habits
+        .iter()
+        .filter_map(|habit| habit_key(*habit))
+        .map(|key| tr!(&format!("writing-style-habits-{key}")))
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    Some(
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .children(lines.into_iter().map(|line| {
+                div()
+                    .flex()
+                    .gap(px(6.))
+                    .child(div().flex_none().child("•"))
+                    .child(div().min_w_0().child(line))
+            })),
+    )
 }
 
 fn aside(t: &KassTheme) -> Stateful<Div> {
@@ -326,6 +353,21 @@ impl CapturesPage {
                 .text_size(metrics::TEXT_XS)
                 .line_height(px(19.5)),
         );
+        if let Some(habits) = habit_list(&self.habits) {
+            panel = panel.child(
+                div()
+                    .mt(px(8.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(
+                        div()
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(tr!("writing-style-learning-panel-title")),
+                    )
+                    .child(habits),
+            );
+        }
         let outcome = tr!(match status.outcome {
             LearningOutcome::Waiting => "captures-feedback-learning-waiting",
             LearningOutcome::Updated => "captures-feedback-learning-updated",
@@ -489,5 +531,18 @@ impl CapturesPage {
             ));
         }
         aside(&t).child(rows)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::habit_list;
+    use kass_api::types::WritingStyleHabit;
+
+    #[test]
+    fn lists_only_habits_it_can_word() {
+        assert!(habit_list(&[]).is_none());
+        assert!(habit_list(&[WritingStyleHabit::Unknown]).is_none());
+        assert!(habit_list(&[WritingStyleHabit::DropFinalPeriod]).is_some());
     }
 }

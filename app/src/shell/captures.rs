@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::{App, Image, Task, Window};
+use kass_api::types::CaptureAppFilter;
 use kass_captures::{CapturesHost, Route};
 
 use super::insights::Icons;
@@ -54,7 +55,14 @@ fn link(route: &Route) -> (&'static str, String) {
         Route::CommandMode => ("/settings/command-mode", String::new()),
         Route::DictionaryPhrases => ("/settings/dictionary", "?kind=phrases".into()),
         Route::DictationSettings => ("/settings/dictation", String::new()),
-        Route::Insights => ("/insights", String::new()),
+        Route::Insights { filter, period } => {
+            let apps = match filter {
+                CaptureAppFilter::All => "apps=all".to_string(),
+                CaptureAppFilter::Unknown => "apps=unknown".to_string(),
+                CaptureAppFilter::App(bundle_id) => format!("app={bundle_id}"),
+            };
+            ("/insights", format!("?{apps}&period={}", period.as_str()))
+        }
     }
 }
 
@@ -71,6 +79,7 @@ pub fn capture_in(search: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kass_api::types::UsagePeriod;
 
     #[test]
     fn capture_from_search() {
@@ -95,6 +104,30 @@ mod tests {
             link(&Route::DictionaryPhrases),
             ("/settings/dictionary", "?kind=phrases".into())
         );
-        assert_eq!(link(&Route::Insights), ("/insights", String::new()));
+    }
+
+    #[test]
+    fn insights_opens_on_the_listed_apps_and_week() {
+        let insights = |filter| {
+            link(&Route::Insights {
+                filter,
+                period: UsagePeriod::Days7,
+            })
+        };
+        assert_eq!(
+            insights(CaptureAppFilter::App("com.tinyspeck.slackmacgap".into())),
+            (
+                "/insights",
+                "?app=com.tinyspeck.slackmacgap&period=7d".into()
+            )
+        );
+        assert_eq!(
+            insights(CaptureAppFilter::All),
+            ("/insights", "?apps=all&period=7d".into())
+        );
+        assert_eq!(
+            insights(CaptureAppFilter::Unknown),
+            ("/insights", "?apps=unknown&period=7d".into())
+        );
     }
 }

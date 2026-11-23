@@ -16,7 +16,7 @@ use kass_api::types::{
     CaptureAppFilter, CaptureAppsResponse, CaptureFeedbackCreate, CaptureFeedbackResponse,
     CaptureResponse, CaptureSettings, CaptureSource, CorrectionLearningStatus, DictionaryEntry,
     DictionaryPlaceInput, FeedbackTarget, MovedCorrections, UsagePeriod, UsageStatsResponse,
-    WritingStylesResponse,
+    WritingStyleHabit, WritingStylesResponse,
 };
 use kass_api::{ApiClient, CaptureEvent, Mac, SseCancel};
 use kass_i18n::tr;
@@ -127,6 +127,9 @@ pub struct CapturesPage {
     pub(crate) learning_failed: bool,
     pub(crate) learning_busy: bool,
     pub(crate) learning_open: bool,
+    /// What the default writing style has learned about how the user
+    /// punctuates, listed in the learning panel.
+    pub(crate) habits: Vec<WritingStyleHabit>,
     pub(crate) filter: CaptureAppFilter,
     pub(crate) apps_open: bool,
     pub(crate) details_open: bool,
@@ -191,6 +194,7 @@ impl CapturesPage {
             learning_failed: false,
             learning_busy: false,
             learning_open: false,
+            habits: Vec::new(),
             filter: CaptureAppFilter::All,
             apps_open: true,
             details_open: true,
@@ -790,15 +794,21 @@ impl CapturesPage {
         );
     }
 
-    /// Learning status: every 2s while a model trains, else every minute.
+    /// Learning status and the learned writing habits: every 2s while a
+    /// model trains, else every minute.
     fn poll_learning(&mut self, cx: &mut Context<Self>) -> Task<()> {
         let client = self.client.clone();
         cx.spawn(async move |page, cx| {
             loop {
                 let client = client.clone();
-                let status = cx
+                let (status, style) = cx
                     .background_executor()
-                    .spawn(async move { client.correction_learning_status() })
+                    .spawn(async move {
+                        (
+                            client.correction_learning_status(),
+                            client.writing_style(None),
+                        )
+                    })
                     .await;
                 let running = status
                     .as_ref()
@@ -812,6 +822,9 @@ impl CapturesPage {
                             page.learning_failed = false;
                         }
                         Err(_) => page.learning_failed = true,
+                    }
+                    if let Ok(style) = style {
+                        page.habits = style.habits;
                     }
                     cx.notify();
                 });

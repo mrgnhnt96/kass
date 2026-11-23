@@ -3788,6 +3788,7 @@ dependencies = [
  "kass-dictionary",
  "kass-i18n",
  "kass-ui",
+ "kass-writing-style",
  "regex",
  "unicode-normalization",
 ]

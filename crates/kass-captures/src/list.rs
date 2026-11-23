@@ -14,7 +14,7 @@ use gpui_kit::component::input::Input;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use kass_api::types::{CaptureResponse, UsagePoint};
+use kass_api::types::{CaptureResponse, UsagePeriod, UsagePoint};
 use kass_i18n::tr;
 use kass_ui::{KassTheme, metrics, select, theme};
 
@@ -487,7 +487,11 @@ impl CapturesPage {
                                 Tooltip::new(tr!("captures-week-open")).build(window, cx)
                             })
                             .on_click(cx.listener(|page, _, window, cx| {
-                                page.navigate(Route::Insights, window, cx)
+                                let route = Route::Insights {
+                                    filter: page.filter.clone(),
+                                    period: UsagePeriod::Days7,
+                                };
+                                page.navigate(route, window, cx)
                             }))
                             .child(icon(IconName::ArrowRight, px(15.), t.accent)),
                     ),
@@ -508,23 +512,57 @@ fn week_bars(series: &[UsagePoint], t: &KassTheme) -> Div {
     let mut bars = div().h(px(30.)).flex().items_end().gap(px(4.));
     let mut letters = div().flex().gap(px(4.));
     for (i, day) in days.iter().enumerate() {
-        let words = day.words.unwrap_or(0) as f32;
+        let count = day.words.unwrap_or(0);
         let today = i + 1 == days.len();
+        let date = day_of(&day.start);
+        let group = SharedString::from(format!("week-bar-{i}"));
+        let tip = day_tip(count, date, today);
+        let hovered = t.accent.opacity(0.7);
         bars = bars.child(
-            div().h_full().w(px(14.)).flex().items_end().child(
-                div()
-                    .w_full()
-                    .min_h(px(2.))
-                    .h(relative(words / max))
-                    .rounded_t(px(3.))
-                    .bg(if today {
-                        t.accent
-                    } else {
-                        t.accent.opacity(0.45)
-                    }),
-            ),
+            div()
+                .id(group.clone())
+                .group(group.clone())
+                .h_full()
+                .w(px(14.))
+                .flex()
+                .items_end()
+                .tooltip(move |window, cx| {
+                    let (words, when) = tip.clone();
+                    Tooltip::element(move |_, cx| {
+                        let t = theme(cx);
+                        div()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .text_size(metrics::TEXT_XS)
+                                    .font_weight(FontWeight::BOLD)
+                                    .child(words.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(metrics::TEXT_CAPTION)
+                                    .text_color(t.muted_foreground)
+                                    .child(when.clone()),
+                            )
+                    })
+                    .build(window, cx)
+                })
+                .child(
+                    div()
+                        .w_full()
+                        .min_h(px(2.))
+                        .h(relative(count as f32 / max))
+                        .rounded_t(px(3.))
+                        .bg(if today {
+                            t.accent
+                        } else {
+                            t.accent.opacity(0.45)
+                        })
+                        .group_hover(group, move |s| s.bg(hovered)),
+                ),
         );
-        let letter = day_of(&day.start)
+        let letter = date
             .map(|d| format_day(d).chars().next().unwrap_or(' ').to_string())
             .unwrap_or_default();
         letters = letters.child(
@@ -546,7 +584,48 @@ fn week_bars(series: &[UsagePoint], t: &KassTheme) -> Div {
         .child(letters)
 }
 
+/// A day's hover tip: its words ("1,204 words" or "No dictation") and the
+/// day ("Mon, Nov 17 · today").
+fn day_tip(words: u64, date: Option<NaiveDate>, today: bool) -> (SharedString, SharedString) {
+    let headline = if words > 0 {
+        tr!(
+            "captures-week-words",
+            count = words,
+            formatted = format_count(words)
+        )
+    } else {
+        tr!("captures-week-no-dictation")
+    };
+    let mut when = date.map(format_day).unwrap_or_default();
+    if today {
+        when = format!("{when} · {}", tr!("captures-week-today"));
+    }
+    (headline.into(), when.into())
+}
+
 /// The day a series point starts on ("2026-11-10" or a timestamp).
 fn day_of(start: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(start.get(..10)?, "%Y-%m-%d").ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{day_of, day_tip};
+
+    #[test]
+    fn a_days_tip_names_its_words_and_day() {
+        let monday = day_of("2026-11-16");
+        assert_eq!(
+            day_tip(1204, monday, false),
+            ("1,204 words".into(), "Mon, Nov 16".into())
+        );
+        assert_eq!(
+            day_tip(1, monday, true),
+            ("1 word".into(), "Mon, Nov 16 · today".into())
+        );
+        assert_eq!(
+            day_tip(0, monday, false),
+            ("No dictation".into(), "Mon, Nov 16".into())
+        );
+    }
 }
