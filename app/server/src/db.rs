@@ -1,7 +1,12 @@
 //! `kass.db`. The app creates it, or brings an older one up to date
 //! (`prepare`, `schema`), before it starts the Python worker, which reads
-//! the reports and captures it trains on. The journal mode stays SQLite's
-//! default, as the worker opens it.
+//! the reports and captures it trains on.
+//!
+//! The database is in WAL mode (`prepare`), so a read never waits on a
+//! write, nor a write on a read. Writes go through one connection, one at a
+//! time (`Db::call`); reads go through a few of their own, side by side
+//! (`Db::read`). WAL lives in the file, so the worker's connections use it
+//! too, and it suits two processes on the same Mac.
 
 mod schema;
 
@@ -10,18 +15,27 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
+use tokio::sync::Semaphore;
 
 /// How long a statement waits for the worker's write lock: pysqlite's
 /// default, which the worker uses too.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// One connection, used by one statement at a time, off the async threads.
-/// It opens on first use, so the server starts whether or not anything
-/// reads the database yet.
+/// How many reads run at once; more wait for one to finish. Each holds a
+/// connection of its own, kept open for the next.
+const READERS: usize = 8;
+
+/// The connections to kass.db, used off the async threads. They open on
+/// first use, so the server starts whether or not anything reads the
+/// database yet.
 #[derive(Clone)]
 pub struct Db {
     path: Arc<PathBuf>,
-    connection: Arc<Mutex<Option<Connection>>>,
+    /// The one connection writes go through, one statement at a time.
+    writer: Arc<Mutex<Option<Connection>>>,
+    /// Read-only connections not in use.
+    readers: Arc<Mutex<Vec<Connection>>>,
+    reading: Arc<Semaphore>,
 }
 
 #[derive(Debug)]
@@ -52,7 +66,9 @@ impl Db {
     pub fn new(path: PathBuf) -> Self {
         Self {
             path: Arc::new(path),
-            connection: Arc::new(Mutex::new(None)),
+            writer: Arc::new(Mutex::new(None)),
+            readers: Arc::new(Mutex::new(Vec::new())),
+            reading: Arc::new(Semaphore::new(READERS)),
         }
     }
 
@@ -60,22 +76,54 @@ impl Db {
         &self.path
     }
 
-    /// Run `work` with the connection on a blocking thread, opening it first
-    /// if needed.
+    /// Run `work` with the write connection on a blocking thread, opening
+    /// it first if needed. One `call` runs at a time; use `read` for work
+    /// that only reads.
     pub async fn call<T, F>(&self, work: F) -> Result<T, DbError>
     where
         T: Send + 'static,
         F: FnOnce(&mut Connection) -> rusqlite::Result<T> + Send + 'static,
     {
         let path = Arc::clone(&self.path);
-        let connection = Arc::clone(&self.connection);
+        let writer = Arc::clone(&self.writer);
         tokio::task::spawn_blocking(move || {
-            let mut slot = connection.lock().unwrap_or_else(|e| e.into_inner());
+            let mut slot = writer.lock().unwrap_or_else(|e| e.into_inner());
             if slot.is_none() {
                 *slot = Some(open(&path)?);
             }
             let connection = slot.as_mut().expect("opened above");
             work(connection).map_err(DbError::from)
+        })
+        .await
+        .map_err(|e| DbError::Task(e.to_string()))?
+    }
+
+    /// Run `work` on a read-only connection of its own, alongside other
+    /// reads and whatever `call` is doing. A write in `work` fails.
+    pub async fn read<T, F>(&self, work: F) -> Result<T, DbError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
+    {
+        let turn = Arc::clone(&self.reading)
+            .acquire_owned()
+            .await
+            .map_err(|e| DbError::Task(e.to_string()))?;
+        let path = Arc::clone(&self.path);
+        let readers = Arc::clone(&self.readers);
+        tokio::task::spawn_blocking(move || {
+            let _turn = turn;
+            let idle = readers.lock().unwrap_or_else(|e| e.into_inner()).pop();
+            let connection = match idle {
+                Some(connection) => connection,
+                None => open_reader(&path)?,
+            };
+            let done = work(&connection);
+            readers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(connection);
+            done.map_err(DbError::from)
         })
         .await
         .map_err(|e| DbError::Task(e.to_string()))?
@@ -101,7 +149,22 @@ pub fn prepare(path: &Path) -> Result<(), String> {
     connection
         .pragma_update(None, "foreign_keys", false)
         .map_err(|e| failed(&e))?;
-    schema::migrate(&mut connection).map_err(|e| failed(&e))
+    schema::migrate(&mut connection).map_err(|e| failed(&e))?;
+    use_wal(&connection);
+    Ok(())
+}
+
+/// Put kass.db in WAL mode, once: it stays in the file. It takes the
+/// database to itself for a moment, so it can fail while the worker reads
+/// it; reads then wait on writes as before, until the next launch.
+fn use_wal(connection: &Connection) {
+    let mode = connection
+        .pragma_update_and_check(None, "journal_mode", "wal", |row| row.get::<_, String>(0));
+    match mode {
+        Ok(mode) if mode.eq_ignore_ascii_case("wal") => {}
+        Ok(mode) => eprintln!("[server] kass.db stays in {mode} journal mode"),
+        Err(error) => eprintln!("[server] kass.db stays in its journal mode: {error}"),
+    }
 }
 
 /// What a new install starts with, in a kass.db `prepare` made: the
@@ -168,6 +231,14 @@ fn open(path: &Path) -> rusqlite::Result<Connection> {
     Ok(connection)
 }
 
+/// Open the existing database for `Db::read`: read-write at the file, so
+/// it can share WAL's index with the others, but refusing any write.
+fn open_reader(path: &Path) -> rusqlite::Result<Connection> {
+    let connection = open(path)?;
+    connection.pragma_update(None, "query_only", true)?;
+    Ok(connection)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +294,80 @@ mod tests {
         let db = Db::new(path.clone());
         assert!(db.call(|c| c.execute_batch("SELECT 1")).await.is_err());
         assert!(!path.exists());
+    }
+
+    /// While a read is part way through a query, holding its snapshot,
+    /// another read and a write both finish.
+    #[tokio::test]
+    async fn a_long_read_holds_up_neither_reads_nor_writes() {
+        let path = TempDb::new("side-by-side");
+        prepare(&path.0).unwrap();
+        let db = Db::new(path.0.clone());
+        db.call(|c| {
+            c.execute_batch(
+                "INSERT INTO known_names (name, last_seen_at) VALUES ('Morgan', '2026-11-23'), \
+                 ('Kass', '2026-11-23');",
+            )
+        })
+        .await
+        .unwrap();
+
+        let (started, reading) = std::sync::mpsc::channel();
+        let (finish, finished) = std::sync::mpsc::channel::<()>();
+        let long = tokio::spawn({
+            let db = db.clone();
+            async move {
+                db.read(move |c| {
+                    let mut statement = c.prepare("SELECT name FROM known_names")?;
+                    let mut rows = statement.query([])?;
+                    let first: String = rows.next()?.expect("a row").get(0)?;
+                    started.send(()).unwrap();
+                    finished.recv().unwrap();
+                    Ok(first)
+                })
+                .await
+            }
+        });
+        tokio::task::spawn_blocking(move || reading.recv().unwrap())
+            .await
+            .unwrap();
+
+        let soon = Duration::from_secs(2);
+        let count = tokio::time::timeout(
+            soon,
+            db.read(|c| {
+                c.query_row("SELECT count(*) FROM known_names", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+            }),
+        )
+        .await
+        .expect("a second read waited on the first");
+        assert_eq!(count.unwrap(), 2);
+        let written = tokio::time::timeout(
+            soon,
+            db.call(|c| c.execute("DELETE FROM known_names WHERE name = 'Kass'", [])),
+        )
+        .await
+        .expect("a write waited on the read");
+        assert_eq!(written.unwrap(), 1);
+
+        finish.send(()).unwrap();
+        assert!(long.await.unwrap().is_ok());
+        let count: i64 = db
+            .read(|c| c.query_row("SELECT count(*) FROM known_names", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn a_read_cannot_write() {
+        let path = TempDb::new("read-only");
+        prepare(&path.0).unwrap();
+        let db = Db::new(path.0.clone());
+        let written = db.read(|c| c.execute("DELETE FROM known_names", [])).await;
+        assert!(written.is_err());
     }
 
     /// A database file of its own, gone when dropped.

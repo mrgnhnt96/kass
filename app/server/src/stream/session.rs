@@ -337,11 +337,7 @@ impl Session {
         mac: Option<Mac>,
         events: mpsc::UnboundedSender<Value>,
     ) -> Result<(Arc<Session>, Foreground), String> {
-        let settings = app
-            .db
-            .call(settings::get)
-            .await
-            .map_err(|e| e.to_string())?;
+        let settings = settings::load(&app.db).await.map_err(|e| e.to_string())?;
         let start = Start::parse(start, Some(&settings.language), &settings.stt_model)?;
         let stt_model = models::speech_model(&app.proxy, &start.stt_model).await?;
         let teaching = app.teach.teaching_style();
@@ -356,7 +352,7 @@ impl Session {
         let dir = data_dir.clone();
         let (snapshot, inputs, dictionary) = app
             .db
-            .call(move |conn| {
+            .read(move |conn| {
                 let snapshot = styles::load(conn, teaching)?;
                 let inputs = cleanup_inputs::load(conn, &dir, &snapshot, None, self_correction)?;
                 let dictionary = dictionaries.for_app(conn, None, None)?;
@@ -632,7 +628,7 @@ impl Session {
         let self_correction = self.settings.self_correction;
         self.app
             .db
-            .call(move |conn| {
+            .read(move |conn| {
                 cleanup_inputs::load(conn, &dir, &snapshot, Some(&id), self_correction)
             })
             .await
@@ -647,7 +643,7 @@ impl Session {
         let dictionaries = self.app.dictionaries.clone();
         self.app
             .db
-            .call(move |conn| dictionaries.for_app(conn, bundle_id.as_deref(), style_id.as_deref()))
+            .read(move |conn| dictionaries.for_app(conn, bundle_id.as_deref(), style_id.as_deref()))
             .await
             .map_err(|e| e.to_string())
     }
@@ -1765,7 +1761,7 @@ impl Session {
     /// The user's names, which keep their capitals mid-sentence.
     async fn load_names(&self) {
         let known = self.app.known_names.clone();
-        match self.app.db.call(move |conn| known.get(conn)).await {
+        match self.app.db.read(move |conn| known.get(conn)).await {
             Ok(names) => {
                 let mut st = self.lock();
                 let dictionary = st.dictionary.clone();

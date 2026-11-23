@@ -150,7 +150,7 @@ pub fn express(text: &str, said: &Said, baseline: Option<&Baseline>, taught: &Le
 /// dictation starts. The defaults when they can't be read.
 pub async fn load(db: &Db) -> (Option<Baseline>, Learned) {
     let read = db
-        .call(|conn| Ok((store::load_baseline(conn)?, store::load_learned(conn)?)))
+        .read(|conn| Ok((store::load_baseline(conn)?, store::load_learned(conn)?)))
         .await;
     read.unwrap_or_else(|error| {
         eprintln!(
@@ -166,7 +166,7 @@ pub async fn load(db: &Db) -> (Option<Baseline>, Learned) {
 /// user's edits of them.
 pub async fn measure_and_save(db: &Db, capture_id: &str, expression: &Expression, text: &str) {
     let saved = async {
-        let baseline = db.call(|conn| store::load_baseline(conn)).await?;
+        let baseline = db.read(store::load_baseline).await?;
         if expression.failed() {
             return Ok(());
         }

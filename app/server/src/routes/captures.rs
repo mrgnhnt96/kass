@@ -117,7 +117,7 @@ fn model_readiness(cache: &std::path::Path, model: &Model) -> ModelReadiness {
 /// doesn't leave the pill transcribing forever. It reads the files, not
 /// what's loaded, so the answer holds across restarts.
 async fn readiness(State(state): State<AppState>) -> Response {
-    let saved = match state.db.call(crate::settings::get).await {
+    let saved = match crate::settings::load(&state.db).await {
         Ok(saved) => saved,
         Err(error) => return failed(error),
     };
@@ -246,7 +246,7 @@ async fn list(State(state): State<AppState>, RawQuery(query): RawQuery) -> Respo
     }
     match state
         .db
-        .call(move |conn| store::list(conn, limit, offset, &apps))
+        .read(move |conn| store::list(conn, limit, offset, &apps))
         .await
     {
         Ok((items, total)) => Json(json!({ "items": items, "total": total })).into_response(),
@@ -260,7 +260,7 @@ async fn apps(State(state): State<AppState>) -> Response {
     let teaching = state.teach.teaching_style();
     match state
         .db
-        .call(move |conn| crate::styles::capture_apps(conn, teaching))
+        .read(move |conn| crate::styles::capture_apps(conn, teaching))
         .await
     {
         Ok(apps) => Json(apps).into_response(),
@@ -271,7 +271,7 @@ async fn apps(State(state): State<AppState>) -> Response {
 async fn find(state: &AppState, capture_id: String) -> Result<Option<Capture>, crate::db::DbError> {
     state
         .db
-        .call(move |conn| store::get(conn, &capture_id))
+        .read(move |conn| store::get(conn, &capture_id))
         .await
 }
 
@@ -510,7 +510,7 @@ async fn list_reports(State(state): State<AppState>, Path(capture_id): Path<Stri
 
 /// Every report, for evaluation: audio stays on each capture.
 async fn export(State(state): State<AppState>) -> Response {
-    match state.db.call(|conn| store::list_reports(conn, None)).await {
+    match state.db.read(|conn| store::list_reports(conn, None)).await {
         Ok(listed) => reports(listed),
         Err(error) => failed(error),
     }
