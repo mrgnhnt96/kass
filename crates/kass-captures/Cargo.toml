@@ -15,6 +15,7 @@ kass-api.workspace = true
 kass-dictionary = { path = "../kass-dictionary" }
 kass-i18n.workspace = true
 kass-ui = { path = "../kass-ui" }
+kass-writing-style = { path = "../kass-writing-style" }
 regex = "1"
 unicode-normalization = "0.1"
 

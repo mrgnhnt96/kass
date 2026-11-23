@@ -3530,6 +3530,7 @@ dependencies = [
  "kass-dictionary",
  "kass-i18n",
  "kass-ui",
+ "kass-writing-style",
  "regex",
  "serde_json",
  "unicode-normalization",
