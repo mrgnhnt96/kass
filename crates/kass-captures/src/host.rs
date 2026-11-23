@@ -5,6 +5,7 @@
 //! default that does nothing, so the page runs on its own, as in the example.
 
 use gpui_kit::{App, Image, Task, Window};
+use kass_api::types::{CaptureAppFilter, UsagePeriod};
 use std::sync::Arc;
 
 /// A screen the page links to.
@@ -18,7 +19,11 @@ pub enum Route {
     /// The dictionary's phrases.
     DictionaryPhrases,
     DictationSettings,
-    Insights,
+    /// Insights, showing these apps over this period.
+    Insights {
+        filter: CaptureAppFilter,
+        period: UsagePeriod,
+    },
 }
 
 pub trait CapturesHost {
