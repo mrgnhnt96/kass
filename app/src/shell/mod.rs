@@ -187,6 +187,9 @@ impl MainShell {
         kass_ui::system_appearance_changed(window.appearance(), cx);
         let api = data.read(cx).api.clone();
         let icons = Rc::new(insights::Icons::default());
+        // The Dictionary and Writing style show apps' icons from here too.
+        let lookup = icons.clone();
+        kass_ui::set_app_icons(move |bundle_id| lookup.get(bundle_id), cx);
         let asks = cx.new(|cx| Asks::new(data.clone(), window, cx));
         let downloads = cx.new(|cx| DownloadToasts::new(data.clone(), window, cx));
         let host = Rc::new(models::ShellModels { data: data.clone() });
