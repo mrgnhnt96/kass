@@ -223,7 +223,7 @@ pub async fn start(config: Config) -> Result<Running, String> {
         asked: Arc::new(asked),
         served,
     };
-    let listener = TcpListener::bind(config.listen)
+    let listener = bind(config.listen)
         .await
         .map_err(|e| format!("Could not listen on {}: {e}", config.listen))?;
     let address = listener.local_addr().map_err(|e| e.to_string())?;
@@ -323,4 +323,17 @@ pub async fn start(config: Config) -> Result<Running, String> {
         stopping,
         _relays: relays,
     })
+}
+
+/// Listen on `address`. `[::]` takes IPv4 too (the OS default here is
+/// dual-stack); on a machine with IPv6 turned off it falls back to
+/// `0.0.0.0`, so sharing still works over IPv4.
+async fn bind(address: SocketAddr) -> std::io::Result<TcpListener> {
+    match TcpListener::bind(address).await {
+        Err(error) if address.ip().is_unspecified() && address.is_ipv6() => {
+            let ipv4 = SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED, address.port()));
+            TcpListener::bind(ipv4).await.map_err(|_| error)
+        }
+        result => result,
+    }
 }

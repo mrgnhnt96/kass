@@ -1092,10 +1092,14 @@ async fn serve_api(app: &AppHandle, state: &ServerState, share: bool) -> Result<
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-    let host = if share {
-        std::net::Ipv4Addr::UNSPECIFIED
+    // Sharing listens on `[::]`, which also takes IPv4 (dual-stack): macOS
+    // resolves `Name.local` to IPv6 first, and a refused IPv6 connect costs
+    // the other Mac about 200 ms before it falls back. Not sharing stays on
+    // loopback IPv4.
+    let host: std::net::IpAddr = if share {
+        std::net::Ipv6Addr::UNSPECIFIED.into()
     } else {
-        std::net::Ipv4Addr::LOCALHOST
+        std::net::Ipv4Addr::LOCALHOST.into()
     };
     let started = kass_server::start(kass_server::Config {
         listen: (host, SERVER_PORT).into(),
