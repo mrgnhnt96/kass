@@ -60,7 +60,7 @@ cargo xtask install   # build and install to /Applications
 
 Run them from the repo root; `cargo xtask --help` lists every command (crates/xtask).
 
-You'll need [Rust](https://rustup.rs), [Python 3.12](https://python.org), Xcode and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). See [Build from source](https://kass.mrgnhnt.com/docs/build-from-source/) for signing and details.
+You'll need an Apple Silicon Mac, [Rust](https://rustup.rs), [Python 3.12](https://python.org) and Xcode. See [Build from source](https://kass.mrgnhnt.com/docs/build-from-source/) for signing and details.
 
 `git push` runs a pre-push hook (`scripts/hooks/pre-push`) that lints and formats only the files the push changes. If it fixes anything, it stops the push and lists the files: commit them and push again. `SKIP=1 git push` skips it once.
 
