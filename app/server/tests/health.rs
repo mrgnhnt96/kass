@@ -265,6 +265,38 @@ async fn health_reports_the_worker_and_the_chosen_whisper_model() {
     assert_eq!(body["model_downloaded"], true);
 }
 
+/// /health is polled, so after its first answer it doesn't wait on the
+/// database: another process holding a write keeps it waiting for seconds.
+/// The chosen model comes from the server's own settings writes.
+#[tokio::test]
+async fn health_does_not_wait_on_the_database() {
+    let kass = Kass::start(Worker::default()).await;
+    downloaded(&kass.cache, "openai/whisper-small", "weights.npz");
+    assert_eq!(kass.get("/health").await.1["model_downloaded"], false);
+
+    let response = kass
+        .client
+        .put(kass.url("/settings/captures"))
+        .json(&json!({"stt_model": "small"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+
+    let held = rusqlite::Connection::open(kass.data.join("kass.db")).unwrap();
+    held.execute_batch("BEGIN EXCLUSIVE").unwrap();
+    let started = std::time::Instant::now();
+    let (status, body) = kass.get("/health").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["model_downloaded"], true);
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+    held.execute_batch("ROLLBACK").unwrap();
+}
+
 /// The id the app keeps in the data folder (src/this_mac.rs), so another
 /// Mac can tell it's still this Kass after its network name changes.
 #[tokio::test]

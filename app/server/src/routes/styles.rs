@@ -2,6 +2,10 @@
 //! answered from `kass.db` as `backend/routes/styles.py` answered them.
 //! After each change what each style learned is regrouped (`learned`).
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
+
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -13,6 +17,7 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::request::{body, detail, flag, required, text, Problems};
+use crate::cleanup_inputs::{CorrectionRows, LearnedFiles};
 use crate::dictionary::store as dictionary;
 use crate::stream::session::cleanup_prompt;
 use crate::styles::{self, Corrections, Refused, Style, StylePatch, StyledApp, MAX_STYLES};
@@ -61,41 +66,111 @@ fn failed(error: crate::db::DbError) -> Response {
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
 }
 
+/// Each style's cleanup prompt, as `(system, examples)`.
+type Prompts = Arc<Vec<(String, Vec<(String, String)>)>>;
+
+/// The styles' cleanup prompts as last built, and the inputs they were built
+/// from ([`fingerprint`]), so listing the styles again while nothing changed
+/// doesn't build them again. The worker still counts them each time: what
+/// it answers depends on whether the cleanup model is downloaded and loaded.
+#[derive(Default)]
+pub struct StylePrompts(Mutex<Option<(u64, Prompts)>>);
+
+impl StylePrompts {
+    fn get(&self, inputs: u64) -> Option<Prompts> {
+        let kept = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        kept.as_ref()
+            .filter(|(built_from, _)| *built_from == inputs)
+            .map(|(_, prompts)| Arc::clone(prompts))
+    }
+
+    fn keep(&self, inputs: u64, prompts: &Prompts) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = Some((inputs, Arc::clone(prompts)));
+    }
+}
+
+/// What the styles' cleanup prompts are built from, read from the database.
+struct PromptReads {
+    settings: settings::Settings,
+    styles: styles::Snapshot,
+    corrections: CorrectionRows,
+}
+
+fn prompt_reads(
+    conn: &mut rusqlite::Connection,
+    teaching: Option<String>,
+) -> rusqlite::Result<PromptReads> {
+    Ok(PromptReads {
+        settings: settings::get(conn)?,
+        styles: styles::load(conn, teaching)?,
+        corrections: CorrectionRows::read(conn)?,
+    })
+}
+
+/// Everything the styles' cleanup prompts are built from, hashed: a style,
+/// a correction, a learning file or the model changing changes it.
+fn fingerprint(reads: &PromptReads, files: &LearnedFiles) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    reads.settings.llm_model.hash(&mut hasher);
+    reads.settings.self_correction.hash(&mut hasher);
+    reads.styles.styles.hash(&mut hasher);
+    reads.styles.apps.hash(&mut hasher);
+    reads.styles.teaching.hash(&mut hasher);
+    reads.corrections.hash(&mut hasher);
+    for file in [
+        Some(&files.writing),
+        files.notes.as_ref(),
+        files.learning.as_ref(),
+    ] {
+        file.map(Value::to_string).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 /// What one style's cached prompt takes in the cleanup model, in MB: the
 /// largest current style's, since a style's prompt grows as it learns. None
-/// until the worker can count it.
-async fn cache_mb_per_style(state: &AppState) -> Option<i64> {
-    let saved = match state.db.call(settings::get).await {
-        Ok(saved) => saved,
+/// until the worker can count it. The database is only read; the prompts are
+/// built after, and not again while nothing they are built from changed.
+async fn cache_mb_per_style(state: &AppState, reads: rusqlite::Result<PromptReads>) -> Option<i64> {
+    let reads = match reads {
+        Ok(reads) => reads,
         Err(error) => {
-            eprintln!("[server] writing styles: {error}");
+            eprintln!("[server] couldn't read the styles' cleanup prompts: {error}");
             return None;
         }
     };
-    let teaching = state.teach.teaching_style();
     let dir = learned::data_dir(state);
-    let model = saved.llm_model.clone();
-    let prompts = state
-        .db
-        .call(move |conn| {
-            let snapshot = styles::load(conn, teaching)?;
-            snapshot
+    let model = reads.settings.llm_model.clone();
+    let built = Arc::clone(&state.style_prompts);
+    let prompts = tokio::task::spawn_blocking(move || {
+        let files = LearnedFiles::read(&dir);
+        let inputs = fingerprint(&reads, &files);
+        if let Some(prompts) = built.get(inputs) {
+            return prompts;
+        }
+        let corrections = reads.corrections.examples(&reads.styles);
+        let prompts: Prompts = Arc::new(
+            reads
+                .styles
                 .styles
                 .iter()
                 .map(|style| {
-                    let inputs = cleanup_inputs::load(
-                        conn,
-                        &dir,
-                        &snapshot,
+                    let inputs = cleanup_inputs::assemble(
+                        &files,
+                        &reads.styles,
                         Some(&style.id),
-                        saved.self_correction,
-                    )?;
-                    let prompt = cleanup_prompt(&inputs, &model);
-                    Ok((prompt.system, prompt.examples))
+                        reads.settings.self_correction,
+                        &corrections,
+                    );
+                    let prompt = cleanup_prompt(&inputs, &reads.settings.llm_model);
+                    (prompt.system, prompt.examples)
                 })
-                .collect::<rusqlite::Result<Vec<_>>>()
-        })
-        .await;
+                .collect(),
+        );
+        built.keep(inputs, &prompts);
+        prompts
+    })
+    .await;
     let prompts = match prompts {
         Ok(prompts) => prompts,
         Err(error) => {
@@ -103,7 +178,7 @@ async fn cache_mb_per_style(state: &AppState) -> Option<i64> {
             return None;
         }
     };
-    let largest = worker::cache_bytes(&state.proxy, &saved.llm_model, &prompts)
+    let largest = worker::cache_bytes(&state.proxy, &model, &prompts)
         .await?
         .into_iter()
         .flatten()
@@ -113,19 +188,23 @@ async fn cache_mb_per_style(state: &AppState) -> Option<i64> {
 }
 
 /// Every style and every app with the style it uses, as the page shows them.
+/// One read of the database answers both the list and what the prompts are
+/// built from.
 async fn listing(state: &AppState) -> Response {
-    let cache_mb_per_style = cache_mb_per_style(state).await;
     let teaching = state.teach.teaching_style();
-    match state
+    let read = state
         .db
-        .call(move |conn| styles::listing(conn, teaching))
-        .await
-    {
-        Ok(listed) => Json(StylesResponse {
+        .call(move |conn| {
+            let listed = styles::listing(conn, teaching.clone())?;
+            Ok((listed, prompt_reads(conn, teaching)))
+        })
+        .await;
+    match read {
+        Ok((listed, reads)) => Json(StylesResponse {
             styles: listed.styles,
             apps: listed.apps,
             max_styles: MAX_STYLES,
-            cache_mb_per_style,
+            cache_mb_per_style: cache_mb_per_style(state, reads).await,
         })
         .into_response(),
         Err(error) => failed(error),

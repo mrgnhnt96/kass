@@ -9,6 +9,9 @@
 //! (`correction-notes.json`) and `correction_learning`
 //! (`correction-learning.json`). Here [`load`] reads them all for one style,
 //! fresh, so the dictation session calls it once per style it cleans up in.
+//! A caller wanting every style's reads the corrections once
+//! ([`CorrectionRows`]) and the files once ([`LearnedFiles`]) and builds
+//! each style's from them ([`assemble`]).
 //! The worker still writes the JSON files; this only reads them.
 
 use std::path::Path;
@@ -60,21 +63,43 @@ pub fn load(
     style_id: Option<&str>,
     self_correction: bool,
 ) -> rusqlite::Result<CleanupInputs> {
+    let files = LearnedFiles::read(data_dir);
+    let corrections = CorrectionRows::read(conn)?.examples(styles);
+    Ok(assemble(
+        &files,
+        styles,
+        style_id,
+        self_correction,
+        &corrections,
+    ))
+}
+
+/// The inputs for cleanup in `style_id` from what [`load`] reads: the
+/// learning files and every style's corrections
+/// ([`CorrectionRows::examples`]). Needs no database, so a caller building
+/// several styles' inputs reads the corrections once and builds them after
+/// letting the database go.
+pub fn assemble(
+    files: &LearnedFiles,
+    styles: &Snapshot,
+    style_id: Option<&str>,
+    self_correction: bool,
+    corrections: &[(String, PersonalExample)],
+) -> CleanupInputs {
     let style = styles.resolve(style_id).clone();
-    let writing = read_writing_style(data_dir);
-    let personal = all_examples(conn, &writing, styles, &style.id)?;
-    let notes = correction_notes(data_dir, &style.id);
-    let (rules, punctuation) = learned_corrections(data_dir);
-    Ok(CleanupInputs {
+    let personal = examples_for(&files.writing, styles, &style.id, corrections);
+    let notes = notes_from(files.notes.as_ref(), &style.id);
+    let (rules, punctuation) = learned_from(files.learning.as_ref());
+    CleanupInputs {
         flags: flags_for(&style, self_correction),
-        profile: profile(&writing, &style.id),
+        profile: profile(&files.writing, &style.id),
         description: py::strip(&style.description).to_string(),
         personal: for_prompt(&in_prompt(&personal)),
         notes: notes_section(&notes),
         punctuation,
         rules,
         style,
-    })
+    }
 }
 
 /// The cleanup flags for dictation in `style`; self-correction stays a
@@ -117,6 +142,31 @@ fn read_json(data_dir: &Path, name: &str) -> Option<Value> {
 fn entries(value: &Value) -> impl Iterator<Item = &Value> {
     value.as_array().into_iter().flatten()
 }
+
+/// The files the worker keeps that cleanup reads, read once for any number
+/// of styles.
+#[derive(Clone, Debug)]
+pub struct LearnedFiles {
+    /// `writing-style.json`, as [`read_writing_style`] reads it.
+    pub writing: Value,
+    /// `correction-notes.json`.
+    pub notes: Option<Value>,
+    /// `correction-learning.json`.
+    pub learning: Option<Value>,
+}
+
+impl LearnedFiles {
+    pub fn read(data_dir: &Path) -> Self {
+        LearnedFiles {
+            writing: read_writing_style(data_dir),
+            notes: read_json(data_dir, NOTES_FILE),
+            learning: read_json(data_dir, LEARNING_FILE),
+        }
+    }
+}
+
+const NOTES_FILE: &str = "correction-notes.json";
+const LEARNING_FILE: &str = "correction-learning.json";
 
 // -- writing-style.json --------------------------------------------------------
 
@@ -226,70 +276,91 @@ fn isoformat(stored: &str) -> String {
     }
 }
 
-/// Explicit corrections to cleaned-up text, newest first, the latest per
-/// capture, with the style each teaches.
-fn corrections(
-    conn: &Connection,
-    styles: &Snapshot,
-) -> rusqlite::Result<Vec<(String, PersonalExample)>> {
-    let sources = EXPLICIT_SOURCES
-        .map(|source| format!("'{source}'"))
-        .join(", ");
-    // A correction whose capture history retention deleted keeps its own
-    // copy of the style it teaches.
-    let mut statement = conn.prepare(&format!(
-        "SELECT f.id, f.capture_id, f.expected_text, f.snapshot, f.created_at, \
-         COALESCE(c.teaches_style_id, f.teaches_style_id) \
-         FROM capture_feedback f LEFT OUTER JOIN captures c ON c.id = f.capture_id \
-         WHERE f.target = 'refined' AND f.source IN ({sources}) \
-         ORDER BY f.created_at DESC, f.id DESC"
-    ))?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<String>>(5)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut seen = std::collections::HashSet::new();
-    let mut examples = Vec::new();
-    for (id, capture_id, meant, snapshot, created_at, teaches) in rows {
-        // The latest correction of a capture replaces earlier ones.
-        if !seen.insert(capture_id) {
-            continue;
-        }
-        let Ok(Value::Object(snapshot)) = serde_json::from_str::<Value>(&snapshot) else {
-            continue;
-        };
-        let text = |key: &str| snapshot.get(key).and_then(Value::as_str).map(String::from);
-        // Captures saved before Whisper's loops were stripped at the source.
-        let said = strip_stt_artifacts(&text("transcript_raw").unwrap_or_default());
-        if said.is_empty() || meant.is_empty() {
-            continue;
-        }
-        let app_bundle_id = text("app_bundle_id");
-        let style = styles
-            .correction_style(app_bundle_id.as_deref(), teaches.as_deref())
-            .to_string();
-        examples.push((
-            style,
-            PersonalExample {
-                id: format!("correction:{id}"),
-                source: "correction",
-                said,
-                meant,
-                created_at: created_at.as_deref().map(isoformat),
-                app_bundle_id,
-                app_name: text("app_name"),
-            },
-        ));
+/// One explicit correction as stored: its id, capture, the text meant, the
+/// capture as it was, when, and the style it teaches if it says.
+type CorrectionRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+);
+
+/// The explicit corrections to cleaned-up text as stored, newest first. One
+/// query reads them; [`CorrectionRows::examples`] makes them examples after
+/// the database is let go, since cleaning each said text up takes far
+/// longer than reading it.
+#[derive(Clone, Debug, Default, Hash)]
+pub struct CorrectionRows(Vec<CorrectionRow>);
+
+impl CorrectionRows {
+    pub fn read(conn: &Connection) -> rusqlite::Result<Self> {
+        let sources = EXPLICIT_SOURCES
+            .map(|source| format!("'{source}'"))
+            .join(", ");
+        // A correction whose capture history retention deleted keeps its own
+        // copy of the style it teaches.
+        let mut statement = conn.prepare(&format!(
+            "SELECT f.id, f.capture_id, f.expected_text, f.snapshot, f.created_at, \
+             COALESCE(c.teaches_style_id, f.teaches_style_id) \
+             FROM capture_feedback f LEFT OUTER JOIN captures c ON c.id = f.capture_id \
+             WHERE f.target = 'refined' AND f.source IN ({sources}) \
+             ORDER BY f.created_at DESC, f.id DESC"
+        ))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(CorrectionRows(rows))
     }
-    Ok(examples)
+
+    /// The corrections as examples, newest first, the latest per capture,
+    /// with the style each teaches.
+    pub fn examples(&self, styles: &Snapshot) -> Vec<(String, PersonalExample)> {
+        let mut seen = std::collections::HashSet::new();
+        let mut examples = Vec::new();
+        for (id, capture_id, meant, snapshot, created_at, teaches) in &self.0 {
+            // The latest correction of a capture replaces earlier ones.
+            if !seen.insert(capture_id) {
+                continue;
+            }
+            let Ok(Value::Object(snapshot)) = serde_json::from_str::<Value>(snapshot) else {
+                continue;
+            };
+            let text = |key: &str| snapshot.get(key).and_then(Value::as_str).map(String::from);
+            // Captures saved before Whisper's loops were stripped at the source.
+            let said = strip_stt_artifacts(&text("transcript_raw").unwrap_or_default());
+            if said.is_empty() || meant.is_empty() {
+                continue;
+            }
+            let app_bundle_id = text("app_bundle_id");
+            let style = styles
+                .correction_style(app_bundle_id.as_deref(), teaches.as_deref())
+                .to_string();
+            examples.push((
+                style,
+                PersonalExample {
+                    id: format!("correction:{id}"),
+                    source: "correction",
+                    said,
+                    meant: meant.clone(),
+                    created_at: created_at.as_deref().map(isoformat),
+                    app_bundle_id,
+                    app_name: text("app_name"),
+                },
+            ));
+        }
+        examples
+    }
 }
 
 /// Every example cleanup in `style_id` may use, newest first: its
@@ -304,13 +375,27 @@ pub fn all_examples(
     if styles.get(Some(style_id)).is_none() {
         return Ok(Vec::new());
     }
+    let corrections = CorrectionRows::read(conn)?.examples(styles);
+    Ok(examples_for(writing, styles, style_id, &corrections))
+}
+
+/// [`all_examples`] from every style's corrections, already read.
+fn examples_for(
+    writing: &Value,
+    styles: &Snapshot,
+    style_id: &str,
+    corrections: &[(String, PersonalExample)],
+) -> Vec<PersonalExample> {
+    if styles.get(Some(style_id)).is_none() {
+        return Vec::new();
+    }
     let hidden: std::collections::HashSet<String> = hidden_examples(writing).into_iter().collect();
     let mut examples = calibration_examples(writing, style_id);
     examples.extend(
-        corrections(conn, styles)?
-            .into_iter()
+        corrections
+            .iter()
             .filter(|(style, _)| style == style_id)
-            .map(|(_, example)| example),
+            .map(|(_, example)| example.clone()),
     );
     examples.retain(|example| {
         !hidden.contains(&example.id)
@@ -323,7 +408,7 @@ pub fn all_examples(
         let b = b.created_at.as_deref().unwrap_or("");
         b.cmp(a)
     });
-    Ok(examples)
+    examples
 }
 
 /// The most recent of `all` (newest first) that fit the prompt budget,
@@ -355,7 +440,12 @@ pub fn for_prompt(in_prompt: &[PersonalExample]) -> Vec<Example> {
 /// `style_id`'s rules summarized from its older examples. Version 1 of the
 /// file held one list, the style the global settings moved into.
 pub fn correction_notes(data_dir: &Path, style_id: &str) -> Vec<String> {
-    let Some(loaded) = read_json(data_dir, "correction-notes.json") else {
+    notes_from(read_json(data_dir, NOTES_FILE).as_ref(), style_id)
+}
+
+/// [`correction_notes`] from the file, already read.
+fn notes_from(loaded: Option<&Value>, style_id: &str) -> Vec<String> {
+    let Some(loaded) = loaded else {
         return Vec::new();
     };
     let notes = match loaded["version"].as_i64() {
@@ -391,7 +481,12 @@ pub fn notes_section(notes: &[String]) -> Option<String> {
 /// marks. A state Python would refuse (another version, too many rules, a
 /// malformed rule) gives neither.
 pub fn learned_corrections(data_dir: &Path) -> (Rules, Learned) {
-    let Some(state) = read_json(data_dir, "correction-learning.json") else {
+    learned_from(read_json(data_dir, LEARNING_FILE).as_ref())
+}
+
+/// [`learned_corrections`] from the file, already read.
+fn learned_from(state: Option<&Value>) -> (Rules, Learned) {
+    let Some(state) = state else {
         return (Rules::new(Vec::new()), Learned::default());
     };
     let usable = state["version"] == json!(1)
@@ -414,5 +509,5 @@ pub fn learned_corrections(data_dir: &Path) -> (Rules, Learned) {
             .filter_map(|kept| kept.as_str().map(String::from))
             .collect(),
     };
-    (Rules::from_state(&state), punctuation)
+    (Rules::from_state(state), punctuation)
 }

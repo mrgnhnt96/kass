@@ -96,10 +96,19 @@ struct Health {
 }
 
 /// Whether the Whisper model chosen in the capture settings is downloaded;
-/// None when the settings can't be read or name no Whisper model.
+/// None when the settings can't be read or name no Whisper model. The
+/// settings are read once and kept (`settings::ChosenSpeech`), so a health
+/// check never waits behind other work on the database.
 async fn whisper_downloaded(state: &AppState) -> Option<bool> {
-    let saved = state.db.call(settings::get).await.ok()?;
-    let model = registry::sized(Engine::Whisper, &saved.stt_model)?;
+    let chosen = match state.chosen_speech.get() {
+        Ok(chosen) => chosen,
+        Err(mark) => {
+            let saved = state.db.call(settings::get).await.ok()?;
+            state.chosen_speech.keep(mark, &saved.stt_model);
+            saved.stt_model
+        }
+    };
+    let model = registry::sized(Engine::Whisper, &chosen)?;
     let cache = state.models.cache().to_path_buf();
     tokio::task::spawn_blocking(move || {
         cache::is_cached(&cache, model.repo, cache::WHISPER_WEIGHTS)

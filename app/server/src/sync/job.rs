@@ -395,11 +395,13 @@ impl StandIn {
     async fn copy(&self, state: &AppState, data: Map<String, Value>) -> Result<(), String> {
         let data = Arc::new(data);
         let rows = Arc::clone(&data);
-        state
+        let replaced = state
             .db
             .call(move |conn| mirror::replace(conn, &rows))
-            .await
-            .map_err(|error| error.to_string())?;
+            .await;
+        // The shared Kass's settings came with it.
+        state.chosen_speech.forget();
+        replaced.map_err(|error| error.to_string())?;
         let data_dir = data_dir(state);
         let files = data
             .get("files")
