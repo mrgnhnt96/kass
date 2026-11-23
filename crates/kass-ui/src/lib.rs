@@ -3,10 +3,12 @@
 //! windows with `gpui_kit::open_window` so dialogs and toasts have a root to
 //! draw in. Register [`Assets`] on the application for the icons.
 
+mod app_icons;
 mod assets;
 pub mod controls;
 pub mod theme;
 
+pub use app_icons::{app_icon, set_app_icons};
 pub use assets::Assets;
 pub use controls::*;
 pub use theme::{

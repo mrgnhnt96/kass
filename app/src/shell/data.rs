@@ -49,6 +49,12 @@ pub struct ShellData {
     pub prefs: Prefs,
     /// The other Mac in use can't be reached; this Mac's server stands in.
     pub away: bool,
+    /// When the other Mac went away, while it is.
+    pub away_since: Option<Instant>,
+    /// "Keep waiting" was chosen for this time it's away.
+    pub away_dismissed: bool,
+    /// "Use this Mac instead" is restarting Kass.
+    pub switching_to_this_mac: bool,
     pub health: Health,
     pub settings: Option<CaptureSettings>,
     pub readiness: Option<CaptureReadinessResponse>,
@@ -118,6 +124,9 @@ impl ShellData {
             api: ApiClient::new(LOCAL_SERVER_URL, mac),
             prefs,
             away: prefs::away(),
+            away_since: prefs::away().then(Instant::now),
+            away_dismissed: false,
+            switching_to_this_mac: false,
             health: Health::Connecting,
             settings: None,
             readiness: None,
@@ -205,6 +214,12 @@ impl ShellData {
         }
         self.prefs = prefs;
         self.away = prefs::away();
+        if !self.away {
+            self.away_since = None;
+            self.away_dismissed = false;
+        } else if self.away_since.is_none() {
+            self.away_since = Some(Instant::now());
+        }
         self.channel = updater::update_channel(AppHandle);
         let url = self.server_url();
         if url != self.api.base_url() {

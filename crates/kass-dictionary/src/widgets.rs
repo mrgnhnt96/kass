@@ -46,9 +46,14 @@ fn initial(name: &str) -> String {
 }
 
 /// A scope's mark: a globe for everywhere, an outlined initial for a style,
-/// a filled initial for an app.
+/// the app's icon for an app (a filled initial when it isn't installed).
 pub fn scope_icon(scope: &Scope, name: &str, size: Pixels, cx: &App) -> AnyElement {
     let t = theme(cx);
+    if let Scope::App(bundle_id) = scope
+        && let Some(image) = kass_ui::app_icon(bundle_id, cx)
+    {
+        return img(image).size(size).flex_none().into_any_element();
+    }
     match scope {
         Scope::Global => icon(IconName::Globe, size, t.muted_foreground).into_any_element(),
         Scope::Style(_) => div()

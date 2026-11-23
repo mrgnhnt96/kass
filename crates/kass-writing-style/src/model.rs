@@ -8,6 +8,7 @@ use kass_api::types::{
     PersonalExample, PersonalExampleSource, StyledApp, TeachChip, TeachKind, WritingStyle,
     WritingStyleHabit, WritingStylesResponse,
 };
+use std::path::PathBuf;
 
 /// The longest style name.
 pub const MAX_NAME: usize = 40;
@@ -302,10 +303,43 @@ pub fn clipped(text: &str, max: usize) -> Option<String> {
         .map(|(at, _)| text[..at].to_string())
 }
 
+/// Where the corrections export is written: the path picked, ending in
+/// `.json`. GPUI's save panel can't limit the file type, so a name typed
+/// without it gets it, as a panel limited to JSON would add it.
+pub fn json_path(path: PathBuf) -> PathBuf {
+    let is_json = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
+    if is_json {
+        return path;
+    }
+    let mut named = path.into_os_string();
+    named.push(".json");
+    PathBuf::from(named)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use kass_api::types::PunctuationStyle;
+
+    #[test]
+    fn the_export_always_saves_as_json() {
+        let json = |path: &str| json_path(PathBuf::from(path));
+        assert_eq!(
+            json("/d/corrections.json"),
+            PathBuf::from("/d/corrections.json")
+        );
+        assert_eq!(
+            json("/d/corrections.JSON"),
+            PathBuf::from("/d/corrections.JSON")
+        );
+        assert_eq!(json("/d/corrections"), PathBuf::from("/d/corrections.json"));
+        assert_eq!(
+            json("/d/corrections.txt"),
+            PathBuf::from("/d/corrections.txt.json")
+        );
+    }
 
     fn style(id: &str, is_default: bool) -> WritingStyle {
         WritingStyle {

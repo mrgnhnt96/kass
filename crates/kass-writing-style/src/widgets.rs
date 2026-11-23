@@ -37,8 +37,19 @@ pub fn mono_label(text: impl AsRef<str>, cx: &App) -> Div {
         .child(text.as_ref().to_uppercase())
 }
 
-/// An app's tile: its initial on a tinted square.
-pub fn app_tile(name: &str, size: Pixels, text: Pixels, radius: Pixels, cx: &App) -> Div {
+/// An app's tile: its icon, or its initial on a tinted square when it isn't
+/// installed.
+pub fn app_tile(
+    bundle_id: &str,
+    name: &str,
+    size: Pixels,
+    text: Pixels,
+    radius: Pixels,
+    cx: &App,
+) -> AnyElement {
+    if let Some(image) = kass_ui::app_icon(bundle_id, cx) {
+        return img(image).size(size).flex_none().into_any_element();
+    }
     let t = theme(cx);
     div()
         .flex()
@@ -54,6 +65,22 @@ pub fn app_tile(name: &str, size: Pixels, text: Pixels, radius: Pixels, cx: &App
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(t.foreground)
         .child(initial(name))
+        .into_any_element()
+}
+
+/// "Default", beside the default style's name.
+pub fn default_badge(cx: &App) -> Div {
+    let t = theme(cx);
+    div()
+        .flex_none()
+        .px_2()
+        .rounded_full()
+        .border_1()
+        .border_color(t.input)
+        .text_size(px(10.5))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(t.muted_foreground)
+        .child(kass_i18n::t("writing-style-styles-default"))
 }
 
 /// A rounded chip with an accent rim, like a learned habit.

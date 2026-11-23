@@ -1,5 +1,5 @@
 //! What the native Insights page needs from the app: installed apps' icons,
-//! which Captures shares.
+//! which Captures, the Dictionary and Writing style share.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

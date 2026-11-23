@@ -141,13 +141,15 @@ impl Settings {
             self.shown = shown;
         }
         let content: AnyElement = match page {
-            // Logs and the Dictionary fill the pane (the Dictionary scrolls
-            // its own wider column); the rest are a readable column that scrolls.
-            Some(page @ (Page::Logs | Page::Dictionary)) => {
-                let view: AnyView = if page == Page::Logs {
-                    self.logs.clone().into()
-                } else {
-                    self.dictionary.clone().into()
+            // Logs, the Dictionary and Writing style fill the pane (the
+            // Dictionary scrolls its own wider column, Writing style its
+            // own, to pin the chosen style's header); the rest are a
+            // readable column that scrolls.
+            Some(page @ (Page::Logs | Page::Dictionary | Page::WritingStyle)) => {
+                let view: AnyView = match page {
+                    Page::Logs => self.logs.clone().into(),
+                    Page::Dictionary => self.dictionary.clone().into(),
+                    _ => self.writing_style.clone().into(),
                 };
                 div()
                     .flex_1()
@@ -162,7 +164,6 @@ impl Settings {
                     Page::Dictation => self.dictation.clone().into(),
                     Page::CommandMode => self.command_mode.clone().into(),
                     Page::Transcription => self.transcription.clone().into(),
-                    Page::WritingStyle => self.writing_style.clone().into(),
                     _ => self.features.clone().into(),
                 };
                 div()
