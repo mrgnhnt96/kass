@@ -2,7 +2,7 @@
 
 Target: **Python 3.12+** | Formatter/Linter: **Ruff** | Config: `backend/pyproject.toml`
 
-This guide codifies the conventions used across the backend, and prescribes the target style for code written during the refactor (Phases 3-6). Existing code should be migrated incrementally -- don't reformat entire files in unrelated PRs.
+This guide sets the conventions for Kass's Python model worker (`backend/`): Whisper speech-to-text, Qwen3 cleanup and command generation, and training, all on MLX. Older code that doesn't follow it yet should be brought in line as you touch it -- don't reformat entire files in unrelated PRs.
 
 ---
 
@@ -78,14 +78,14 @@ Use `collections.abc` for abstract types: `Sequence`, `Mapping`, `Iterable`, `It
 |-------|-----------|---------|
 | Module | `snake_case` | `task_queue.py` |
 | Class | `PascalCase` | `ProgressManager` |
-| Function / method | `snake_case` | `create_profile` |
+| Function / method | `snake_case` | `get_llm_model` |
 | Variable | `snake_case` | `sample_rate` |
-| Constant | `UPPER_SNAKE_CASE` | `DEFAULT_SAMPLE_RATE` |
-| Private | `_leading_underscore` | `_generation_queue` |
-| Type alias | `PascalCase` | `EffectChain = list[dict[str, Any]]` |
+| Constant | `UPPER_SNAKE_CASE` | `MAX_ALIGNMENTS` |
+| Private | `_leading_underscore` | `_generations` |
+| Type alias | `PascalCase` | `TokenCounts = dict[str, int]` |
 
 **Specific conventions:**
-- Pydantic models use descriptive suffixes: `VoiceProfileCreate`, `VoiceProfileResponse`, `GenerationRequest`.
+- Pydantic request bodies are named for the call they carry: `Cleanup`, `RecognizeHead`, `KeepResident`. Add `Request`/`Response` suffixes when a route has a model for each side: `TokenCountsRequest`, `TokenCountsResponse`.
 - Backend classes use engine-name prefix: `MLXSTTBackend`, `MLXQwenLLMBackend`.
 
 ---
@@ -95,26 +95,23 @@ Use `collections.abc` for abstract types: `Sequence`, `Mapping`, `Iterable`, `It
 **Google style**. Required on all public functions, classes, and modules.
 
 ```python
-def combine_voice_prompts(
-    profile_dir: Path,
-    *,
-    target_sr: int = 24000,
+def load_audio(
+    path: str,
+    sample_rate: int = 24000,
+    mono: bool = True,
 ) -> tuple[np.ndarray, int]:
-    """Load and concatenate all voice prompt files for a profile.
+    """Load an audio file at the target sample rate.
 
-    Reads .wav/.mp3/.flac files from the profile directory, resamples to
-    the target sample rate, normalizes, and concatenates into a single array.
+    Decodes with librosa, which resamples on load, so callers never see the
+    file's own rate.
 
     Args:
-        profile_dir: Path to the voice profile directory containing audio files.
-        target_sr: Target sample rate for the output. Defaults to 24000.
+        path: Path to the audio file.
+        sample_rate: Target sample rate. Defaults to 24000.
+        mono: Mix down to one channel. Defaults to True.
 
     Returns:
-        Tuple of (concatenated audio array, sample rate).
-
-    Raises:
-        FileNotFoundError: If profile_dir does not exist.
-        ValueError: If no valid audio files are found.
+        Tuple of (audio array, sample rate).
     """
 ```
 
@@ -130,7 +127,7 @@ def get_models_dir() -> Path:
 **Module docstrings**: A single sentence at the top of every file describing its purpose.
 
 ```python
-"""Voice profile CRUD operations."""
+"""Fire-and-forget background tasks that are kept alive until they finish."""
 ```
 
 ---
@@ -146,7 +143,7 @@ Do not use ASCII dividers to create visual sections in files:
 ```python
 # No -- any of these:
 # ============================================
-# GENERATION ENDPOINTS
+# CLEANUP ENDPOINTS
 # ============================================
 
 # ---------------------------------------------------------------------------
@@ -164,9 +161,8 @@ Inline comments (end-of-line) are fine when they add information the code can't 
 
 ```python
 # Yes -- explains a non-obvious constraint or gives context:
-audio, sr = load_audio(path, sr=24000)  # Qwen expects 24kHz mono
-_generation_queue: asyncio.Queue = None  # type: ignore  # initialized at startup
-"tauri://localhost",         # Tauri webview (macOS)
+def listener(partial: str) -> None:  # MLX worker thread
+MAX_HEAD_BYTES = 256 * 1024  # a bigger JSON head is a broken client
 
 # No -- restates the code:
 # Check if a cleanup with this id is already running
@@ -202,8 +198,7 @@ Keep block comments tight. Two to three lines is normal. If you need a paragraph
 Always add a reason after `noqa` and `type: ignore`:
 
 ```python
-import mlx.core  # noqa: F401 -- triggers native lib loading
-_queue: asyncio.Queue = None  # type: ignore[assignment]  # initialized at startup
+from .app import app  # noqa: F401 -- re-export for uvicorn "backend.main:app"
 ```
 
 Bare `# noqa` or `# type: ignore` with no explanation are not allowed.
@@ -231,29 +226,22 @@ Delete it. That's what git is for. If you need to document that something was in
 
 ## Error Handling
 
-The refactor is standardizing on a **two-layer pattern**:
+Errors follow a **two-layer pattern**:
 
-### 1. Domain layer -- raise plain exceptions
+### 1. Services and backends -- raise built-in exceptions
 
-CRUD modules and services raise `ValueError`, `FileNotFoundError`, or (post-refactor) custom exceptions defined in `backend/errors.py`:
-
-```python
-# backend/errors.py  (to be created in Phase 4)
-class NotFoundError(Exception):
-    """Raised when a requested resource does not exist."""
-
-class ConflictError(Exception):
-    """Raised on uniqueness constraint violations."""
-```
+Services and backends raise `ValueError` for bad input and `RuntimeError` for a broken environment, with a message that says what's wrong:
 
 ```python
-# In a service or CRUD module:
-raise NotFoundError(f"Profile {profile_id} not found")
+# backend/services/commands.py
+raise ValueError("Select text to rewrite first")
 ```
+
+Don't add custom exception classes until a caller needs to tell two failures apart.
 
 ### 2. Route layer -- translate to HTTPException
 
-Route handlers catch domain exceptions and convert:
+Route handlers catch those exceptions and convert:
 
 ```python
 @router.post("/recognize")
@@ -264,7 +252,14 @@ async def recognize(request: Request):
         raise HTTPException(status_code=422, detail=str(error)) from error
 ```
 
-**Background tasks** catch `Exception` broadly, log with `logger.exception()`, and update the task status to `"failed"`.
+**Background work** (model startup, warm-up, training) catches `Exception` broadly and logs with `logger.exception()`, saying what happens instead, so one failed model doesn't stop the worker:
+
+```python
+except Exception:
+    logger.exception("Couldn't reload the speech model; it reloads on next use")
+```
+
+A streaming route that has already started its response can't raise an `HTTPException`; it sends `{"error": ...}` as its last line instead.
 
 **Never**: silently swallow exceptions, use bare `except:`, or catch `BaseException`.
 
@@ -272,19 +267,15 @@ async def recognize(request: Request):
 
 ## Async
 
-### Rules for the refactor
-
-1. **Don't declare `async def` unless the function awaits something.** Several service modules still declare `async def` without awaiting -- these should be migrated to sync functions with `asyncio.to_thread()` at the route layer.
-2. **CPU-bound work** (audio processing, numpy operations) goes through `asyncio.to_thread()`:
+1. **Don't declare `async def` unless the function awaits something.** Blocking work belongs in a sync function that the route runs off the event loop.
+2. **CPU-bound work** that doesn't touch MLX (audio decoding, numpy operations) goes through `asyncio.to_thread()`:
    ```python
-   audio, sr = await asyncio.to_thread(load_audio, source_path)
+   path, duration = await asyncio.to_thread(_decoded, request.path)
    ```
-3. **GPU-bound TTS inference** is serialized through the generation queue (`services/task_queue.py`). Never call a backend's `generate()` directly from a route handler.
-4. **Fire-and-forget tasks**: use `asyncio.create_task()` and track the task reference to prevent garbage collection:
+3. **MLX work** (model loads, transcription, generation, unloads) runs on the single MLX thread through `run_on_mlx_thread()` (`services/mlx_thread.py`), never through `asyncio.to_thread()`. MLX's Metal stream belongs to the thread that first used it, so a model loaded on one thread and run on another fails, and one job at a time keeps a load and an unload from interleaving. Routes call the backend's methods (`transcribe`, `generate`), which do this for them. Head-start work that no result waits on, such as prefilling a style's prompt, goes inside `speculative_mlx_work()` so a recognition never queues behind it.
+4. **Fire-and-forget tasks**: use `create_background_task()` (`services/task_queue.py`), which keeps a reference so the task isn't garbage collected mid-run:
    ```python
-   task = asyncio.create_task(some_coro())
-   _background_tasks.add(task)
-   task.add_done_callback(_background_tasks.discard)
+   create_background_task(shutdown_async())
    ```
 
 ---
@@ -300,14 +291,14 @@ logger = logging.getLogger(__name__)
 
 logger.info("Loading model %s on %s", model_name, device)
 logger.warning("Cache miss for %s, downloading", repo_id)
-logger.exception("Generation %s failed")  # logs traceback automatically
+logger.exception("Could not load startup %s model %s", name, size)  # logs traceback automatically
 ```
 
 **Rules:**
 - Use `%s`-style placeholders in log calls (not f-strings). This avoids formatting the string if the log level is filtered out.
 - Use `logger.exception()` inside `except` blocks -- it captures the traceback.
 - Logger name should be `__name__` (yields `backend.utils.audio`, etc.).
-- Existing `print()` calls should be migrated to logging as files are touched during the refactor.
+- Move any remaining `print()` call to logging when you touch its file.
 
 ---
 
@@ -315,7 +306,7 @@ logger.exception("Generation %s failed")  # logs traceback automatically
 
 - Define at **module level** in the file where they're primarily used.
 - Use `UPPER_SNAKE_CASE`.
-- Shared/cross-cutting constants (sample rates, file size limits, CORS origins) go in `backend/config.py` after Phase 6 consolidation.
+- Data-directory paths and other settings shared across modules go in `backend/config.py`.
 - Magic numbers in function bodies should be extracted to named constants:
   ```python
   # No
@@ -359,7 +350,7 @@ Framework: **pytest** with `pytest-asyncio`.
 
 - Test files: `test_<module>.py` in `backend/tests/`.
 - Use `conftest.py` for shared fixtures (environment variables, stubbed adapters, mock backends).
-- Group related tests in classes: `class TestProfileCRUD:`.
+- Group related tests in classes: `class TestAudioopRuntime:`.
 - Use `@pytest.mark.asyncio` for async tests.
 - Use `@pytest.mark.parametrize` to reduce repetition.
 - Manual integration scripts stay in `tests/` but are clearly marked (filename prefix `manual_` or documented in `tests/README.md`).
@@ -370,19 +361,19 @@ Framework: **pytest** with `pytest-asyncio`.
 
 ```
 backend/
-  app.py              # FastAPI app factory, CORS, lifecycle events
+  app.py              # FastAPI app: the /worker routers, startup and shutdown
   main.py             # Entry point (imports app, runs uvicorn)
   config.py           # Data directory paths
-  models.py           # Pydantic request/response schemas
+  models.py           # The /worker/health response
   server.py           # Worker launcher, parent-pid watchdog
-  routes/             # Thin HTTP handlers (validation, delegation, response formatting)
-  services/           # Business logic, CRUD, orchestration
-  backends/           # TTS/STT engine implementations
-  utils/              # Shared utilities (audio, effects, caching, progress)
+  routes/             # /worker endpoints kass-server calls (validation, delegation, response formatting)
+  services/           # Model calls, the MLX thread, Whisper artifact stripping, training
+  backends/           # Whisper STT and Qwen3 LLM implementations (MLX)
+  utils/              # Shared utilities (audio loading, memory, progress tracking)
   tests/              # pytest suite
 ```
 
-kass-server (Rust) owns `kass.db`. Worker code gets what a call needs in the request body, or reads it from kass-server's routes (as model improvement does from `/capture/learning/training/*`). Don't add a database, ORM or SQL to the worker. If a `database/` package is still in `backend/`, it's a leftover being removed: don't give it new readers.
+kass-server (Rust) owns `kass.db`. Worker code gets what a call needs in the request body, or reads it from kass-server's routes (as model improvement does from `/capture/learning/training/*`). Don't add a database, ORM or SQL to the worker.
 
 ---
 
