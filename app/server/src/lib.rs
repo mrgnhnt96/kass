@@ -39,6 +39,7 @@ pub mod styles;
 pub mod sync;
 pub mod teach;
 pub mod training_cases;
+pub mod training_data;
 pub mod usage;
 mod voice_sounds;
 mod warmth;

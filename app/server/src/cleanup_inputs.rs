@@ -268,7 +268,7 @@ pub fn calibration_examples(writing: &Value, style_id: &str) -> Vec<PersonalExam
 
 /// A stored datetime as Python's `isoformat` writes it: microseconds only
 /// when set.
-fn isoformat(stored: &str) -> String {
+pub(crate) fn isoformat(stored: &str) -> String {
     match NaiveDateTime::parse_from_str(stored, "%Y-%m-%d %H:%M:%S%.f") {
         Ok(at) if at.nanosecond() / 1000 == 0 => at.format("%Y-%m-%dT%H:%M:%S").to_string(),
         Ok(at) => at.format("%Y-%m-%dT%H:%M:%S%.6f").to_string(),
