@@ -31,14 +31,14 @@ from pathlib import Path
 
 import numpy as np                      # 2. third-party
 from fastapi import APIRouter, HTTPException
-from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from backend.config import get_data_dir  # 3. local (absolute)
-from .database import get_db            #    or relative
+from ..services import transcribe       #    or relative
 ```
 
 **Rules:**
-- Within the `backend` package, use **relative imports** for sibling/child modules: `from .database import get_db`, `from ..utils.audio import load_audio`.
+- Within the `backend` package, use **relative imports** for sibling/child modules: `from ..services import transcribe`, `from ..utils.audio import load_audio`.
 - Absolute imports are fine for top-level references from entry points (`main.py`, `server.py`).
 - Never use wildcard imports (`from module import *`).
 - One import per line for `from X import Y` when there are 4+ names; below that, comma-separated is fine.
@@ -85,7 +85,6 @@ Use `collections.abc` for abstract types: `Sequence`, `Mapping`, `Iterable`, `It
 | Type alias | `PascalCase` | `EffectChain = list[dict[str, Any]]` |
 
 **Specific conventions:**
-- Database ORM models imported with `DB` prefix alias: `from .database import VoiceProfile as DBVoiceProfile`.
 - Pydantic models use descriptive suffixes: `VoiceProfileCreate`, `VoiceProfileResponse`, `GenerationRequest`.
 - Backend classes use engine-name prefix: `MLXSTTBackend`, `MLXQwenLLMBackend`.
 
@@ -122,8 +121,8 @@ def combine_voice_prompts(
 **Short form** is fine for simple functions:
 
 ```python
-def get_db_path() -> Path:
-    """Get the path to the SQLite database file."""
+def get_models_dir() -> Path:
+    """Get models directory path."""
 ```
 
 **When to skip**: Private helpers under ~5 lines where the name and signature make intent obvious.
@@ -170,14 +169,14 @@ _generation_queue: asyncio.Queue = None  # type: ignore  # initialized at startu
 "tauri://localhost",         # Tauri webview (macOS)
 
 # No -- restates the code:
-# Check if profile name already exists
-existing = db.query(DBVoiceProfile).filter_by(name=data.name).first()
+# Check if a cleanup with this id is already running
+if request.id in _generations:
 
-# Delete from database
-db.delete(sample)
+# Load the LLM backend
+backend = llm_service.get_llm_model()
 
-# Update fields
-profile.name = data.name
+# Remove the alignment
+_alignments.pop(key, None)
 ```
 
 Delete comments that narrate what the next line of code obviously does. If the function name, variable name, or method call already communicates intent, the comment is noise.
@@ -191,9 +190,9 @@ Use block comments for **why** explanations -- constraints, workarounds, non-obv
 # with internal arguments. freeze_support() handles this and exits early.
 multiprocessing.freeze_support()
 
-# Mark any stale "generating" records as failed -- these are leftovers
-# from a previous process that was killed mid-generation.
-db.query(Generation).filter_by(status="generating").update({"status": "failed"})
+# A recognition queued meanwhile goes first: the cleanup prefills it anyway.
+with speculative_mlx_work():
+    await backend.generate(prompt="", system=request.system, max_tokens=1, temperature=0)
 ```
 
 Keep block comments tight. Two to three lines is normal. If you need a paragraph, it probably belongs in the docstring or a design doc.
@@ -214,8 +213,8 @@ Bare `# noqa` or `# type: ignore` with no explanation are not allowed.
 Use sparingly. Every `TODO` must include a brief description of what needs doing. Don't use them as a substitute for tracking work properly:
 
 ```python
-# TODO: replace with async SQLAlchemy once CRUD modules are migrated (Phase 5)
-result = await asyncio.to_thread(profiles.get_profile, profile_id, db)
+# TODO: bound alignments by memory rather than count once they keep the phrase's audio
+MAX_ALIGNMENTS = 64
 ```
 
 Never commit `HACK`, `XXX`, or `FIXME` -- fix the problem or file an issue.
@@ -257,12 +256,12 @@ raise NotFoundError(f"Profile {profile_id} not found")
 Route handlers catch domain exceptions and convert:
 
 ```python
-@router.post("/profiles")
-async def create_profile(data: VoiceProfileCreate, db: Session = Depends(get_db)):
+@router.post("/recognize")
+async def recognize(request: Request):
     try:
-        return await profiles.create_profile(data, db)
-    except ConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        head, samples = _parse_recognize(await request.body())
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 ```
 
 **Background tasks** catch `Exception` broadly, log with `logger.exception()`, and update the task status to `"failed"`.
@@ -275,7 +274,7 @@ async def create_profile(data: VoiceProfileCreate, db: Session = Depends(get_db)
 
 ### Rules for the refactor
 
-1. **Don't declare `async def` unless the function awaits something.** Several service modules still declare `async def` without awaiting -- these should be migrated to sync functions with `asyncio.to_thread()` at the route layer, or to real async SQLAlchemy.
+1. **Don't declare `async def` unless the function awaits something.** Several service modules still declare `async def` without awaiting -- these should be migrated to sync functions with `asyncio.to_thread()` at the route layer.
 2. **CPU-bound work** (audio processing, numpy operations) goes through `asyncio.to_thread()`:
    ```python
    audio, sr = await asyncio.to_thread(load_audio, source_path)
@@ -359,7 +358,7 @@ logger.exception("Generation %s failed")  # logs traceback automatically
 Framework: **pytest** with `pytest-asyncio`.
 
 - Test files: `test_<module>.py` in `backend/tests/`.
-- Use `conftest.py` for shared fixtures (db sessions, test client, mock backends).
+- Use `conftest.py` for shared fixtures (environment variables, stubbed adapters, mock backends).
 - Group related tests in classes: `class TestProfileCRUD:`.
 - Use `@pytest.mark.asyncio` for async tests.
 - Use `@pytest.mark.parametrize` to reduce repetition.
@@ -379,10 +378,11 @@ backend/
   routes/             # Thin HTTP handlers (validation, delegation, response formatting)
   services/           # Business logic, CRUD, orchestration
   backends/           # TTS/STT engine implementations
-  database/           # ORM models, session management, seeds
   utils/              # Shared utilities (audio, effects, caching, progress)
   tests/              # pytest suite
 ```
+
+kass-server (Rust) owns `kass.db`. Worker code gets what a call needs in the request body, or reads it from kass-server's routes (as model improvement does from `/capture/learning/training/*`). Don't add a database, ORM or SQL to the worker. If a `database/` package is still in `backend/`, it's a leftover being removed: don't give it new readers.
 
 ---
 
