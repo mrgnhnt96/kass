@@ -1,0 +1,51 @@
+name: Rust checks
+
+# rustfmt and clippy (warnings fail) in both Rust workspaces, the app's (app/)
+# and Kass's own crates (crates/), on every pull request that touches Rust
+# and on main. Same command as locally: cargo xtask check-rust.
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "crates/**"
+      - ".cargo/**"
+      - ".github/workflows/rust-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "crates/**"
+      - ".cargo/**"
+      - ".github/workflows/rust-checks.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-rust:
+    # The app links macOS frameworks (ScreenCaptureKit, Swift runtime), so
+    # clippy has to run on a Mac.
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ./app -> target
+            ./crates -> target
+
+      - name: rustfmt and clippy
+        run: cargo xtask check-rust
