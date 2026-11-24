@@ -70,7 +70,7 @@ class RecognizeFile(BaseModel):
 
 
 class Cleanup(BaseModel):
-    # The style's cleanup flags (RefinementFlags.to_dict()), which pick its
+    # The style's cleanup flags (kass_text::refinement::Flags), which pick its
     # personal or shared adapter. None runs the base model.
     flags: dict | None = None
     model_size: str

@@ -6,13 +6,11 @@ import json
 import sys
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 
 from backend import config
 from backend.services.model_improvement import data, evaluation, manager
-from backend.services.refinement import RefinementFlags, refine_transcript
 
 
 def successful_rows():
@@ -203,19 +201,19 @@ def test_a_passing_adapter_is_judged_used_and_kept_across_restarts(storage, tmp_
     judged = manager._judge(plan(), folder, adapter_result(), None)
     assert judged["metrics"]["adapter"]["passed"]
     # Judging uses nothing yet: the server saves it, then says to use it.
-    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
+    assert manager.active_adapter("1.7B", {}) is None
     assert manager.use(judged["active"]) == judged["active"]
     path = str(folder / "adapter")
-    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) == path
-    assert manager.active_adapter("0.6B", RefinementFlags().to_dict()) is None
-    assert manager.active_adapter("1.7B", RefinementFlags(self_correction=False).to_dict()) is None
+    assert manager.active_adapter("1.7B", {}) == path
+    assert manager.active_adapter("0.6B", {}) is None
+    assert manager.active_adapter("1.7B", {"self_correction": False}) is None
     save_state(tmp_path, judged["active"])
     restart(monkeypatch)
-    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) == path
+    assert manager.active_adapter("1.7B", {}) == path
     assert manager.in_use()["llm"]["id"] == "candidate"
     # The server rolled back.
     manager.use({})
-    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
+    assert manager.active_adapter("1.7B", {}) is None
 
 
 def test_a_failed_gate_keeps_the_models_in_use(storage, tmp_path):
@@ -239,7 +237,7 @@ def test_tampered_adapter_falls_back_to_base_on_restart_and_is_reported(storage,
     save_state(tmp_path, judged["active"])
     (folder / "adapter" / "adapters.safetensors").write_bytes(b"corrupted")
     restart(monkeypatch)
-    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
+    assert manager.active_adapter("1.7B", {}) is None
     assert manager.check(judged["active"]) == {}
     [report] = manager.reports()
     assert (report["kind"], report["id"], report["block"]) == ("llm", "candidate", False)
@@ -273,24 +271,6 @@ def test_the_servers_stop_for_recording_opens_the_recording_window(storage, monk
     assert not manager.dictating()
     learning.model_stop(learning.Stop(recording=True))
     assert manager.dictating()
-
-
-@pytest.mark.asyncio
-async def test_failed_personal_adapter_retries_base_and_quarantines(storage, monkeypatch):
-    class Backend:
-        supports_adapters = True
-        model_size = "1.7B"
-        generate = AsyncMock(side_effect=[RuntimeError("bad weights"), "Open the app."])
-
-    monkeypatch.setattr(manager, "active_adapter", lambda *_: "/adapter")
-    quarantined = []
-    monkeypatch.setattr(manager, "quarantine_adapter", lambda message, path=None: quarantined.append(path))
-    backend = Backend()
-    text, _ = await refine_transcript("open the app", RefinementFlags(), backend_override=backend)
-    assert text == "Open the app."
-    assert backend.generate.await_args_list[0].kwargs["adapter_path"] == "/adapter"
-    assert "adapter_path" not in backend.generate.await_args_list[1].kwargs
-    assert quarantined == ["/adapter"]
 
 
 @pytest.mark.asyncio
@@ -492,7 +472,7 @@ def test_an_adapter_tested_with_another_cleanup_pipeline_is_dropped_on_restart(s
     save_state(tmp_path, judged["active"])
     monkeypatch.setenv("KASS_CLEANUP_PIPELINE", "a-newer-pipeline")
     restart(monkeypatch)
-    assert manager.active_adapter("1.7B", RefinementFlags().to_dict()) is None
+    assert manager.active_adapter("1.7B", {}) is None
     [report] = manager.reports()
     assert (report["kind"], report["block"]) == ("llm", False)
 
@@ -633,7 +613,7 @@ def test_a_run_plans_from_the_settings_and_rows_the_server_gives(storage, monkey
     threading.Thread(target=server.serve_forever, daemon=True).start()
     monkeypatch.setattr(manager.correction_learning, "initialize", lambda: None)
     monkeypatch.setattr(manager, "_cached", lambda repo: None)
-    flags = [RefinementFlags(style="chat").to_dict()]
+    flags = [{"style": "chat"}]
     cleanup = {
         "pipeline": "test-pipeline",
         "server": f"http://127.0.0.1:{server.server_address[1]}",

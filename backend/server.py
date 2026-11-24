@@ -65,9 +65,6 @@ try:
     logger.info("Importing backend.config...")
     from backend import config
 
-    logger.info("Importing backend.database...")
-    from backend import database
-
     logger.info("Importing backend.main (this may take a while due to MLX/transformers)...")
     from backend.main import app
 
@@ -195,11 +192,6 @@ if __name__ == "__main__":
             logger.info(f"Setting data directory to: {args.data_dir}")
             config.set_data_dir(args.data_dir)
             _log_to_file(args.data_dir)
-
-        # Initialize database after data directory is set
-        logger.info("Initializing database...")
-        database.init_db()
-        logger.info("Database initialized successfully")
 
         logger.info(f"Starting uvicorn server on {args.host}:{args.port}...")
         uvicorn.run(

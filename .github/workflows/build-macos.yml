@@ -55,9 +55,9 @@ jobs:
       - name: Install Python dependencies
         run: cargo xtask setup-python
 
-      # With a Whisper model downloaded, phrase seams judge words by its
-      # vocabulary rather than the system word list, and the tests expect
-      # that. The vocabulary alone is enough; skip the weights.
+      # With a Whisper model downloaded, the dictionary's common-word check
+      # judges words by its vocabulary rather than the system word list, as on
+      # a user's Mac. The vocabulary alone is enough; skip the weights.
       - name: Download Whisper vocabulary
         run: >-
           backend/venv/bin/python -c "from huggingface_hub import hf_hub_download;

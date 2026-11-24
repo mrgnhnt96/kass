@@ -8,11 +8,10 @@ Run from the repository root with the model already downloaded:
         --adapter build/shared-adapters/cleanup-4B --out build/shared-adapters/eval-4B.json
 
 Each case runs through production cleanup: the same preprocessing, prompt,
-examples and sampler, with no personal examples, notes or rules (an empty
-data directory). Prints errors per category (token edits, counting
-punctuation and capitals), exact matches, changed facts, words lost and
-latency. See
-docs/plans/SHARED_ADAPTERS.md.
+examples and sampler, with no personal examples, notes or rules (as on a new
+install). Cargo prepares them (cleanup_pipeline.py). Prints errors per
+category (token edits, counting punctuation and capitals), exact matches,
+changed facts, words lost and latency. See docs/plans/SHARED_ADAPTERS.md.
 """
 
 import argparse
@@ -21,7 +20,6 @@ import os
 import re
 import statistics
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -53,31 +51,21 @@ def dropped(output, expected):
 
 def run(size, adapter, seeds):
     import mlx.core as mx
+    from cleanup_pipeline import cleanup_cases
     from mlx_lm import generate, load
     from mlx_lm.sample_utils import make_sampler
 
-    from backend import config
     from backend.backends.base import local_model_path
     from backend.backends.qwen_llm_backend import MLX_HF_REPOS, _build_messages
-    from backend.services.correction_rules import loss
-    from backend.services.model_improvement.evaluation import preserves_facts
-    from backend.services.refinement import (
-        RefinementFlags,
-        build_refinement_prompt,
-        prepare_refinement,
-        refinement_examples,
-    )
+    from backend.services.model_improvement.evaluation import loss, preserves_facts
 
-    config.set_data_dir(tempfile.mkdtemp(prefix="kass-eval-"))
     path = local_model_path(MLX_HF_REPOS[size], (".safetensors", ".bin", ".npz"))
     model, tokenizer = load(path, adapter_path=adapter, tokenizer_config={"trust_remote_code": False})
-    flags = RefinementFlags()
-    system = build_refinement_prompt(flags)
-    examples = refinement_examples(flags)
+    prepared, _ = cleanup_cases([{"raw": raw} for _, raw, _ in CASES])
     rows = []
     for seed in seeds:
-        for index, (category, raw, expected) in enumerate(CASES):
-            cleaned, bypass = prepare_refinement(raw, flags)
+        for index, ((category, raw, expected), case) in enumerate(zip(CASES, prepared, strict=True)):
+            cleaned, bypass, system, examples = case["text"], case["bypass"], case["system"], case["examples"]
             started = time.perf_counter()
             prompt_tokens = 0
             if bypass is None:

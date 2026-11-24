@@ -4,7 +4,18 @@ import math
 import re
 import statistics
 
-from ..correction_rules import loss
+
+def loss(actual, expected):
+    """Token edit distance, including punctuation and capitalization."""
+    a, b = re.findall(r"\w+|[^\w\s]", actual), re.findall(r"\w+|[^\w\s]", expected)
+    previous = list(range(len(b) + 1))
+    for i, token in enumerate(a, 1):
+        current = [i]
+        for j, target in enumerate(b, 1):
+            current.append(min(current[-1] + 1, previous[j] + 1, previous[j - 1] + (token != target)))
+        previous = current
+    return previous[-1]
+
 
 PROTECTED_FACTS = (
     r"\b\d+(?:[.,]\d+)*\b",

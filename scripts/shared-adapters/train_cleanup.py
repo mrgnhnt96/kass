@@ -21,7 +21,6 @@ import hashlib
 import json
 import os
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -31,7 +30,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from idle import interrupted, wait_for_idle  # noqa: E402
+from cleanup_pipeline import cleanup_cases
+from idle import interrupted, wait_for_idle
 
 DATA = ROOT / "build" / "shared-adapters" / "cleanup-data"
 LORA = {"rank": 8, "dropout": 0.0, "scale": 16.0}
@@ -44,23 +44,11 @@ def read(split):
 
 
 def dataset(samples, tokenizer):
-    """Token sequences for ``samples``, prepared by the worker's Python copy
-    of dictation's cleanup (the app's server prepares them in Rust)."""
+    """Token sequences for ``samples``, prepared by dictation's own cleanup
+    (kass_text, through cleanup_pipeline)."""
     from backend.services.model_improvement.worker import token_dataset
-    from backend.services.refinement import (
-        RefinementFlags,
-        build_refinement_prompt,
-        prepare_refinement,
-        refinement_examples,
-    )
 
-    cases = []
-    for sample in samples:
-        flags = RefinementFlags.from_dict(sample.get("flags"))
-        text, bypass = prepare_refinement(sample["raw"], flags)
-        cases.append(
-            {"text": text, "bypass": bypass, "system": build_refinement_prompt(flags), "examples": refinement_examples(flags)}
-        )
+    cases, _ = cleanup_cases(samples)
     return token_dataset(samples, tokenizer, cases)
 
 
@@ -81,13 +69,9 @@ def main():
     from mlx_lm.tuner.trainer import TrainingArgs, train
     from mlx_lm.tuner.utils import linear_to_lora_layers
 
-    from backend import config
     from backend.backends.base import local_model_path
     from backend.backends.qwen_llm_backend import MLX_HF_REPOS
-    from backend.services.refinement import REFINEMENT_EXAMPLES
 
-    # No personal styles, notes or rules: an empty data directory.
-    config.set_data_dir(tempfile.mkdtemp(prefix="kass-train-"))
     mx.set_memory_limit(16 * 1024**3)
     np.random.seed(17)
     mx.random.seed(17)
@@ -95,7 +79,8 @@ def main():
     model, tokenizer = load(local_model_path(repo, (".safetensors", ".bin", ".npz")))
     training = dataset(read("train"), tokenizer)
     validation = dataset(read("valid"), tokenizer)
-    rehearsal = dataset([{"raw": raw, "expected": expected} for raw, expected in REFINEMENT_EXAMPLES], tokenizer)
+    _, examples = cleanup_cases([])
+    rehearsal = dataset([{"raw": raw, "expected": expected} for raw, expected in examples], tokenizer)
     print(f"{len(training)} training pairs, {len(validation)} validation pairs (the rest resolved before the model)")
     model.freeze()
     linear_to_lora_layers(model, LAYERS, LORA)

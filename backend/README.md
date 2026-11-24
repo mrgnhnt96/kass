@@ -25,9 +25,8 @@ backend/
   server.py               # Worker launcher, parent-pid watchdog
 
   routes/                 # /worker endpoints the Rust server calls
-  services/               # Model calls, the cleanup prompt and text rules, training
+  services/               # Model calls, Whisper artifact stripping, training
   backends/               # Whisper STT and Qwen3 LLM implementations (MLX)
-  database/               # SQLAlchemy models of kass.db, read for settings and training
   utils/                  # Audio loading, memory, progress tracking
 ```
 
@@ -35,9 +34,9 @@ backend/
 
 **routes/stream_models.py** -- Recognize, alignments, cleanup and command generation, keep-resident and foreground: the calls a dictation makes.
 
-**services/refinement.py** -- The cleanup prompt and the text rules applied to the model's draft. Training's `pipeline_id` hashes them, so they stay here until training data is prepared in Rust.
+**services/stt_artifacts.py** -- What Whisper writes that nobody said (loops, split laughs and spelled letters), taken out before the worker answers. The rest of cleanup, its prompt and text rules run in the Rust server (`app/text`, `kass_text::refinement`).
 
-**services/model_improvement/** -- Voice and cleanup training. It reads corrections and captures from kass.db.
+**services/model_improvement/** -- Voice and cleanup training. Kass's server sends the settings and style flags and prepares the training text; the worker reads reports and dictations from its `/capture/learning/training/*` routes, not from kass.db.
 
 **backends/__init__.py** -- Protocol definitions (`STTBackend`, `LLMBackend`), model config registry, and factory functions.
 

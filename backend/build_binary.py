@@ -70,8 +70,6 @@ def build_server():
             "--hidden-import",
             "backend.config",
             "--hidden-import",
-            "backend.database",
-            "--hidden-import",
             "backend.models",
             "--hidden-import",
             "backend.services.transcribe",
@@ -93,8 +91,6 @@ def build_server():
             "fastapi",
             "--hidden-import",
             "uvicorn",
-            "--hidden-import",
-            "sqlalchemy",
             # librosa uses lazy_loader which generates .pyi stub files at
             # install time and reads them at runtime to discover submodules.
             # --hidden-import alone doesn't bundle the stubs, causing

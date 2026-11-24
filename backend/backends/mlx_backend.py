@@ -18,7 +18,7 @@ patch_huggingface_hub_offline()
 
 from ..services import dictionary, speech_detect
 from ..services.mlx_thread import clear_mlx_cache, run_on_mlx_thread
-from ..services.refinement import strip_stt_artifacts
+from ..services.stt_artifacts import strip_stt_artifacts
 from . import WHISPER_HF_REPOS, mlx_whisper_loader, whisper_audio, word_timing
 from .base import (
     ellipsis_token_ids,

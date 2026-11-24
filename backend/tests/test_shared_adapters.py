@@ -9,10 +9,9 @@ from backend import config
 from backend.services import shared_adapters
 from backend.services.model_improvement import manager
 from backend.services.model_improvement.data import digest
-from backend.services.refinement import RefinementFlags
 from backend.services.voice_training import lora
 
-DEFAULT = RefinementFlags().to_dict()
+DEFAULT = {"smart_cleanup": True, "self_correction": True, "preserve_technical": True}
 CLEANUP = {
     "pipeline": "test-pipeline",
     "server": "http://127.0.0.1:1",
@@ -68,7 +67,7 @@ def test_cleanup_uses_the_shared_adapter_until_a_personal_one_is_active(learning
     assert manager.active_adapter("1.7B", DEFAULT) == shared
     # Only for the model size and flags it was tested with.
     assert manager.active_adapter("4B", DEFAULT) is None
-    assert manager.active_adapter("1.7B", RefinementFlags(self_correction=False).to_dict()) is None
+    assert manager.active_adapter("1.7B", {"self_correction": False}) is None
     personal_llm(learning / "personal")
     assert manager.active_adapter("1.7B", DEFAULT) == str(learning / "personal")
 

@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
 
-from . import __version__, config, database
+from . import __version__, config
 from .routes import register_routers
 from .services import llm, transcribe
 from .utils.platform_detect import BACKEND_TYPE, GPU_TYPE, require_apple_silicon
@@ -93,11 +93,6 @@ async def _run_startup(application: FastAPI) -> None:
 
     require_apple_silicon()
 
-    database.init_db()
-
-    from .database.session import _db_path
-
-    logger.info("Database: %s", _db_path)
     logger.info("Data directory: %s", config.get_data_dir())
 
     logger.info("Backend: %s", BACKEND_TYPE.upper())

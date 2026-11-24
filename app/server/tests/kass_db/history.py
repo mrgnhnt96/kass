@@ -14,8 +14,10 @@ checked against it without Python:
 
 Both the migrations and the models are read from git at ``LAST_PYTHON``, the
 last commit where Python migrated kass.db, so this gives the same file
-whatever the working tree holds. Run from the repo root:
+whatever the working tree holds. The worker no longer uses SQLAlchemy, so
+install it first. Run from the repo root:
 
+    backend/venv/bin/pip install "sqlalchemy>=2.0"
     backend/venv/bin/python app/server/tests/kass_db/history.py
 """
 

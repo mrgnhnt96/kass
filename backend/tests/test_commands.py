@@ -3,7 +3,6 @@
 import pytest
 
 from backend.services import commands
-from backend.services.refinement import RefinementFlags, build_refinement_prompt
 
 
 class FakeLLM:
@@ -30,10 +29,6 @@ def test_command_prompt_allows_translation_and_asks_for_the_edited_text_only():
     assert "Change the language only when the instruction names another one" in prompt
     assert "Do not translate" not in prompt
     assert "edited passage only" in prompt
-
-
-def test_dictation_prompt_still_forbids_translation():
-    assert "Do not translate" in build_refinement_prompt(RefinementFlags())
 
 
 def test_selection_comes_first_so_it_can_be_prefilled_before_the_instruction():
@@ -114,23 +109,6 @@ async def test_an_empty_rewrite_is_an_error_not_an_empty_replacement():
 
 
 # --- Loading the cleanup model ------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_a_dictation_loads_its_cleanup_model_before_the_first_phrase(monkeypatch):
-    from backend.services import llm as llm_service, refinement
-
-    prepared = []
-
-    class Backend:
-        supports_adapters = False
-
-        async def prepare(self, model_size, adapter_path=None):
-            prepared.append((model_size, adapter_path))
-
-    monkeypatch.setattr(llm_service, "get_llm_model", lambda: Backend())
-    await refinement.load_cleanup_model(RefinementFlags(), "0.6B")
-    assert prepared == [("0.6B", None)]
 
 
 def test_preparing_swaps_the_adapter_and_size_exactly_as_generate_would(monkeypatch):

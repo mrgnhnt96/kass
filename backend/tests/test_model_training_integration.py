@@ -22,7 +22,6 @@ async def test_real_adapter_training_and_production_inference(tmp_path, monkeypa
 
     from backend.backends.qwen_llm_backend import MLXQwenLLMBackend
     from backend.services.model_improvement.worker import train_adapter
-    from backend.services.refinement import RefinementFlags, refine_transcript
 
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     plan = {
@@ -53,14 +52,14 @@ async def test_real_adapter_training_and_production_inference(tmp_path, monkeypa
     evidence = json.loads((tmp_path / "training.json").read_text())
     assert evidence["weights_changed"]
     backend = MLXQwenLLMBackend("0.6B")
-    text, size = await refine_transcript(
+    text = await backend.generate(
         "please open the application",
-        RefinementFlags(),
-        backend_override=backend,
+        system="Clean up the dictated text.",
+        max_tokens=64,
+        temperature=0,
+        model_size="0.6B",
         adapter_path=str(tmp_path / "adapter"),
-        use_personal_model=False,
     )
-    assert size == "0.6B"
     assert text.strip()
     assert backend._adapter_path == str(tmp_path / "adapter")
     await backend.generate("hello", max_tokens=8, temperature=0)

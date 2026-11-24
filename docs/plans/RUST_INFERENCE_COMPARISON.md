@@ -365,13 +365,21 @@ outside the repo. A worktree has no venv, so point `PY` at the main
 checkout's `backend/venv/bin/python`. Never point anything at the real data
 directory; copy it first.
 
+`build_prompts.py` ran the worker's Python copy of cleanup, which was deleted
+on 2026-11-23 once the Rust server owned cleanup. To rerun, build
+`prompts.json` (`{"flags", "entries": [{"transcript", "prompt", "system",
+"examples", "chat", "n_tokens"}]}`) from the Rust prompt instead: the
+`kass-text` example `cleanup_cases` gives the stock prompt, and kass-server's
+`/capture/learning/training/prompts` the user's styles (both without personal
+examples or notes, which this study included).
+
 ```sh
 S=/path/to/scratch; PY=backend/venv/bin/python
 D="$HOME/Library/Application Support/com.mrgnhnt.kass"
 mkdir -p $S/data $S/caps && cp "$D"/{kass.db,writing-style.json,correction-learning.json} $S/data/ && cp "$D"/captures/*.wav $S/caps/
 $PY scripts/benchmark-rust-inference/make_real_fixtures.py $S/caps $S/fx
 $PY scripts/benchmark-stt-engines/make_fixtures.py $S/fx && rm $S/fx/paused40.*
-$PY scripts/benchmark-rust-inference/build_prompts.py "$PWD" $S/data 12 $S/prompts.json
+# $S/prompts.json: see the note above
 
 # models (about 9.8 GB for all five; f16 Whisper + Q4_K_M is enough)
 # ggerganov/whisper.cpp: ggml-large-v3-turbo{,-q8_0,-q5_0}.bin; Qwen/Qwen3-4B-GGUF: Qwen3-4B-Q4_K_M.gguf, Qwen3-4B-Q8_0.gguf -> $S/models

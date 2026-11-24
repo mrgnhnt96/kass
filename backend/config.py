@@ -104,11 +104,6 @@ def resolve_storage_path(path: str | Path | None) -> Path | None:
     return (_data_dir / stored_path).resolve()
 
 
-def get_db_path() -> Path:
-    """Get database file path."""
-    return _data_dir / "kass.db"
-
-
 def get_captures_dir() -> Path:
     """Get captures directory path."""
     path = _data_dir / "captures"

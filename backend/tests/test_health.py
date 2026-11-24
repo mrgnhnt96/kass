@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend import __version__
-from backend.database import get_db
 from backend.routes import health
 
 
@@ -19,7 +18,6 @@ def test_health_reports_uptime_and_process_details(monkeypatch):
     monkeypatch.setattr(health.transcribe, "get_whisper_model", Whisper)
     app = FastAPI()
     app.include_router(health.router)
-    app.dependency_overrides[get_db] = lambda: None
     body = TestClient(app).get("/health").json()
     assert body["version"] == __version__
     assert body["pid"] == os.getpid()
