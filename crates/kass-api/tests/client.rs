@@ -112,7 +112,10 @@ fn finds_the_kass_on_a_given_mac_among_addresses() {
     assert_eq!(find_kass(&urls, "m-1", timeout), Some(ours.url.clone()));
 
     let someone_else = Server::start(vec![Reply::ok(r#"{"status":"healthy","mac_id":"m-2"}"#)]);
-    assert_eq!(find_kass(std::slice::from_ref(&someone_else.url), "m-1", timeout), None);
+    assert_eq!(
+        find_kass(std::slice::from_ref(&someone_else.url), "m-1", timeout),
+        None
+    );
 }
 
 #[test]
