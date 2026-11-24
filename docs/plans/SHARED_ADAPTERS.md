@@ -42,6 +42,10 @@ or generate training data from them.
 `eval_cleanup.py` runs each case through production cleanup (same
 preprocessing, prompt, examples and sampler, no personal state) and counts
 token edits against the expected text, including punctuation and capitals.
+The preprocessing and prompt come from the Rust crate dictation uses
+(`cargo run -p kass-text --example cleanup_cases`, through
+`cleanup_pipeline.py`), so the scripts need cargo; `train_cleanup.py` prepares
+its pairs the same way.
 
 ```sh
 backend/venv/bin/python scripts/shared-adapters/eval_cleanup.py --size 4B --show
@@ -203,11 +207,10 @@ from shorter, more direct answers, not from the prompt.
   personal training starts from the plain model again. Turbo reloads at once.
 - **Failures:** a shared adapter that fails to load is set aside until the
   next launch.
-- **Frozen app:** `pipeline_id` hashes bytecode. Checked 2026-10-05: the
-  cleanup modules in the installed v0.8.0-beta.4 server have the same
-  bytecode as the dev venv compiles from that tag (both Python 3.12,
-  PyInstaller `optimize=0`), so ids computed here match the app. Building with
-  another Python minor version would break that.
+- **Pipeline id:** cleanup runs in Rust, and its id is
+  `kass_text::pipeline::id()`, the same in the app and in these scripts. (It
+  used to hash the Python worker's bytecode; that code was deleted on
+  2026-11-23.)
 - **Repo size:** the adapters are committed as plain files (no LFS): a few MB
   per cleanup size and about 28 MB for voice. Each retrain adds that to the
   history.

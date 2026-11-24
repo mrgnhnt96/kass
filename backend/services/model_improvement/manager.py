@@ -48,6 +48,25 @@ IDLE_SECONDS = 120
 GPU_PREEMPTED = "kIOGPUCommandBufferCallbackErrorImpactingInteractivity"
 
 
+PUNCTUATION_STYLES = ("standard", "casual", "learned")
+
+
+def cleanup_flags(data):
+    """A style's cleanup flags in the one form adapters are tested and looked
+    up with, as Kass's server writes them (kass_text::refinement::Flags):
+    defaults left out, so flags saved before styles existed still compare
+    equal."""
+    data = data or {}
+    flags = {name: bool(data.get(name, True)) for name in ("smart_cleanup", "self_correction", "preserve_technical")}
+    if data.get("punctuation_style") in PUNCTUATION_STYLES and data["punctuation_style"] != "standard":
+        flags["punctuation_style"] = data["punctuation_style"]
+    if data.get("capitalize_first") is False:
+        flags["capitalize_first"] = False
+    if isinstance(data.get("style"), str):
+        flags["style"] = data["style"]
+    return flags
+
+
 def pipeline_id():
     """The cleanup pipeline dictation uses, as Kass's server (which runs it)
     named it when it started this worker: ``KASS_CLEANUP_PIPELINE``
@@ -174,9 +193,7 @@ def _report(kind, message):
 
 def active_adapter(model_size, flags):
     """The personal adapter for cleanup, else the shared one (shared_adapters.py), else None."""
-    from ..refinement import RefinementFlags
-
-    normalized = RefinementFlags.from_dict(flags).to_dict()
+    normalized = cleanup_flags(flags)
     return _personal_adapter(model_size, normalized) or shared_adapters.cleanup(model_size, normalized)
 
 
@@ -581,8 +598,6 @@ def _judge(plan, directory, result, voice_resume):
         report = result["adapter"]
         metrics["adapter"] = score_rows(report["rows"])
         if metrics["adapter"]["passed"]:
-            from ..refinement import RefinementFlags
-
             path = directory / "adapter"
             active["llm"] = {
                 "id": directory.name,
@@ -593,7 +608,7 @@ def _judge(plan, directory, result, voice_resume):
                 "rules_digest": digest(plan["rules"]),
                 # The shared adapter it was built on (shared_adapters.py), or None.
                 "shared": plan.get("shared"),
-                "tested_flags": [RefinementFlags.from_dict(flags).to_dict() for flags in report["tested_flags"]],
+                "tested_flags": [cleanup_flags(flags) for flags in report["tested_flags"]],
                 "sha256": hashlib.sha256((path / "adapters.safetensors").read_bytes()).hexdigest(),
                 "config_sha256": hashlib.sha256((path / "adapter_config.json").read_bytes()).hexdigest(),
             }

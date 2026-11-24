@@ -15,6 +15,8 @@ The Rust server owns the entries, edits them and applies them to dictation;
 the worker keeps the matching it shares with spelling and voice training.
 """
 
+import functools
+import json
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -25,7 +27,7 @@ from difflib import SequenceMatcher
 # many, and the earlier text the rest.
 PROMPT_TOKENS = 64
 
-# Words, as correction_rules.py matches them.
+# Words, as learned corrections match them (kass_text::correction_rules).
 _WORD = re.compile(r"\w+(?:['\u2019-]\w+)*", re.UNICODE)
 # Between the words of a phrase: Whisper writes "voice box" and "voice-box".
 _BETWEEN = r"[\s-]+"
@@ -38,6 +40,68 @@ _SOUNDS = (("ph", "f"), ("ck", "k"), ("q", "k"), ("c", "k"), ("z", "s"), ("y", "
 _HEARD_RATIO = 0.82
 _HEARD_MIN = 5
 _MEMO = 4096
+
+
+# macOS's word list: common words in lowercase, names capitalized.
+_WORD_LIST = "/usr/share/dict/words"
+_SUFFIXES = ("'s", "\u2019s", "ies", "es", "s", "ed", "d", "ing", "ly")
+# The byte-level BPE marker for a leading space.
+_SPACE = "\u0120"
+
+
+@functools.cache
+def _vocabulary() -> dict[str, int]:
+    """Whisper's BPE vocabulary, whose ids rise roughly as tokens get rarer.
+
+    Empty when no Whisper model is downloaded; the word list decides then.
+    """
+    from huggingface_hub import try_to_load_from_cache
+
+    from ..backends import WHISPER_HF_REPOS
+
+    for repo in WHISPER_HF_REPOS.values():
+        try:
+            path = try_to_load_from_cache(repo, "vocab.json")
+            if isinstance(path, str):
+                with open(path, encoding="utf-8") as vocab:
+                    return json.load(vocab)
+        except (OSError, ValueError):
+            continue
+    return {}
+
+
+@functools.cache
+def _lexicon() -> tuple[frozenset[str], frozenset[str]]:
+    """Words the word list has in lowercase, and words it has capitalized."""
+    try:
+        with open(_WORD_LIST, encoding="utf-8") as words:
+            entries = words.read().split()
+    except OSError:
+        return frozenset(), frozenset()
+    return (
+        frozenset(w for w in entries if w.islower()),
+        frozenset(w.casefold() for w in entries if w[:1].isupper()),
+    )
+
+
+def _common_word(word: str) -> bool:
+    """Whether ``word`` is mostly written in lowercase mid-sentence, so not a name.
+
+    Whisper's vocabulary says which casing is the more frequent word after a
+    space: " move" comes long before " Move", and " Sarah" has no lowercase
+    token at all. A word with neither is looked up in the system word list
+    (and "tests" as "test"), which lists names capitalized.
+    """
+    vocab = _vocabulary()
+    lower, capital = vocab.get(_SPACE + word.lower()), vocab.get(_SPACE + word[0].upper() + word[1:].lower())
+    if lower is not None or capital is not None:
+        return lower is not None and (capital is None or lower < capital)
+    words, capitalized = _lexicon()
+    key = word.casefold()
+    stems = [key] + [
+        key[: -len(s)] + ("y" if s == "ies" else "") for s in _SUFFIXES if key.endswith(s) and len(key) > len(s) + 2
+    ]
+    return any(stem in words and stem not in capitalized for stem in stems)
 
 
 @dataclass(frozen=True)
@@ -235,8 +299,6 @@ class Dictionary:
         # Built on first use, after dictation has loaded the word data
         # _common_word reads, never while a take starts.
         if self._compiled is None:
-            from .phrase_seams import _common_word
-
             recased = {
                 key: term
                 for key, term in self.spellings.items()
@@ -404,8 +466,6 @@ def misheard_terms(original: str, corrected: str) -> list[tuple[str, str]]:
     and isn't all common words, digits or a drawn-out spelling: vocabulary,
     not a wording or formatting change.
     """
-    from .phrase_seams import _common_word
-
     heard, wrote = list(_WORD.finditer(original)), list(_WORD.finditer(corrected))
     matcher = SequenceMatcher(None, [m.group() for m in heard], [m.group() for m in wrote], autojunk=False)
     found = []

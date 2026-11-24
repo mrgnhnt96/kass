@@ -8,7 +8,7 @@ import argparse
 
 import uvicorn
 
-from . import config, database
+from . import config
 from .app import app  # noqa: F401 -- re-export for uvicorn "backend.main:app"
 
 if __name__ == "__main__":
@@ -29,14 +29,12 @@ if __name__ == "__main__":
         "--data-dir",
         type=str,
         default=None,
-        help="Data directory for the database and recorded audio",
+        help="Data directory Kass shares with its server",
     )
     args = parser.parse_args()
 
     if args.data_dir:
         config.set_data_dir(args.data_dir)
-
-    database.init_db()
 
     uvicorn.run(
         "backend.main:app",

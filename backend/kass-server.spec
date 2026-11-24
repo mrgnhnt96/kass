@@ -6,7 +6,7 @@ from PyInstaller.utils.hooks import copy_metadata
 
 datas = [('assets/silero_vad.onnx', 'backend/assets'), ('assets/shared-adapters', 'backend/assets/shared-adapters')]
 binaries = []
-hiddenimports = ['backend', 'backend.main', 'backend.config', 'backend.database', 'backend.models', 'backend.services.transcribe', 'backend.utils.platform_detect', 'backend.backends', 'backend.backends.qwen_llm_backend', 'backend.utils.audio', 'backend.utils.progress', 'backend.utils.hf_progress', 'transformers', 'fastapi', 'uvicorn', 'sqlalchemy', 'soundfile', 'onnxruntime', 'requests', 'pkg_resources.extern', 'backend.backends.mlx_backend', 'mlx', 'mlx.core', 'mlx.nn', 'mlx_audio', 'mlx_audio.stt', 'mlx_lm']
+hiddenimports = ['backend', 'backend.main', 'backend.config', 'backend.models', 'backend.services.transcribe', 'backend.utils.platform_detect', 'backend.backends', 'backend.backends.qwen_llm_backend', 'backend.utils.audio', 'backend.utils.progress', 'backend.utils.hf_progress', 'transformers', 'fastapi', 'uvicorn', 'soundfile', 'onnxruntime', 'requests', 'pkg_resources.extern', 'backend.backends.mlx_backend', 'mlx', 'mlx.core', 'mlx.nn', 'mlx_audio', 'mlx_audio.stt', 'mlx_lm']
 datas += copy_metadata('requests')
 datas += copy_metadata('transformers')
 datas += copy_metadata('huggingface-hub')

@@ -17,7 +17,7 @@ import math
 import re
 import statistics
 
-from ..correction_rules import loss
+from ..model_improvement.evaluation import loss
 
 MIN_TAKES = 12
 # Cutting noisy mistakes by this share lets clean takes lose up to

@@ -9,8 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.services import dictionary, phrase_seams
-from backend.services.correction_rules import MAX_TEXT
+from backend.services import dictionary
 from backend.services.dictionary import Entry
 
 SLACK, ZED = "com.tinyspeck.slackmacgap", "dev.zed.Zed"
@@ -21,7 +20,7 @@ START = datetime(2026, 9, 1)
 @pytest.fixture(autouse=True)
 def common_words(monkeypatch):
     # The real check reads Whisper's vocabulary and the system word list.
-    monkeypatch.setattr(phrase_seams, "_common_word", lambda word: word.casefold() in COMMON)
+    monkeypatch.setattr(dictionary, "_common_word", lambda word: word.casefold() in COMMON)
 
 
 def entry(scope, written, spoken=None, scope_id=None, minutes=0, match_sound=True, phrase=False):
@@ -275,7 +274,7 @@ def test_a_large_dictionary_stays_under_five_milliseconds():
     entries = [entry("global", f"Term{i}x", f"spoken phrase {i}", minutes=i) for i in range(250)]
     entries += [entry("global", f"Product{i}q", minutes=i) for i in range(250)]
     found = merged(*entries)
-    text = ("say spoken phrase 42 and product7q with term3x then more words. " * 100)[:MAX_TEXT]
+    text = ("say spoken phrase 42 and product7q with term3x then more words. " * 100)[:4000]
     found.apply(text)  # compiles once
 
     timings = []
@@ -339,5 +338,5 @@ def test_the_worker_counts_terms_with_whisper_or_leaves_it_to_the_server(worker,
 def test_a_correction_finds_the_terms_it_fixed(original, corrected, words, monkeypatch):
     spoken = "a about and ask better code commit complete cloud done is it now open push send session start test"
     common = COMMON | set(spoken.split()) | {"that", "the", "notes", "to", "ticket", "was", "way", "works", "or"}
-    monkeypatch.setattr(phrase_seams, "_common_word", lambda word: word.casefold() in common)
+    monkeypatch.setattr(dictionary, "_common_word", lambda word: word.casefold() in common)
     assert dictionary.misheard_terms(original, corrected) == words

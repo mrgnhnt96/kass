@@ -1,6 +1,7 @@
 //! Replays every call recorded from the Python text stages
-//! (`tests/golden/python.json`, made by `tests/golden/record.py`) and checks
-//! kass-text returns the same.
+//! (`tests/golden/python.json`) and checks kass-text returns the same. The
+//! Python stages and their recorder, `tests/golden/record.py`, were deleted
+//! once the Rust server ran cleanup; the recording stays as the spec.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;

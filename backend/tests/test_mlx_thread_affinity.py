@@ -95,8 +95,8 @@ async def test_a_speculative_job_still_runs_and_reports_errors():
 
 @pytest.mark.asyncio
 async def test_style_prefill_and_load_ahead_queue_as_speculative(monkeypatch):
-    from backend.services import mlx_thread, refinement
-    from backend.services.refinement import RefinementFlags
+    from backend.routes import stream_models
+    from backend.services import mlx_thread
 
     lanes = []
     submit = mlx_thread._mlx_executor.submit
@@ -111,8 +111,8 @@ async def test_style_prefill_and_load_ahead_queue_as_speculative(monkeypatch):
     monkeypatch.setattr(llm_service, "get_llm_model", lambda: backend)
     monkeypatch.setattr("backend.services.model_improvement.manager.active_adapter", lambda *_: None)
 
-    await refinement.load_cleanup_model(RefinementFlags(), "0.6B")
-    await refinement.prefill_cleanup(RefinementFlags(), "0.6B")
+    await stream_models.cleanup_load(stream_models.Cleanup(flags={}, model_size="0.6B"))
+    await stream_models.cleanup_prefill(stream_models.CleanupPrompt(flags={}, model_size="0.6B", system="Clean up."))
     await backend.generate("a", model_size="0.6B")
 
     assert lanes == [True, True, False]

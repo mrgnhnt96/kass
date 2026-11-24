@@ -1,7 +1,7 @@
 #!/bin/bash
 # Interleave the MLX cleanup baseline with llama.cpp variants, round by round.
 # usage: run_llm_rounds.sh <scratch> <rounds> <passes>
-#   <scratch>/prompts.json      from build_prompts.py
+#   <scratch>/prompts.json      cleanup prompts (see docs/plans/RUST_INFERENCE_COMPARISON.md, Reproduce)
 #   <scratch>/models/*.gguf
 #   <scratch>/data              copy of the Kass data dir
 #   $LLBENCH                    built llbench binary (llama-cpp-2, in process)

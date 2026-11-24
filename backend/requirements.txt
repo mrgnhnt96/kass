@@ -6,7 +6,6 @@ uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
 
 # Training reads the corrections and captures it learns from in kass.db.
-sqlalchemy>=2.0.0
 
 # MLX runs Whisper speech-to-text (mlx-audio) and the Qwen3 cleanup LLM (mlx-lm).
 # Pinned: Whisper's text changes between MLX releases (0.32.4 drops a final

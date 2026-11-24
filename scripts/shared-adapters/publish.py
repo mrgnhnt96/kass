@@ -55,7 +55,7 @@ def check():
 def publish_cleanup(size, evaluation, stock):
     from cleanup_pipeline import pipeline_id
 
-    from backend.services.refinement import RefinementFlags
+    from backend.services.model_improvement.manager import cleanup_flags
 
     source = BUILD / f"cleanup-{size}"
     result = json.loads(Path(evaluation).read_text())
@@ -86,7 +86,7 @@ def publish_cleanup(size, evaluation, stock):
         "id": f"cleanup-{size}-{hashlib.sha256(weights).hexdigest()[:12]}",
         "pipeline": pipeline_id(),
         # Trained and scored with the default cleanup prompt only.
-        "tested_flags": [RefinementFlags().to_dict()],
+        "tested_flags": [cleanup_flags({})],
         "scores": {"adapter": after, "stock": before},
         "training": json.loads((source / "training.json").read_text()),
     }
