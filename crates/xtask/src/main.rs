@@ -46,9 +46,9 @@ Build and release
 
 Code quality
   check                     check-python and check-rust
-  check-python              ruff lint and format check on backend/
+  check-python              ruff lint and format check on backend/ and scripts/
   check-rust                rustfmt check and clippy (warnings fail) on the app and crates/
-  lint | format | fix       ruff check, ruff format, or both with fixes, on backend/
+  lint | format | fix       ruff check, ruff format, or both with fixes, on backend/ and scripts/
   test                      Backend pytest suite, then test-rust
   test-rust                 The Rust tests of the app and crates/
 

@@ -30,8 +30,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from cleanup_pipeline import cleanup_cases
-from idle import interrupted, wait_for_idle
+# After the environment above, as in the backend's entry points.
+from cleanup_pipeline import cleanup_cases  # noqa: E402
+from idle import interrupted, wait_for_idle  # noqa: E402
 
 DATA = ROOT / "build" / "shared-adapters" / "cleanup-data"
 LORA = {"rank": 8, "dropout": 0.0, "scale": 16.0}

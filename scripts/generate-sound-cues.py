@@ -24,10 +24,7 @@ def tone(freqs, seconds, volume=0.35, harmonic=0.15):
     for i in range(int(RATE * seconds)):
         t = i / RATE
         envelope = min(1, t / 0.005) * math.exp(-t * 9)
-        s = sum(
-            math.sin(2 * math.pi * f * t) + harmonic * math.sin(4 * math.pi * f * t)
-            for f in freqs
-        ) / len(freqs)
+        s = sum(math.sin(2 * math.pi * f * t) + harmonic * math.sin(4 * math.pi * f * t) for f in freqs) / len(freqs)
         samples.append(s * envelope * volume)
     return samples
 
@@ -84,9 +81,7 @@ def save(path, samples):
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(RATE)
-        w.writeframes(
-            b"".join(struct.pack("<h", int(max(-1, min(1, s)) * 32767)) for s in samples)
-        )
+        w.writeframes(b"".join(struct.pack("<h", int(max(-1, min(1, s)) * 32767)) for s in samples))
 
 
 def main():

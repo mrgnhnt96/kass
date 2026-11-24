@@ -1,5 +1,10 @@
 """Summarize bench JSONL files: load, median/min/max warm wall per fixture (run 0 excluded), WER vs reference."""
-import json, os, re, statistics, sys
+
+import json
+import os
+import re
+import statistics
+import sys
 from pathlib import Path
 
 FX = Path(os.environ.get("FX_DIR", "fx"))
@@ -21,7 +26,7 @@ def wer(ref, hyp):
 
 
 for path in sys.argv[1:]:
-    rows = [json.loads(l) for l in open(path) if l.startswith("{")]
+    rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line.startswith("{")]
     print(f"== {Path(path).name}")
     for r in rows:
         if r["event"] in ("load", "done"):
@@ -34,7 +39,9 @@ for path in sys.argv[1:]:
         warm = [x["wall_s"] for x in rs[1:]] or [rs[0]["wall_s"]]
         ref = (FX / f"{fx}.txt").read_text()
         texts = {x["text"] for x in rs}
-        print(f"   {fx:9s} first={rs[0]['wall_s']:.3f} warm med={statistics.median(warm):.3f} "
-              f"min={min(warm):.3f} max={max(warm):.3f}  WER={wer(ref, rs[-1]['text']):.3f}  distinct_texts={len(texts)}")
+        print(
+            f"   {fx:9s} first={rs[0]['wall_s']:.3f} warm med={statistics.median(warm):.3f} "
+            f"min={min(warm):.3f} max={max(warm):.3f}  WER={wer(ref, rs[-1]['text']):.3f}  distinct_texts={len(texts)}"
+        )
         if wer(ref, rs[-1]["text"]) > 0:
             print("      hyp:", rs[-1]["text"])
