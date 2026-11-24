@@ -26,9 +26,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ... import config
-from ...database import session as database_session
 from .. import capture_events, correction_learning, shared_adapters
-from .data import collect, digest, readiness
+from .data import ask, collect, digest, readiness, report_rows
 from .evaluation import score_rows, score_speech
 
 logger = logging.getLogger(__name__)
@@ -340,27 +339,24 @@ def _prepare(groups, voice_resume, skip, cleanup):
     """The plan for a run from the reports in kass.db, its fingerprint, whether
     it has anything to train or evaluate, and what the server keeps: the
     recording groups (``groups``, updated in place) and the counts.
-    ``cleanup`` is the server's cleanup pipeline (:func:`prepare`)."""
+    ``cleanup`` is what the server sent: its cleanup pipeline, the capture
+    settings and each writing style's flags (:func:`prepare`)."""
     from ...backends import WHISPER_HF_REPOS
     from ...backends.qwen_llm_backend import MLX_HF_REPOS
-    from ..settings import get_capture_settings
 
     # The server learns the rules and has the worker reload them.
     correction_learning.initialize()
     with _lock:
         active = deepcopy(_active)
-    with database_session.SessionLocal() as db:
-        from ..styles import flags_for, load as load_styles
-
-        samples = collect(db, groups)
-        settings = get_capture_settings(db)
-        size = settings.llm_model or "0.6B"
-        configured_stt = settings.stt_model or "base"
-        # Every writing style's flags are evaluated, so an accepted adapter
-        # covers each style (docs/plans/PER_APP_STYLE.md).
-        style_flags = [flags_for(style, settings).to_dict() for style in load_styles(db).styles]
-        voice_bank = _scan_bank(db, settings)
-        language = None if (settings.language or "auto") == "auto" else settings.language
+    settings = cleanup["settings"]
+    samples = collect(report_rows(cleanup["server"]), groups)
+    size = settings.get("llm_model") or "0.6B"
+    configured_stt = settings.get("stt_model") or "base"
+    # Every writing style's flags are evaluated, so an accepted adapter
+    # covers each style (docs/plans/PER_APP_STYLE.md).
+    style_flags = cleanup["style_flags"]
+    voice_bank = _scan_bank(cleanup["server"], settings)
+    language = None if (settings.get("language") or "auto") == "auto" else settings["language"]
     counts, train_ready = readiness(samples)
     current_stt = speech_model(configured_stt)
     raw_tests = [s for s in samples if s["target"] == "raw" and s["split"] == "test" and s.get("audio")]
@@ -439,11 +435,19 @@ VOICE_MIN_TRAIN = 100
 VOICE_MIN_TEST = 12
 
 
-def _scan_bank(db, settings):
+def _scan_bank(server, settings):
     from ..voice_training import bank
 
+    def dictations(after, limit):
+        body = {"after": after, "limit": limit}
+        return ask(server, "/capture/learning/training/dictations", body)["dictations"]
+
+    def corrections(capture_ids):
+        body = {"capture_ids": capture_ids}
+        return ask(server, "/capture/learning/training/corrections", body)["corrections"]
+
     try:
-        return bank.scan(db, settings)
+        return bank.scan(settings, dictations, corrections)
     except Exception:
         logger.exception("Voice bank scan failed; voice training waits")
         return None
@@ -674,13 +678,24 @@ class _Busy:
 _prepared = None
 
 
-def prepare(groups, voice_resume, skip, pipeline=None, cleanup_server=None, rehearsal=None):
+def prepare(
+    groups,
+    voice_resume,
+    skip,
+    pipeline=None,
+    cleanup_server=None,
+    rehearsal=None,
+    settings=None,
+    style_flags=None,
+):
     """Plan a run for the server, from the reports in kass.db.
 
     ``skip`` is the fingerprints already tried or rolled back. ``pipeline``
     is the cleanup pipeline the server runs, ``cleanup_server`` where the
-    training process asks it for cleanup text, and ``rehearsal`` the
-    prompt's example turns. The answer says whether it's ``ready`` to train,
+    worker reads kass.db's reports and dictations and the training process
+    asks it for cleanup text, and ``rehearsal`` the prompt's example turns.
+    ``settings`` are the capture settings and ``style_flags`` each writing
+    style's cleanup flags. The answer says whether it's ``ready`` to train,
     or which phase it ``waits`` in, and names the ``run`` for :func:`train`.
     A dictation that starts meanwhile ``interrupted`` it.
     """
@@ -690,7 +705,13 @@ def prepare(groups, voice_resume, skip, pipeline=None, cleanup_server=None, rehe
         return {"unsupported": True}
     if not cleanup_server:
         return {"error": "The server didn't say where to prepare cleanup text"}
-    cleanup = {"pipeline": pipeline or pipeline_id(), "server": cleanup_server, "rehearsal": rehearsal or []}
+    cleanup = {
+        "pipeline": pipeline or pipeline_id(),
+        "server": cleanup_server,
+        "rehearsal": rehearsal or [],
+        "settings": settings or {},
+        "style_flags": style_flags or [],
+    }
     with _lock:
         generation = _generation
     with _Busy():

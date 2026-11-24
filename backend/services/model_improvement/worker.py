@@ -16,10 +16,9 @@ import os
 import re
 import threading
 import time
-import urllib.request
 from pathlib import Path
 
-from .data import REGRESSION
+from .data import REGRESSION, ask
 from .evaluation import score_rows, score_speech
 
 
@@ -62,15 +61,7 @@ def target(sample):
 
 
 def _ask_server(plan, path, body):
-    # Straight to the loopback server, never through a configured proxy.
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    request = urllib.request.Request(
-        plan["cleanup_server"] + path,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    with opener.open(request, timeout=300) as response:
-        return json.loads(response.read())
+    return ask(plan["cleanup_server"], path, body)
 
 
 def served_cases(plan, samples):

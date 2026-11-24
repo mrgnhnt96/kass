@@ -29,6 +29,9 @@ struct Worker {
     stops: Arc<AtomicUsize>,
     /// Stops asked for because the user started recording.
     recordings: Arc<AtomicUsize>,
+    /// Each prepare's body, with the reports and dictations the worker read
+    /// back from the server while preparing.
+    prepared: Arc<Mutex<Vec<Value>>>,
 }
 
 async fn idle(State(worker): State<Worker>) -> Json<Value> {
@@ -40,7 +43,42 @@ async fn reload(State(worker): State<Worker>) -> Json<Value> {
     Json(json!({}))
 }
 
-async fn prepare(State(worker): State<Worker>) -> Json<Value> {
+/// What the worker reads from kass.db through the server at `path`.
+async fn ask_server(body: &Value, path: &str, request: Value) -> Value {
+    let server = body["cleanup_server"].as_str().unwrap();
+    reqwest::Client::new()
+        .post(format!("{server}{path}"))
+        .json(&request)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+async fn prepare(State(worker): State<Worker>, Json(body): Json<Value>) -> Json<Value> {
+    let reports = ask_server(
+        &body,
+        "/capture/learning/training/reports",
+        json!({ "limit": 1000 }),
+    )
+    .await;
+    let dictations = ask_server(
+        &body,
+        "/capture/learning/training/dictations",
+        json!({ "after": null, "limit": 400 }),
+    )
+    .await;
+    let corrections = ask_server(
+        &body,
+        "/capture/learning/training/corrections",
+        json!({ "capture_ids": ["home"] }),
+    )
+    .await;
+    worker.prepared.lock().unwrap().push(json!({
+        "body": body, "reports": reports, "dictations": dictations, "corrections": corrections,
+    }));
     let ready = worker.ready.load(Ordering::SeqCst);
     Json(json!({
         "groups": [], "counts": { "reports": 3 }, "evaluated_report_ids": ["report-1"],
@@ -421,6 +459,54 @@ async fn a_trained_model_that_does_better_is_used_and_kept() {
     // Cancelling answers the status.
     let (status, body) = kass.call("POST", "/capture/learning/cancel").await;
     assert_eq!((status, body["phase"].clone()), (200, json!("no_new_data")));
+}
+
+#[tokio::test]
+async fn the_worker_plans_from_the_settings_styles_and_rows_the_server_reads() {
+    let mut kass = Kass::start(false).await;
+    kass.voicebox("refined");
+    kass.report("home", "raw", "voice box", "Voicebox", "redictation");
+    kass.sql(
+        "INSERT INTO writing_styles (id, name, position, is_default, punctuation_style,
+             capitalize_first, smart_cleanup, preserve_technical, description)
+         VALUES ('personal', 'Personal', 0, 1, 'standard', 1, 1, 1, ''),
+                ('chat', 'Chat', 1, 0, 'casual', 1, 1, 0, '');",
+    );
+    kass.run().await;
+    kass.settled().await;
+    let prepared = kass.worker.prepared.lock().unwrap()[0].clone();
+    let body = &prepared["body"];
+    assert_eq!(body["settings"]["llm_model"], json!("0.6B"));
+    assert!(body["settings"]["stt_model"].is_string());
+    assert!(body["settings"]["language"].is_string());
+    assert_eq!(body["settings"]["discard_audio"], json!(false));
+    assert_eq!(
+        body["style_flags"],
+        json!([
+            { "smart_cleanup": true, "self_correction": true, "preserve_technical": true, "style": "personal" },
+            {
+                "smart_cleanup": true, "self_correction": true, "preserve_technical": false,
+                "punctuation_style": "casual", "style": "chat",
+            },
+        ])
+    );
+    let ids = |rows: &Value| -> Vec<String> {
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(
+        ids(&prepared["reports"]["reports"]),
+        ["report-4", "report-3", "report-2", "report-1"]
+    );
+    assert_eq!(
+        ids(&prepared["dictations"]["dictations"]),
+        ["home", "work", "school"]
+    );
+    // A re-dictation teaches no voice correction.
+    assert_eq!(ids(&prepared["corrections"]["corrections"]), ["report-1"]);
 }
 
 #[tokio::test]

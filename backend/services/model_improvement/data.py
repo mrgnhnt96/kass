@@ -3,10 +3,10 @@
 import hashlib
 import json
 import re
+import urllib.request
 from difflib import SequenceMatcher
 
 from ... import config
-from ...database.models import CaptureFeedback
 
 MIN_TRAIN = 12
 MIN_VALIDATION = 3
@@ -36,22 +36,36 @@ def canonical(text):
     return " ".join(re.findall(r"\w+", re.sub(r"\d+", "#", text.casefold())))
 
 
-def collect(db, groups):
-    """Latest labels only; related recordings never cross the persisted split."""
-    rows = (
-        db.query(CaptureFeedback)
-        .order_by(CaptureFeedback.created_at.desc(), CaptureFeedback.id.desc())
-        .limit(1000)
-        .all()
+def ask(server, path, body):
+    """POST ``body`` to Kass's server at ``server`` and return its JSON answer.
+    The worker reads kass.db through it (server/src/training_data.rs)."""
+    # Straight to the loopback server, never through a configured proxy.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(
+        server + path,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
     )
+    with opener.open(request, timeout=300) as response:
+        return json.loads(response.read())
+
+
+def report_rows(server, limit=1000):
+    """The newest ``limit`` reports in kass.db, newest first."""
+    return ask(server, "/capture/learning/training/reports", {"limit": limit})["reports"]
+
+
+def collect(rows, groups):
+    """Latest labels only; related recordings never cross the persisted split.
+    ``rows`` are the reports, newest first (:func:`reports`)."""
     by_group = {}
     latest = {}
     for row in rows:
-        latest.setdefault((row.capture_id, row.target), row)
+        latest.setdefault((row["capture_id"], row["target"]), row)
     for row in reversed(list(latest.values())):
-        snapshot = json.loads(row.snapshot)
+        snapshot = json.loads(row["snapshot"])
         raw = snapshot.get("transcript_raw", "")
-        if not raw or max(len(raw), len(row.expected_text)) > 2000:
+        if not raw or max(len(raw), len(row["expected_text"])) > 2000:
             continue
         key = canonical(raw)
         audio = config.resolve_storage_path(snapshot.get("audio_path"))
@@ -88,18 +102,18 @@ def collect(db, groups):
             groups.append(match)
         if audio_hash and audio_hash not in match["audio_hashes"]:
             match["audio_hashes"].append(audio_hash)
-        identity = (match["id"], row.target)
+        identity = (match["id"], row["target"])
         # The latest correction wins, but repeats do not add evidence.
         by_group[identity] = {
-            "id": row.id,
-            "capture_id": row.capture_id,
+            "id": row["id"],
+            "capture_id": row["capture_id"],
             "group": match["id"],
             "split": match["split"],
-            "target": row.target,
+            "target": row["target"],
             "raw": raw,
             # What the user saw and corrected: the cleaned-up text for a refined report.
-            "output": snapshot.get("transcript_refined") if row.target == "refined" else raw,
-            "expected": row.expected_text,
+            "output": snapshot.get("transcript_refined") if row["target"] == "refined" else raw,
+            "expected": row["expected_text"],
             "flags": snapshot.get("refinement_flags"),
             "language": snapshot.get("language"),
             "audio": str(audio) if audio and audio.is_file() else None,

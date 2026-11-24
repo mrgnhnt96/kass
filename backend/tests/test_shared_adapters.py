@@ -4,11 +4,8 @@ training continues from them (docs/plans/SHARED_ADAPTERS.md)."""
 import json
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from backend import config
-from backend.database.models import Base
 from backend.services import shared_adapters
 from backend.services.model_improvement import manager
 from backend.services.model_improvement.data import digest
@@ -16,16 +13,19 @@ from backend.services.refinement import RefinementFlags
 from backend.services.voice_training import lora
 
 DEFAULT = RefinementFlags().to_dict()
-CLEANUP = {"pipeline": "test-pipeline", "server": "http://127.0.0.1:1", "rehearsal": []}
+CLEANUP = {
+    "pipeline": "test-pipeline",
+    "server": "http://127.0.0.1:1",
+    "rehearsal": [],
+    "settings": {"llm_model": "1.7B", "stt_model": "base", "language": "auto", "discard_audio": False},
+    "style_flags": [],
+}
 
 
 @pytest.fixture
 def learning(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "_data_dir", tmp_path)
     monkeypatch.setattr(config, "get_data_dir", lambda: tmp_path)
-    engine = create_engine(f"sqlite:///{tmp_path}/learning.sqlite")
-    Base.metadata.create_all(engine)
-    monkeypatch.setattr(manager.database_session, "SessionLocal", sessionmaker(bind=engine))
     for name, value in (("_root", None), ("_active", {}), ("_process", None)):
         monkeypatch.setattr(manager, name, value)
     monkeypatch.setattr(manager.correction_learning, "_state", {"rules": []})
@@ -96,20 +96,15 @@ def test_the_setting_switches_adapters_right_away(learning, shipped, monkeypatch
     from fastapi.testclient import TestClient
 
     from backend.routes.settings import router
-    from backend.tests.settings_rows import save_settings
 
     app = FastAPI()
     app.include_router(router)
     worker = TestClient(app)
     reloads = []
     monkeypatch.setattr(manager, "_reload_speech", lambda: reloads.append(True))
-    with manager.database_session.SessionLocal() as db:
-        save_settings(db, shared_adapters=False)
     assert worker.post("/worker/shared-adapters/switched", json={"enabled": False}).json() == {"ok": True}
     assert manager.voice_adapter("turbo") is None
     assert reloads
-    with manager.database_session.SessionLocal() as db:
-        save_settings(db, shared_adapters=True)
     worker.post("/worker/shared-adapters/switched", json={"enabled": True})
     assert manager.voice_adapter("turbo") == str(shipped / "voice-turbo")
 
@@ -177,21 +172,11 @@ def test_voice_training_without_shared_adapters_starts_from_plain_turbo(learning
 
 
 def prepare(monkeypatch):
-    from types import SimpleNamespace
-
-    from backend.services import settings as settings_service, styles
-
     monkeypatch.setattr(manager.correction_learning, "initialize", lambda: None)
-    monkeypatch.setattr(manager, "collect", lambda db, groups: [])
+    monkeypatch.setattr(manager, "report_rows", lambda server: [])
     monkeypatch.setattr(manager, "readiness", lambda samples: ({"audio_test": 0}, True))
     monkeypatch.setattr(manager, "_cached", lambda repo: "/cached")
-    monkeypatch.setattr(
-        settings_service,
-        "get_capture_settings",
-        lambda db: SimpleNamespace(llm_model="1.7B", stt_model="base", language="auto", discard_audio=False),
-    )
-    monkeypatch.setattr(styles, "load", lambda db: SimpleNamespace(styles=[]))
-    monkeypatch.setattr(manager, "_scan_bank", lambda db, settings: None)
+    monkeypatch.setattr(manager, "_scan_bank", lambda server, settings: None)
     plan, _, _, _ = manager._prepare([], None, [], CLEANUP)
     return plan["start_adapter"], plan["baseline_adapter"], plan["shared"]
 

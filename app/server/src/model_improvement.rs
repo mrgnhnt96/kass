@@ -486,6 +486,31 @@ fn attempted(state: &AppState) {
     state.model_improvement.runs().last_attempt = Some(Instant::now());
 }
 
+/// The capture settings a run plans with, and each writing style's cleanup
+/// flags, all of which an accepted cleanup adapter is evaluated on.
+async fn planned_with(state: &AppState) -> Result<(Value, Vec<Value>), String> {
+    let settings = crate::settings::load(&state.db)
+        .await
+        .map_err(|error| error.to_string())?;
+    let snapshot = state
+        .db
+        .read(|conn| crate::styles::load(conn, None))
+        .await
+        .map_err(|error| error.to_string())?;
+    let style_flags = snapshot
+        .styles
+        .iter()
+        .map(|style| crate::cleanup_inputs::flags_for(style, settings.self_correction).to_json())
+        .collect();
+    let settings = json!({
+        "llm_model": settings.llm_model,
+        "stt_model": settings.stt_model,
+        "language": settings.language,
+        "discard_audio": settings.discard_audio,
+    });
+    Ok((settings, style_flags))
+}
+
 /// Prepare, train and judge one run, saving each step.
 async fn run(state: &AppState) -> Result<(), String> {
     take_reports(state).await?;
@@ -494,14 +519,19 @@ async fn run(state: &AppState) -> Result<(), String> {
     skip.extend(strings(&saved["blocked"]));
     let baseline = saved["revision"].clone();
     let voice_resume = saved["voice_resume"].clone();
+    let (settings, style_flags) = planned_with(state).await?;
     let body = json!({
         "groups": saved["groups"],
         "voice_resume": voice_resume,
         "skip": skip,
         "pipeline": pipeline(),
-        // The training process prepares its text here (`training_cases`).
+        // The worker reads the reports and dictations here
+        // (`training_data`), and the training process prepares its text
+        // here (`training_cases`).
         "cleanup_server": format!("http://127.0.0.1:{}", state.address.port()),
         "rehearsal": kass_text::refinement::REFINEMENT_EXAMPLES,
+        "settings": settings,
+        "style_flags": style_flags,
     });
     let plan = worker::model_prepare(&state.proxy, body).await?;
     refused(&plan)?;
