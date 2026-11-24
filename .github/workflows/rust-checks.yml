@@ -35,9 +35,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      # Pinned to the toolchain used locally, so a new stable release's lints
+      # don't fail CI on code that passes the local check. Bump it together
+      # with the local toolchain, fixing the new lints in the same change.
+      - name: Install Rust 1.98.1
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.98.1"
           components: clippy, rustfmt
 
       - name: Rust cache
