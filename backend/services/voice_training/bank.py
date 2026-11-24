@@ -171,31 +171,26 @@ def corrected_transcript(raw: str, output: str, expected: str) -> str | None:
     return text if text != raw else None
 
 
-def _corrections(db, capture_ids: list[str]) -> dict[str, str]:
+def _corrections(rows: list[dict]) -> dict[str, str]:
     """The user's newest fix of each raw transcript, else the transcript with
-    the terms they fixed in the cleaned-up text. Re-dictations don't count."""
-    from ...database.models import CaptureFeedback
-
+    the terms they fixed in the cleaned-up text. ``rows`` are the explicit
+    corrections of the banked takes; re-dictations don't count."""
     fixes: dict[str, tuple] = {}
-    if not capture_ids:
-        return {}
-    rows = db.query(CaptureFeedback).filter(CaptureFeedback.capture_id.in_(capture_ids)).all()
     for row in rows:
-        if row.source not in CaptureFeedback.EXPLICIT_SOURCES:
-            continue
-        if row.target == "raw":
-            text = row.expected_text.strip()
+        if row["target"] == "raw":
+            text = row["expected_text"].strip()
         else:
-            snapshot = json.loads(row.snapshot or "{}")
+            snapshot = json.loads(row["snapshot"] or "{}")
             text = corrected_transcript(
-                snapshot.get("transcript_raw") or "", snapshot.get("transcript_refined") or "", row.expected_text
+                snapshot.get("transcript_raw") or "", snapshot.get("transcript_refined") or "", row["expected_text"]
             )
             if text is None:
                 continue
         # A fix of the transcript itself outranks one carried over from the cleaned-up text.
-        rank = (row.target == "raw", row.created_at or datetime.min)
-        if row.capture_id not in fixes or rank > fixes[row.capture_id][0]:
-            fixes[row.capture_id] = (rank, text)
+        created = datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.min
+        rank = (row["target"] == "raw", created)
+        if row["capture_id"] not in fixes or rank > fixes[row["capture_id"]][0]:
+            fixes[row["capture_id"]] = (rank, text)
     return {key: value[1] for key, value in fixes.items()}
 
 
@@ -216,29 +211,31 @@ def _evict(data: dict) -> None:
     data["room"] = room
 
 
-def scan(db, settings, limit: int = SCAN_BATCH) -> dict:
-    """Add dictations made since the last scan. Returns ``summary()``."""
-    from ... import config
-    from ...database.models import Capture
+def scan(settings: dict, dictations, corrections, limit: int = SCAN_BATCH) -> dict:
+    """Add dictations made since the last scan. Returns ``summary()``.
 
-    if settings.discard_audio:
+    ``dictations(after, limit)`` reads the dictations made after the ISO
+    datetime ``after`` (or every one for None), oldest first, and
+    ``corrections(capture_ids)`` the explicit corrections of those captures:
+    kass.db's rows, which Kass's server reads (server/src/training_data.rs).
+    """
+    from ... import config
+
+    if settings.get("discard_audio"):
         purge()
         return summary()
     with _lock:
         data = _load()
-        query = db.query(Capture).filter(Capture.source == "dictation")
-        if data["scanned_until"]:
-            query = query.filter(Capture.created_at > datetime.fromisoformat(data["scanned_until"]))
-        rows = query.order_by(Capture.created_at).limit(limit).all()
+        rows = dictations(data["scanned_until"], limit)
         known = {take["id"] for take in data["takes"]}
         _dir().mkdir(parents=True, exist_ok=True)
         _room_dir().mkdir(parents=True, exist_ok=True)
         for row in rows:
-            if row.created_at:
-                data["scanned_until"] = row.created_at.isoformat()
-            text = (row.transcript_raw or "").strip()
-            path = config.resolve_storage_path(row.audio_path)
-            if row.id in known or not text or len(text) > MAX_TEXT or path is None or not path.is_file():
+            if row["created_at"]:
+                data["scanned_until"] = row["created_at"]
+            text = (row["transcript_raw"] or "").strip()
+            path = config.resolve_storage_path(row["audio_path"])
+            if row["id"] in known or not text or len(text) > MAX_TEXT or path is None or not path.is_file():
                 continue
             try:
                 y = _read_capture_audio(path)
@@ -251,27 +248,28 @@ def scan(db, settings, limit: int = SCAN_BATCH) -> dict:
             found = analyze(y)
             if found is None:
                 break  # no voice detector: try again later
-            created = (row.created_at or datetime.now()).isoformat()
+            created = row["created_at"] or datetime.now().isoformat()
             clean = found["voiced"] >= 0.5 and found["floor"] < CLEAN_FLOOR_DB and found["snr"] > CLEAN_SNR_DB
             if clean:
-                _write_wav(_dir() / f"{row.id}.wav", y)
+                _write_wav(_dir() / f"{row['id']}.wav", y)
                 data["takes"].append(
                     {
-                        "id": row.id,
+                        "id": row["id"],
                         "text": text,
                         "transcript": text,
                         "end": round(found["end"] / 0.02) * 0.02,
                         "seconds": round(seconds, 2),
                         "created": created,
-                        "split": split(row.id),
+                        "split": split(row["id"]),
                     }
                 )
             elif found.get("floor", -120) > NOISY_FLOOR_DB:
                 room = _room_stretches(y, found["probabilities"])
                 if len(room) >= 8000:
-                    _write_wav(_room_dir() / f"{row.id}.wav", room)
-                    data["room"].append({"id": row.id, "seconds": round(len(room) / 16000, 2), "created": created})
-        fixes = _corrections(db, [take["id"] for take in data["takes"]])
+                    _write_wav(_room_dir() / f"{row['id']}.wav", room)
+                    data["room"].append({"id": row["id"], "seconds": round(len(room) / 16000, 2), "created": created})
+        ids = [take["id"] for take in data["takes"]]
+        fixes = _corrections(corrections(ids) if ids else [])
         for take in data["takes"]:
             take["text"] = fixes.get(take["id"], take["transcript"])
             take["corrected"] = take["text"] != take["transcript"]

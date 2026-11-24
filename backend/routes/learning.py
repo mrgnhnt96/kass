@@ -62,6 +62,10 @@ class Prepare(BaseModel):
     pipeline: str | None = None
     cleanup_server: str | None = None
     rehearsal: list[tuple[str, str]] = []
+    # The capture settings and each writing style's cleanup flags, which the
+    # worker plans with (it doesn't open kass.db).
+    settings: dict = {}
+    style_flags: list[dict] = []
 
 
 @router.post("/model/prepare")
@@ -74,6 +78,8 @@ def model_prepare(request: Prepare):
             pipeline=request.pipeline,
             cleanup_server=request.cleanup_server,
             rehearsal=request.rehearsal,
+            settings=request.settings,
+            style_flags=request.style_flags,
         )
     except Exception as error:
         logger.exception("Model improvement failed; production model unchanged")

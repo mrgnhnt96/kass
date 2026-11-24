@@ -4,19 +4,21 @@ and promotion, undo and loading through the model-improvement manager."""
 import json
 import wave
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from backend import config
-from backend.database.models import Base, Capture, CaptureFeedback
 from backend.services.model_improvement import manager
 from backend.services.voice_training import bank, gate, lora, mixing
 
-CLEANUP = {"pipeline": "test-pipeline", "server": "http://127.0.0.1:1", "rehearsal": []}
+CLEANUP = {
+    "pipeline": "test-pipeline",
+    "server": "http://127.0.0.1:1",
+    "rehearsal": [],
+    "settings": {"llm_model": "0.6B", "stt_model": "turbo", "language": "auto", "discard_audio": False},
+    "style_flags": [],
+}
 
 
 def write_wav(path, seconds=3.0, rate=48000):
@@ -36,27 +38,61 @@ def data_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
+class Kass:
+    """kass.db's captures and reports, read the way Kass's server answers the
+    worker (server/src/training_data.rs)."""
+
+    def __init__(self):
+        self.captures = []
+        self.reports = []
+
+    def add(self, report):
+        self.reports.append(report)
+
+    def dictations(self, after, limit):
+        rows = sorted(
+            (c for c in self.captures if c["source"] == "dictation" and (after is None or c["created_at"] > after)),
+            key=lambda c: c["created_at"],
+        )
+        return rows[:limit]
+
+    def corrections(self, capture_ids):
+        return [r for r in self.reports if r["capture_id"] in capture_ids and r["source"] in ("manual", "voice_fix")]
+
+    def scan(self, settings):
+        return bank.scan(settings, self.dictations, self.corrections)
+
+
 @pytest.fixture
 def db(data_dir):
-    engine = create_engine(f"sqlite:///{data_dir}/db.sqlite")
-    Base.metadata.create_all(engine)
-    with sessionmaker(bind=engine)() as session:
-        yield session
+    return Kass()
 
 
 def add_capture(db, data_dir, capture_id, text="Commit and push.", minutes=0, seconds=3.0, source="dictation"):
     path = data_dir / f"{capture_id}.wav"
     write_wav(path, seconds)
-    db.add(
-        Capture(
-            id=capture_id,
-            audio_path=str(path),
-            source=source,
-            transcript_raw=text,
-            created_at=datetime(2026, 10, 1, 12) + timedelta(minutes=minutes),
-        )
+    created = datetime(2026, 10, 1, 12) + timedelta(minutes=minutes)
+    db.captures.append(
+        {
+            "id": capture_id,
+            "audio_path": str(path),
+            "source": source,
+            "transcript_raw": text,
+            "created_at": created.isoformat(),
+        }
     )
-    db.commit()
+
+
+def report(capture_id, target, expected, snapshot="{}", source="manual"):
+    return {
+        "id": f"{capture_id}-{target}-{expected}",
+        "capture_id": capture_id,
+        "target": target,
+        "expected_text": expected,
+        "snapshot": snapshot,
+        "source": source,
+        "created_at": datetime(2026, 10, 2, 12).isoformat(),
+    }
 
 
 def fake_analysis(kind):
@@ -78,7 +114,7 @@ def fake_analysis(kind):
     return analyze
 
 
-SETTINGS = SimpleNamespace(discard_audio=False)
+SETTINGS = {"discard_audio": False}
 
 
 def test_bank_keeps_clean_takes_and_room_noise_from_noisy_ones(db, data_dir, monkeypatch):
@@ -86,7 +122,7 @@ def test_bank_keeps_clean_takes_and_room_noise_from_noisy_ones(db, data_dir, mon
     add_capture(db, data_dir, "command-1", minutes=2, source="command")
     add_capture(db, data_dir, "long-1", minutes=3, seconds=40)
     monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
-    summary = bank.scan(db, SETTINGS)
+    summary = db.scan(SETTINGS)
     assert summary["takes"] == 1
     [take] = bank.takes()
     assert take["id"] == "clean-1"
@@ -96,7 +132,7 @@ def test_bank_keeps_clean_takes_and_room_noise_from_noisy_ones(db, data_dir, mon
 
     add_capture(db, data_dir, "noisy-1", minutes=4)
     monkeypatch.setattr(bank, "analyze", fake_analysis("noisy"))
-    assert bank.scan(db, SETTINGS)["takes"] == 1  # earlier captures aren't scanned again
+    assert db.scan(SETTINGS)["takes"] == 1  # earlier captures aren't scanned again
     assert len(bank.room_paths()) == 1
 
 
@@ -107,24 +143,16 @@ def test_bank_labels_take_the_users_fix_but_not_a_redictation(db, data_dir, monk
         ("take-1", "Reinstall the app.", "manual"),
         ("take-2", "Commit.", "redictation"),
     ):
-        db.add(
-            CaptureFeedback(capture_id=capture_id, target="raw", expected_text=expected, snapshot="{}", source=source)
-        )
-    db.commit()
+        db.add(report(capture_id, "raw", expected, source=source))
     monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
-    bank.scan(db, SETTINGS)
+    db.scan(SETTINGS)
     labels = {take["id"]: take["text"] for take in bank.takes()}
     assert labels == {"take-1": "Reinstall the app.", "take-2": "Command push."}
 
 
 def refined_report(capture_id, raw, refined, expected, source="manual"):
-    return CaptureFeedback(
-        capture_id=capture_id,
-        target="refined",
-        expected_text=expected,
-        snapshot=json.dumps({"transcript_raw": raw, "transcript_refined": refined}),
-        source=source,
-    )
+    snapshot = json.dumps({"transcript_raw": raw, "transcript_refined": refined})
+    return report(capture_id, "refined", expected, snapshot, source)
 
 
 def test_bank_labels_take_with_the_terms_fixed_in_the_cleaned_up_text(db, data_dir, monkeypatch):
@@ -132,7 +160,7 @@ def test_bank_labels_take_with_the_terms_fixed_in_the_cleaned_up_text(db, data_d
     add_capture(db, data_dir, "take-2", text="Merge that domain for me please", minutes=1)
     add_capture(db, data_dir, "take-3", text="ship it now", minutes=2)
     add_capture(db, data_dir, "take-4", text="Open the pikto board", minutes=3)
-    db.add_all(
+    db.reports.extend(
         [
             # A misheard term: carried back to the transcript.
             refined_report("take-1", "Open the pikto board", "Open the Pikto board.", "Open the Picto board."),
@@ -151,9 +179,8 @@ def test_bank_labels_take_with_the_terms_fixed_in_the_cleaned_up_text(db, data_d
             ),
         ]
     )
-    db.commit()
     monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
-    bank.scan(db, SETTINGS)
+    db.scan(SETTINGS)
     takes = {take["id"]: take for take in bank.takes()}
     assert takes["take-1"]["text"] == "Open the Picto board"
     assert takes["take-1"]["corrected"]
@@ -168,10 +195,9 @@ def test_bank_labels_take_with_the_terms_fixed_in_the_cleaned_up_text(db, data_d
 def test_a_fix_of_the_transcript_outranks_one_from_the_cleaned_up_text(db, data_dir, monkeypatch):
     add_capture(db, data_dir, "take-1", text="Open the pikto board")
     db.add(refined_report("take-1", "Open the pikto board", "Open the Pikto board.", "Open the Picto board."))
-    db.add(CaptureFeedback(capture_id="take-1", target="raw", expected_text="Open the Picto boards", snapshot="{}"))
-    db.commit()
+    db.add(report("take-1", "raw", "Open the Picto boards"))
     monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
-    bank.scan(db, SETTINGS)
+    db.scan(SETTINGS)
     assert [take["text"] for take in bank.takes()] == ["Open the Picto boards"]
 
 
@@ -228,11 +254,11 @@ def test_bank_forgets_deleted_captures_and_empties_for_discard_audio(db, data_di
     add_capture(db, data_dir, "take-1")
     add_capture(db, data_dir, "take-2", minutes=1)
     monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
-    bank.scan(db, SETTINGS)
+    db.scan(SETTINGS)
     bank.forget("take-1")
     assert [take["id"] for take in bank.takes()] == ["take-2"]
     assert not (data_dir / "voice-training" / "bank" / "take-1.wav").exists()
-    bank.scan(db, SimpleNamespace(discard_audio=True))
+    db.scan({"discard_audio": True})
     assert bank.takes() == []
     assert not (data_dir / "voice-training" / "bank").exists()
 
@@ -242,7 +268,7 @@ def test_bank_keeps_only_the_newest_two_hours(db, data_dir, monkeypatch):
     for minute in range(4):
         add_capture(db, data_dir, f"take-{minute}", minutes=minute)
     monkeypatch.setattr(bank, "analyze", fake_analysis("clean"))
-    bank.scan(db, SETTINGS)
+    db.scan(SETTINGS)
     assert [take["id"] for take in bank.takes()] == ["take-2", "take-3"]
 
 
@@ -400,9 +426,6 @@ def test_adapter_for_a_different_model_is_refused(tmp_path):
 
 @pytest.fixture
 def learning(data_dir, monkeypatch):
-    engine = create_engine(f"sqlite:///{data_dir}/learning.sqlite")
-    Base.metadata.create_all(engine)
-    monkeypatch.setattr(manager.database_session, "SessionLocal", sessionmaker(bind=engine))
     for name, value in (("_root", None), ("_active", {}), ("_process", None)):
         monkeypatch.setattr(manager, name, value)
     monkeypatch.setattr(manager.correction_learning, "_state", {"rules": []})
@@ -588,19 +611,11 @@ def test_speech_backend_merges_the_active_adapter_and_reloads_when_it_changes(mo
 
 
 def test_voice_trains_once_the_refinement_model_has_nothing_new(learning, monkeypatch):
-    from backend.services import settings as settings_service, styles
-
     monkeypatch.setattr(manager.correction_learning, "initialize", lambda: None)
-    monkeypatch.setattr(manager, "collect", lambda db, groups: [])
+    monkeypatch.setattr(manager, "report_rows", lambda server: [])
     monkeypatch.setattr(manager, "readiness", lambda samples: ({"audio_test": 0}, True))
     monkeypatch.setattr(manager, "_cached", lambda repo: "/cached")
-    monkeypatch.setattr(
-        settings_service,
-        "get_capture_settings",
-        lambda db: SimpleNamespace(llm_model="0.6B", stt_model="turbo", language="auto", discard_audio=False),
-    )
-    monkeypatch.setattr(styles, "load", lambda db: SimpleNamespace(styles=[]))
-    monkeypatch.setattr(manager, "_scan_bank", lambda db, settings: {"train": 500, "test": 80})
+    monkeypatch.setattr(manager, "_scan_bank", lambda server, settings: {"train": 500, "test": 80})
     monkeypatch.setattr(manager, "_voice_plan", lambda *args: {"bank_digest": "bank", "resume": None})
 
     plan, refinement, ready, _ = manager._prepare([], None, [], CLEANUP)

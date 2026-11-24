@@ -9,14 +9,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from backend import config
-from backend.database.models import Base, Capture
 from backend.services.model_improvement import data, evaluation, manager
 from backend.services.refinement import RefinementFlags, refine_transcript
-from backend.tests.feedback_rows import file_report
 
 
 def successful_rows():
@@ -96,11 +92,7 @@ def test_a_fact_the_model_in_use_also_misses_is_a_mistake_not_a_changed_fact():
 
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
-    engine = create_engine(f"sqlite:///{tmp_path}/db.sqlite")
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine)
     monkeypatch.setattr(config, "get_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(manager.database_session, "SessionLocal", factory)
     for name, value in (
         ("_root", None),
         ("_active", {}),
@@ -116,9 +108,8 @@ def storage(tmp_path, monkeypatch):
         monkeypatch.setattr(manager, name, value)
     monkeypatch.setattr(manager.correction_learning, "_state", {"rules": []})
     manager.initialize()
-    yield factory
+    yield
     manager.foreground_activity()
-    engine.dispose()
 
 
 def save_state(tmp_path, active):
@@ -133,32 +124,37 @@ def restart(monkeypatch):
     manager.initialize()
 
 
-def add_report(db, capture_id, raw, expected, target="refined", audio=None):
-    db.add(
-        Capture(
-            id=capture_id,
-            audio_path=str(audio or "missing.wav"),
-            transcript_raw=raw,
-            transcript_refined=raw,
-            source="dictation",
-        )
+def add_report(reports, capture_id, raw, expected, target="refined", audio=None):
+    """A report filed on a new dictation, newest first as the server reads them."""
+    snapshot = {"audio_path": str(audio or "missing.wav"), "transcript_raw": raw, "transcript_refined": raw}
+    reports.insert(
+        0,
+        {
+            "id": f"report-{capture_id}",
+            "capture_id": capture_id,
+            "target": target,
+            "expected_text": expected,
+            "snapshot": json.dumps(snapshot),
+            "source": "manual",
+            "created_at": None,
+        },
     )
-    db.commit()
-    return file_report(db, capture_id, expected, target)
 
 
 def test_duplicate_recordings_and_near_duplicates_never_cross_splits(storage, tmp_path):
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"same recording")
     groups = []
-    with storage() as db:
-        add_report(db, "a", "open the voice box application today", "Open the Voicebox application today.", audio=audio)
-        first = data.collect(db, groups)
-        saved = deepcopy(groups)
-        add_report(
-            db, "b", "open the voice box application tomorrow", "Open the Voicebox application tomorrow.", audio=audio
-        )
-        second = data.collect(db, groups)
+    reports = []
+    add_report(
+        reports, "a", "open the voice box application today", "Open the Voicebox application today.", audio=audio
+    )
+    first = data.collect(reports, groups)
+    saved = deepcopy(groups)
+    add_report(
+        reports, "b", "open the voice box application tomorrow", "Open the Voicebox application tomorrow.", audio=audio
+    )
+    second = data.collect(reports, groups)
     assert len(second) == 1
     assert second[0]["split"] == first[0]["split"]
     assert second[0]["group"] == saved[0]["id"]
@@ -596,4 +592,63 @@ def test_training_skips_what_a_spoken_edit_resolved_and_uses_the_served_prompt()
         {"role": "user", "content": "um hi"},
         {"role": "assistant", "content": "Hi."},
         {"role": "user", "content": "hello"},
+    ]
+
+
+def test_a_run_plans_from_the_settings_and_rows_the_server_gives(storage, monkeypatch):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    asked = []
+    report = {
+        "id": "report-a",
+        "capture_id": "a",
+        "target": "refined",
+        "expected_text": "Use Voicebox today.",
+        "snapshot": json.dumps({"transcript_raw": "use voice box today", "transcript_refined": "Use voice box today."}),
+        "source": "manual",
+        "created_at": "2026-11-01T10:00:00",
+    }
+    dictation = {"id": "a", "transcript_raw": "use voice box today", "audio_path": "gone.wav", "created_at": None}
+    answers = {
+        "/capture/learning/training/reports": {"reports": [report]},
+        "/capture/learning/training/dictations": {"dictations": [dictation]},
+    }
+
+    class Kass(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            asked.append((self.path, body))
+            answer = json.dumps(answers[self.path]).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(answer)))
+            self.end_headers()
+            self.wfile.write(answer)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Kass)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr(manager.correction_learning, "initialize", lambda: None)
+    monkeypatch.setattr(manager, "_cached", lambda repo: None)
+    flags = [RefinementFlags(style="chat").to_dict()]
+    cleanup = {
+        "pipeline": "test-pipeline",
+        "server": f"http://127.0.0.1:{server.server_address[1]}",
+        "rehearsal": [],
+        "settings": {"llm_model": "1.7B", "stt_model": "base", "language": "auto", "discard_audio": False},
+        "style_flags": flags,
+    }
+    try:
+        plan, _, _, kept = manager._prepare([], None, [], cleanup)
+    finally:
+        server.shutdown()
+    assert (plan["model_size"], plan["configured_stt"], plan["style_flags"]) == ("1.7B", "base", flags)
+    assert [sample["expected"] for sample in plan["samples"]] == ["Use Voicebox today."]
+    assert kept["evaluated_report_ids"] == ["report-a"]
+    assert asked == [
+        ("/capture/learning/training/reports", {"limit": 1000}),
+        ("/capture/learning/training/dictations", {"after": None, "limit": 400}),
     ]
