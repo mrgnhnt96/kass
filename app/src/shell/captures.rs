@@ -1,5 +1,6 @@
 //! What the native Captures page needs from the app: installed apps' icons,
-//! the screens it links to, and fixing a correction where Kass typed it.
+//! the screens it links to, fixing a correction where Kass typed it, and
+//! dictating a phrase.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -7,10 +8,15 @@ use std::sync::Arc;
 use gpui_kit::{App, Image, Task, Window};
 use kass_api::types::CaptureAppFilter;
 use kass_captures::{CapturesHost, Route};
+use kass_dictionary::PhraseDictation;
 
 use super::insights::Icons;
 use crate::dictation::corrections;
 use crate::host::{async_runtime, AppHandle};
+use crate::settings::dictionary::HostDictation;
+
+/// Where the page is in the main window.
+const PATH: &str = "/captures";
 
 pub struct Host {
     pub icons: Rc<Icons>,
@@ -38,6 +44,10 @@ impl CapturesHost for Host {
     fn navigate(&self, route: Route, _window: &mut Window, cx: &mut App) {
         let (path, search) = link(&route);
         super::navigate(path, &search, cx);
+    }
+
+    fn phrase_dictation(&self) -> Option<Rc<dyn PhraseDictation>> {
+        Some(Rc::new(HostDictation::on(PATH)))
     }
 }
 

@@ -1,11 +1,13 @@
 //! What the Captures page asks of the app around it: the things only the
 //! app can do (fix text where it was typed, look up app icons, open other
-//! screens). Which Mac this is comes from the API client, and which others
-//! are connected from the page's own event stream. Every method has a
+//! screens, dictate a phrase). Which Mac this is comes from the API client,
+//! and which others are connected from the page's own event stream. Every method has a
 //! default that does nothing, so the page runs on its own, as in the example.
 
 use gpui_kit::{App, Image, Task, Window};
 use kass_api::types::{CaptureAppFilter, UsagePeriod};
+use kass_dictionary::PhraseDictation;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// A screen the page links to.
@@ -46,6 +48,12 @@ pub trait CapturesHost {
     }
 
     fn navigate(&self, _route: Route, _window: &mut Window, _cx: &mut App) {}
+
+    /// Dictation for one phrase dialog's "When I say" box, a new one each
+    /// time. `None` asks for the phrase to be typed.
+    fn phrase_dictation(&self) -> Option<Rc<dyn PhraseDictation>> {
+        None
+    }
 }
 
 /// The host when the page runs on its own.

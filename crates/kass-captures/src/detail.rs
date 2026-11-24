@@ -4,7 +4,7 @@
 
 use crate::format::{CaptureTag, capture_tag, format_detail_stamp};
 use crate::host::Route;
-use crate::page::{CapturesPage, Detail, Load};
+use crate::page::{CapturesPage, Detail, Load, OpenPhrase};
 use crate::phrases::{
     FiredPhrase, dictionary_word, fired_phrases, mark_phrases, phrase_from_hunk, phrase_key, pick,
 };
@@ -549,6 +549,8 @@ impl CapturesPage {
             card = card.child(self.render_teach_actions(window, cx));
         } else {
             let mut hit: Option<TextLayout> = None;
+            // Where each phrase wrote into the text, to open it on a click.
+            let mut written: Vec<(std::ops::Range<usize>, FiredPhrase)> = Vec::new();
             let text = if let Some(saved) = saved {
                 let after = diff_words(&teach.original, &saved.expected_text).after;
                 let mut joined = String::new();
@@ -581,7 +583,8 @@ impl CapturesPage {
                 for run in mark_phrases(&shown, phrases) {
                     let start = joined.len();
                     joined.push_str(&run.text);
-                    if run.phrase.is_some() {
+                    if let Some(phrase) = run.phrase {
+                        let hovered = detail.phrase_hover == Some(written.len());
                         marks.push((
                             start..joined.len(),
                             HighlightStyle {
@@ -590,9 +593,11 @@ impl CapturesPage {
                                     color: Some(t.accent),
                                     wavy: false,
                                 }),
+                                background_color: hovered.then(|| t.accent.opacity(0.1)),
                                 ..Default::default()
                             },
                         ));
+                        written.push((start..joined.len(), phrase));
                     }
                 }
                 let text = StyledText::new(joined).with_highlights(marks);
@@ -603,30 +608,172 @@ impl CapturesPage {
                 hit = Some(text.layout().clone());
                 text.into_any_element()
             };
+            let written = std::rc::Rc::new(written);
+            let hovered = detail
+                .phrase_hover
+                .and_then(|i| written.get(i))
+                .map(|(_, phrase)| phrase.spoken.clone());
+            let on_phrase = {
+                let (hit, written) = (hit.clone(), written.clone());
+                move |position: Point<Pixels>| {
+                    let at = hit.as_ref()?.index_for_position(position).ok()?;
+                    written.iter().position(|(range, _)| range.contains(&at))
+                }
+            };
+            let over_phrase = on_phrase.clone();
             card = card.child(
                 surface(div())
                     .id("transcript-text")
-                    .cursor(CursorStyle::IBeam)
-                    .hover(|s| s.bg(t.foreground.opacity(0.04)))
-                    .tooltip(|window, cx| {
-                        Tooltip::new(tr!("captures-teach-edit-hint")).build(window, cx)
+                    .cursor(if hovered.is_some() {
+                        CursorStyle::PointingHand
+                    } else {
+                        CursorStyle::IBeam
                     })
+                    .hover(|s| s.bg(t.foreground.opacity(0.04)))
+                    .tooltip(move |window, cx| {
+                        let tip = match &hovered {
+                            Some(spoken) => tr!("captures-phrase-wrote-hint", spoken = spoken),
+                            None => tr!("captures-teach-edit-hint"),
+                        };
+                        Tooltip::new(tip).build(window, cx)
+                    })
+                    .on_mouse_move(cx.listener(move |page, event: &MouseMoveEvent, _, cx| {
+                        let over = over_phrase(event.position);
+                        if let Some(detail) = &mut page.detail
+                            && detail.phrase_hover != over
+                        {
+                            detail.phrase_hover = over;
+                            cx.notify();
+                        }
+                    }))
+                    .on_hover(cx.listener(|page, hovered: &bool, _, cx| {
+                        if let Some(detail) = &mut page.detail
+                            && !hovered
+                            && detail.phrase_hover.take().is_some()
+                        {
+                            cx.notify();
+                        }
+                    }))
                     .on_click(cx.listener(move |page, event: &ClickEvent, window, cx| {
-                        // Start editing with the cursor where the user clicked.
-                        let at = hit
-                            .as_ref()
-                            .map(|layout| match layout.index_for_position(event.position()) {
+                        // Text a phrase wrote opens the phrase; anywhere
+                        // else starts editing with the cursor there.
+                        if let Some(i) = on_phrase(event.position()) {
+                            page.open_phrase(written[i].1.clone(), event.position(), cx);
+                            return;
+                        }
+                        let at = hit.as_ref().map(|layout| {
+                            match layout.index_for_position(event.position()) {
                                 Ok(i) | Err(i) => i,
-                            });
+                            }
+                        });
                         page.begin_edit_at(at, window, cx);
                     }))
                     .child(text),
             );
+            if let Some(open) = &detail.phrase_open {
+                card = card.child(self.render_phrase_popover(open, cx));
+            }
             if let Some(notice) = self.render_learned(cx) {
                 card = card.child(notice);
             }
         }
         card
+    }
+
+    /// What wrote the clicked text: the phrase said and the text it writes,
+    /// and a way to edit it in the dictionary.
+    fn render_phrase_popover(&self, open: &OpenPhrase, cx: &mut Context<Self>) -> AnyElement {
+        let t = theme(cx).clone();
+        let phrase = &open.phrase;
+        let card = div()
+            .id("phrase-popover")
+            .w(px(280.))
+            .flex()
+            .flex_col()
+            .p_1()
+            .rounded(metrics::RADIUS_MD)
+            .border_1()
+            .border_color(t.border)
+            .bg(t.popover)
+            .text_color(t.popover_foreground)
+            .shadow_md()
+            .on_mouse_down_out(cx.listener(|page, _, _, cx| {
+                page.close_phrase(cx);
+            }))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .pt_2()
+                    .pb_1()
+                    .child(pill(
+                        tr!("captures-phrase-chip"),
+                        t.accent,
+                        t.accent.opacity(0.1),
+                        &t,
+                    ))
+                    .child(
+                        div()
+                            .text_size(metrics::TEXT_XS)
+                            .text_color(t.muted_foreground)
+                            .child(tr!("captures-phrase-from")),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .gap_2()
+                    .px_2()
+                    .pb_2()
+                    .text_size(px(13.))
+                    .child(
+                        div()
+                            .flex_none()
+                            .child(format!("\u{201c}{}\u{201d}", phrase.spoken)),
+                    )
+                    .child(div().mt(px(2.)).child(icon(
+                        IconName::ArrowRight,
+                        px(14.),
+                        t.muted_foreground,
+                    )))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .text_color(t.muted_foreground)
+                            .child(phrase.written.clone()),
+                    ),
+            )
+            .child(div().h(px(1.)).mx(px(-4.)).my_1().bg(t.border))
+            .child(
+                div()
+                    .id("phrase-edit")
+                    .flex()
+                    .items_center()
+                    .h(px(30.))
+                    .px_2()
+                    .rounded(metrics::RADIUS_SM)
+                    .text_size(metrics::TEXT_BASE)
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.secondary))
+                    .child(tr!("captures-phrase-edit"))
+                    .on_click(cx.listener(|page, _, window, cx| {
+                        page.close_phrase(cx);
+                        page.host.navigate(Route::DictionaryPhrases, window, cx);
+                    })),
+            );
+        deferred(
+            anchored()
+                .anchor(Anchor::TopLeft)
+                .position(open.at + point(px(0.), px(12.)))
+                .snap_to_window_with_margin(px(8.))
+                .child(card),
+        )
+        .with_priority(1)
+        .into_any_element()
     }
 
     /// "Add to dictionary" over a word or phrase selected in the edit box:
