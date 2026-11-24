@@ -8,11 +8,17 @@ llama-server keeps the slot's KV cache and reuses the longest shared prefix
 keeping the context and trimming its KV cache. Reports both the client wall time and
 llama.cpp's own prompt/predict timings (the in-process cost without HTTP).
 """
-import json, os, socket, subprocess, sys, time, urllib.request
+
+import json
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from footprint import footprint_mb, resident_mb  # noqa: E402
+from footprint import footprint_mb, resident_mb
 
 server, model, prompts, passes, extra = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5:]
 
@@ -37,8 +43,11 @@ port = free_port()
 base = f"http://127.0.0.1:{port}"
 variant = Path(model).stem + ("+" + "".join(a.lstrip("-") for a in extra) if extra else "")
 t = time.perf_counter()
-proc = subprocess.Popen([server, "-m", model, "--port", str(port), "-ngl", "99", "-c", "4096", "-np", "1",
-                         "--no-webui", *extra], stdout=subprocess.DEVNULL, stderr=open(os.devnull, "w"))
+proc = subprocess.Popen(
+    [server, "-m", model, "--port", str(port), "-ngl", "99", "-c", "4096", "-np", "1", "--no-webui", *extra],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
 try:
     while True:
         try:
@@ -50,26 +59,64 @@ try:
         if proc.poll() is not None:
             sys.exit("llama-server exited")
     fp, peak = footprint_mb(proc.pid)
-    emit({"event": "load", "engine": "llama.cpp", "variant": variant, "load_s": time.perf_counter() - t,
-          "footprint_mb": fp, "peak_footprint_mb": peak, "resident_mb": resident_mb(proc.pid)})
-    entries = json.load(open(prompts))["entries"]
+    emit(
+        {
+            "event": "load",
+            "engine": "llama.cpp",
+            "variant": variant,
+            "load_s": time.perf_counter() - t,
+            "footprint_mb": fp,
+            "peak_footprint_mb": peak,
+            "resident_mb": resident_mb(proc.pid),
+        }
+    )
+    entries = json.loads(Path(prompts).read_text())["entries"]
     call = 0
     for p in range(passes):
         for i, e in enumerate(entries):
             s = time.perf_counter()
-            r = post(base + "/completion", {"prompt": e["chat"], "n_predict": 256, "temperature": 0.0,
-                                            "cache_prompt": True, "return_tokens": False})
+            r = post(
+                base + "/completion",
+                {
+                    "prompt": e["chat"],
+                    "n_predict": 256,
+                    "temperature": 0.0,
+                    "cache_prompt": True,
+                    "return_tokens": False,
+                },
+            )
             wall = time.perf_counter() - s
             tm = r.get("timings", {})
-            emit({"event": "generate", "engine": "llama.cpp", "variant": variant, "pass": p, "call": call, "entry": i,
-                  "wall_s": wall, "prompt_tokens": r.get("tokens_evaluated"), "reused_tokens": tm.get("cache_n"),
-                  "prompt_n": tm.get("prompt_n"), "prompt_ms": tm.get("prompt_ms"),
-                  "generated": tm.get("predicted_n"), "predicted_ms": tm.get("predicted_ms"),
-                  "first_token_s": (tm.get("prompt_ms", 0) + tm.get("predicted_per_token_ms", 0)) / 1000,
-                  "text": r["content"].strip()})
+            emit(
+                {
+                    "event": "generate",
+                    "engine": "llama.cpp",
+                    "variant": variant,
+                    "pass": p,
+                    "call": call,
+                    "entry": i,
+                    "wall_s": wall,
+                    "prompt_tokens": r.get("tokens_evaluated"),
+                    "reused_tokens": tm.get("cache_n"),
+                    "prompt_n": tm.get("prompt_n"),
+                    "prompt_ms": tm.get("prompt_ms"),
+                    "generated": tm.get("predicted_n"),
+                    "predicted_ms": tm.get("predicted_ms"),
+                    "first_token_s": (tm.get("prompt_ms", 0) + tm.get("predicted_per_token_ms", 0)) / 1000,
+                    "text": r["content"].strip(),
+                }
+            )
             call += 1
     fp, peak = footprint_mb(proc.pid)
-    emit({"event": "done", "variant": variant, "footprint_mb": fp, "peak_footprint_mb": peak, "resident_mb": resident_mb(proc.pid)})
+    emit(
+        {
+            "event": "done",
+            "variant": variant,
+            "footprint_mb": fp,
+            "peak_footprint_mb": peak,
+            "resident_mb": resident_mb(proc.pid),
+        }
+    )
 finally:
     proc.terminate()
     proc.wait()

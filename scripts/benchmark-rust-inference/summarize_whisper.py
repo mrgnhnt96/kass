@@ -5,11 +5,15 @@ Warm = every transcription except the first one of each process (that one is rep
 as "first"). Agreement is measured against MLX's text for the same fixture, and against
 the script for synthetic fixtures (<name>.txt).
 """
-import json, re, statistics, sys
+
+import json
+import re
+import statistics
+import sys
 from collections import defaultdict
 from pathlib import Path
 
-rows = [json.loads(l) for l in open(sys.argv[1]) if l.startswith("{")]
+rows = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines() if line.startswith("{")]
 fx = Path(sys.argv[2])
 
 
@@ -28,7 +32,13 @@ def wer(ref, hyp):
     return d[len(h)], len(r)
 
 
-loads, first, warm, texts, mem = defaultdict(list), defaultdict(list), defaultdict(lambda: defaultdict(list)), {}, defaultdict(list)
+loads, first, warm, texts, mem = (
+    defaultdict(list),
+    defaultdict(list),
+    defaultdict(lambda: defaultdict(list)),
+    {},
+    defaultdict(list),
+)
 seen_first = set()
 for r in rows:
     v = r.get("variant")
@@ -56,11 +66,25 @@ for f in fixtures:
         cells.append(f"{statistics.median(xs):.3f} ({min(xs):.2f})" if xs else "-")
     print(f"| {f} | " + " | ".join(cells) + " |")
 allw = {v: [x for f in warm[v] for x in warm[v][f]] for v in variants}
-print("| **all warm, median (min)** | " + " | ".join(f"**{statistics.median(allw[v]):.3f}** ({min(allw[v]):.2f})" for v in variants) + " |")
+print(
+    "| **all warm, median (min)** | "
+    + " | ".join(f"**{statistics.median(allw[v]):.3f}** ({min(allw[v]):.2f})" for v in variants)
+    + " |"
+)
 print("| first call after load, median | " + " | ".join(f"{statistics.median(first[v]):.3f}" for v in variants) + " |")
-print("| load s, median (all rounds) | " + " | ".join(f"{statistics.median(loads[v]):.2f} ({', '.join(f'{x:.1f}' for x in loads[v])})" for v in variants) + " |")
-print("| footprint MB at end / peak / resident at end | " + " | ".join(
-    f"{max(m[0] for m in mem[v]):.0f} / {max(m[1] for m in mem[v]):.0f} / {max(m[2] for m in mem[v]):.0f}" for v in variants) + " |")
+print(
+    "| load s, median (all rounds) | "
+    + " | ".join(f"{statistics.median(loads[v]):.2f} ({', '.join(f'{x:.1f}' for x in loads[v])})" for v in variants)
+    + " |"
+)
+print(
+    "| footprint MB at end / peak / resident at end | "
+    + " | ".join(
+        f"{max(m[0] for m in mem[v]):.0f} / {max(m[1] for m in mem[v]):.0f} / {max(m[2] for m in mem[v]):.0f}"
+        for v in variants
+    )
+    + " |"
+)
 
 print("\nAgreement with MLX (word errors / words, over all fixtures), and vs script for synthetic fixtures:")
 base = "mlx-turbo"
@@ -77,8 +101,10 @@ for v in variants:
             a, b = wer(script.read_text(), hyp)
             se, sn = se + a, sn + b
     distinct = sum(len(texts[(v, f)]) > 1 for f in fixtures)
-    print(f"- {v}: vs MLX {e}/{n} = {e / n:.3f}, identical words on {exact}/{len(fixtures)} fixtures; "
-          f"vs script {se}/{sn} = {se / max(1, sn):.3f}; fixtures with run-to-run differing text: {distinct}")
+    print(
+        f"- {v}: vs MLX {e}/{n} = {e / n:.3f}, identical words on {exact}/{len(fixtures)} fixtures; "
+        f"vs script {se}/{sn} = {se / max(1, sn):.3f}; fixtures with run-to-run differing text: {distinct}"
+    )
 for f in fixtures:
     ref = sorted(texts[(base, f)])[0]
     for v in variants:

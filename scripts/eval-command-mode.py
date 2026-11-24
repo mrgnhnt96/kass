@@ -108,7 +108,10 @@ async def evaluate(sizes: list[str], samples: int) -> dict:
                 seconds = time.monotonic() - started
                 ok = passes(selection, spoken, text)
                 rows.append(dict(sample=sample, spoken=spoken, seconds=round(seconds, 3), passes=ok, out=text))
-                print(f"[{size} #{sample}] {'ok  ' if ok else 'FAIL'} {seconds:.2f}s {spoken!r}\n    -> {text!r}", flush=True)
+                print(
+                    f"[{size} #{sample}] {'ok  ' if ok else 'FAIL'} {seconds:.2f}s {spoken!r}\n    -> {text!r}",
+                    flush=True,
+                )
         short = sorted(r["seconds"] for r in rows if r["spoken"] != "prompt engineer")
         print(
             f"[{size}] {sum(r['passes'] for r in rows)}/{len(rows)} pass; "

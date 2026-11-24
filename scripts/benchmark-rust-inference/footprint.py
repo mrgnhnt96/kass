@@ -1,5 +1,7 @@
 """macOS physical footprint (what Activity Monitor calls Memory), including Metal/unified allocations."""
-import ctypes, os
+
+import ctypes
+import os
 
 _libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
 

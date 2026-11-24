@@ -1,0 +1,4 @@
+# Lint and format scripts/ to the backend's standard (backend/pyproject.toml).
+extend = "../backend/pyproject.toml"
+# The pre-push hook is Python without a .py name.
+extend-include = ["hooks/pre-push"]

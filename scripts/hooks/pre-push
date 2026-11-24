@@ -10,10 +10,10 @@ the ones those commits add or change: from the remote's commit, or, for a
 branch the remote doesn't have yet, from where it left origin's default
 branch.
 
-Fixers run first: ruff (--fix, format) on backend Python, rustfmt on the
-Rust of both workspaces (the app's and crates/). A hook can't change commits
-already made, so if a fixer changed anything the push stops with the files to
-commit. Then what no tool fixes fails the push with the tools' output, along
+Fixers run first: ruff (--fix, format) on the Python of backend/ and scripts/
+(this hook included), rustfmt on the Rust of both workspaces (the app's and
+crates/). A hook can't change commits already made, so if a fixer changed
+anything the push stops with the files to commit. Then what no tool fixes fails the push with the tools' output, along
 with clippy for each Rust workspace whose code is pushed.
 
 The tools read the working tree, so an uncommitted edit to a pushed file is
@@ -83,6 +83,13 @@ def say(message: str = "") -> None:
     print(message, file=sys.stderr)
 
 
+def is_python(path: str) -> bool:
+    """Python ruff checks: backend/ and scripts/, and this hook, which has no .py name."""
+    if path == "scripts/hooks/pre-push":
+        return True
+    return path.startswith(("backend/", "scripts/")) and path.endswith(".py")
+
+
 def main() -> int:
     if os.environ.get("SKIP") in ("1", "true"):
         return 0
@@ -92,7 +99,7 @@ def main() -> int:
     os.chdir(root.strip())
 
     files = pushed_files(sys.stdin.read().splitlines())
-    python = [path for path in files if path.startswith("backend/") and path.endswith(".py")]
+    python = [path for path in files if is_python(path)]
     rust_by_manifest = {
         manifest: [path for path in files if path.startswith(folder) and path.endswith(".rs")]
         for folder, manifest in CARGO_WORKSPACES.items()
@@ -142,7 +149,18 @@ def main() -> int:
     for manifest in rust_by_manifest:
         step(
             f"cargo clippy ({manifest})",
-            ["cargo", "clippy", "--manifest-path", manifest, "--workspace", "--all-targets", "--quiet", "--", "-D", "warnings"],
+            [
+                "cargo",
+                "clippy",
+                "--manifest-path",
+                manifest,
+                "--workspace",
+                "--all-targets",
+                "--quiet",
+                "--",
+                "-D",
+                "warnings",
+            ],
         )
     if not failures:
         return 0

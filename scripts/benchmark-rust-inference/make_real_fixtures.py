@@ -4,7 +4,10 @@ usage: make_real_fixtures.py <captures_copy_dir> <out_dir> [per_length=2]
 Work on a *copy* of ~/Library/Application Support/com.mrgnhnt.kass/captures, never the original.
 Writes real<LL><a|b>.wav (no .txt reference: MLX output is used as the reference transcript).
 """
-import subprocess, sys, wave
+
+import subprocess
+import sys
+import wave
 from pathlib import Path
 
 src, out = Path(sys.argv[1]), Path(sys.argv[2])

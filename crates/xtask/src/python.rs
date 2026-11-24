@@ -116,9 +116,11 @@ pub fn setup_python(mut args: Vec<String>) -> Result {
     Ok(())
 }
 
+/// ruff on the backend and scripts/ (scripts/ruff.toml extends the backend's
+/// config, so both follow one standard).
 fn ruff(args: &[&str]) -> Command {
     let mut command = cmd(venv_bin("ruff"), args);
-    command.arg(BACKEND);
+    command.args([BACKEND, "scripts"]);
     command
 }
 
@@ -162,14 +164,14 @@ pub fn check_rust(args: Vec<String>) -> Result {
     Ok(())
 }
 
-/// cargo xtask lint: ruff check on the backend.
+/// cargo xtask lint: ruff check on the backend and scripts/.
 pub fn lint(args: Vec<String>) -> Result {
     no_more(&args)?;
     ensure_venv()?;
     run(&mut ruff(&["check"]))
 }
 
-/// cargo xtask format: ruff format on the backend.
+/// cargo xtask format: ruff format on the backend and scripts/.
 pub fn format(args: Vec<String>) -> Result {
     no_more(&args)?;
     ensure_venv()?;
