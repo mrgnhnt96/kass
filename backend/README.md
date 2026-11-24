@@ -8,11 +8,11 @@ The Python process that runs Kass's models: Whisper speech-to-text, Qwen3 cleanu
 # From the repo root (recommended)
 cargo xtask dev-backend
 
-# Standalone, on a kass.db the Rust server created
+# Standalone, on the app's data folder
 python -m backend.main --host 127.0.0.1 --port 17494 --data-dir /path/to/data
 ```
 
-The worker opens kass.db, which the app creates and migrates (`kass_server::db::prepare`), and fails clearly if tables or columns are missing. Before reporting ready, it loads the installed Whisper model selected in capture settings and the selected refinement model when auto-refine is enabled. A model load failure is logged without preventing the worker from opening.
+The worker never opens kass.db. Once it reports ready, kass-server sends the saved models and cleanup prompts (`POST /worker/models/startup`, built in `app/server/src/startup.rs`), and the worker loads the installed Whisper model and, when auto-refine is on, the refinement model. A model that isn't downloaded is skipped, and a load failure is logged without stopping the worker. Run standalone, it loads nothing until something sends that request.
 
 ## Architecture
 
@@ -52,11 +52,14 @@ The worker only answers `/worker/*` and `/health`, on 127.0.0.1. Kass's API list
 
 ```
 {data_dir}/
-  kass.db             # SQLite database
-  captures/               # Recorded dictation audio
+  kass.db                 # kass-server's SQLite database; the worker never opens it
+  captures/               # Recorded dictation audio, read for warm-up and training
+  model-improvement/      # Cleanup and voice training runs and the models they made
+  voice-training/         # Clean takes and background sounds for voice training
+  logs/                   # server.log and watchdog.log, when started with --data-dir
 ```
 
-The app passes its own (`~/Library/Application Support/com.mrgnhnt.kass`) with `--data-dir`. Without that flag the worker uses `KASS_DATA_DIR`, or `data/` in the directory it starts in. `cargo xtask dev` and `cargo xtask dev-backend` set `KASS_DATA_DIR` to the app's folder, so the debug app and the worker open the same kass.db.
+The app passes its own (`~/Library/Application Support/com.mrgnhnt.kass`) with `--data-dir`. Without that flag the worker uses `KASS_DATA_DIR`, or `data/` in the directory it starts in. `cargo xtask dev` and `cargo xtask dev-backend` set `KASS_DATA_DIR` to the app's folder, so the worker uses the debug app's recordings and trained models.
 
 ## Code quality
 
