@@ -1,6 +1,6 @@
 [package]
 name = "kass"
-version = "0.10.0-beta.10"
+version = "0.10.0-beta.11"
 description = "Local dictation for macOS"
 authors = ["you"]
 license = ""
